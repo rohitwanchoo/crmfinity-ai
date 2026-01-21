@@ -1,0 +1,794 @@
+{
+  "summary": {
+    "credit_count": 29,
+    "debit_count": 99,
+    "credit_total": 257395.2,
+    "debit_total": 315118.65,
+    "net_balance": -57723.45,
+    "total_transactions": 128
+  },
+  "api_cost": {
+    "input_tokens": 4845,
+    "output_tokens": 6555,
+    "total_tokens": 11400,
+    "input_cost": 0.0121,
+    "output_cost": 0.0655,
+    "total_cost": 0.0777,
+    "model": "gpt-4o"
+  },
+  "transactions": [
+    {
+      "date": "2026-11-03",
+      "description": "Deposit",
+      "amount": 3659.0,
+      "type": "credit"
+    },
+    {
+      "date": "2026-11-04",
+      "description": "Deposit",
+      "amount": 23486.0,
+      "type": "credit"
+    },
+    {
+      "date": "2026-11-05",
+      "description": "Ideal Homes Of NPPD JACOBS LADDER LLC dbPayment",
+      "amount": 24833.0,
+      "type": "credit"
+    },
+    {
+      "date": "2026-11-05",
+      "description": "Deposit",
+      "amount": 1000.0,
+      "type": "credit"
+    },
+    {
+      "date": "2026-11-05",
+      "description": "Deposit",
+      "amount": 4240.5,
+      "type": "credit"
+    },
+    {
+      "date": "2026-11-06",
+      "description": "Deposit",
+      "amount": 739.0,
+      "type": "credit"
+    },
+    {
+      "date": "2026-11-07",
+      "description": "LANDMARK FINE HOPPD Tops By Cop Payment",
+      "amount": 15305.0,
+      "type": "credit"
+    },
+    {
+      "date": "2026-11-07",
+      "description": "Deposit",
+      "amount": 3146.0,
+      "type": "credit"
+    },
+    {
+      "date": "2026-11-07",
+      "description": "Deposit",
+      "amount": 12436.0,
+      "type": "credit"
+    },
+    {
+      "date": "2026-11-10",
+      "description": "Deposit",
+      "amount": 13450.0,
+      "type": "credit"
+    },
+    {
+      "date": "2026-11-12",
+      "description": "Ideal Homes Of NPPD JACOBS LADDER LLC dbPayment",
+      "amount": 3308.75,
+      "type": "credit"
+    },
+    {
+      "date": "2026-11-12",
+      "description": "Deposit",
+      "amount": 6305.5,
+      "type": "credit"
+    },
+    {
+      "date": "2026-11-13",
+      "description": "MERCHANT SERVICEMERCH DEP 8041575336 TOPS BY COPS",
+      "amount": 1100.0,
+      "type": "credit"
+    },
+    {
+      "date": "2026-11-13",
+      "description": "Deposit",
+      "amount": 6290.0,
+      "type": "credit"
+    },
+    {
+      "date": "2026-11-14",
+      "description": "LANDMARK FINE HOPPD Tops By Cop Payment",
+      "amount": 5535.0,
+      "type": "credit"
+    },
+    {
+      "date": "2026-11-14",
+      "description": "Ideal Homes Of NPPD JACOBS LADDER LLC dbPayment",
+      "amount": 20552.75,
+      "type": "credit"
+    },
+    {
+      "date": "2026-11-14",
+      "description": "Deposit",
+      "amount": 12485.0,
+      "type": "credit"
+    },
+    {
+      "date": "2026-11-17",
+      "description": "Deposit",
+      "amount": 3608.0,
+      "type": "credit"
+    },
+    {
+      "date": "2026-11-18",
+      "description": "Deposit",
+      "amount": 3748.0,
+      "type": "credit"
+    },
+    {
+      "date": "2026-11-19",
+      "description": "Ideal Homes Of NPPD JACOBS LADDER LLC dbPayment",
+      "amount": 9039.75,
+      "type": "credit"
+    },
+    {
+      "date": "2026-11-20",
+      "description": "Deposit",
+      "amount": 5084.2,
+      "type": "credit"
+    },
+    {
+      "date": "2026-11-21",
+      "description": "Ideal Homes Of NPPD JACOBS LADDER LLC dbPayment",
+      "amount": 6167.5,
+      "type": "credit"
+    },
+    {
+      "date": "2026-11-21",
+      "description": "LANDMARK FINE HOPPD Tops By Cop Payment",
+      "amount": 15899.0,
+      "type": "credit"
+    },
+    {
+      "date": "2026-11-21",
+      "description": "Deposit",
+      "amount": 7256.0,
+      "type": "credit"
+    },
+    {
+      "date": "2026-11-24",
+      "description": "Deposit",
+      "amount": 4190.0,
+      "type": "credit"
+    },
+    {
+      "date": "2026-11-26",
+      "description": "Ideal Homes Of NPPD JACOBS LADDER LLC dbPayment",
+      "amount": 17474.5,
+      "type": "credit"
+    },
+    {
+      "date": "2026-11-26",
+      "description": "Deposit",
+      "amount": 685.0,
+      "type": "credit"
+    },
+    {
+      "date": "2026-11-28",
+      "description": "Ideal Homes Of NPPD JACOBS LADDER LLC dbPayment",
+      "amount": 4911.75,
+      "type": "credit"
+    },
+    {
+      "date": "2026-11-28",
+      "description": "LANDMARK FINE HOPPD Tops By Cop Payment",
+      "amount": 21460.0,
+      "type": "credit"
+    },
+    {
+      "date": "2026-11-03",
+      "description": "CITI AUTOPAY PAYMENT 271843713920227 \\WEB",
+      "amount": 430.58,
+      "type": "debit"
+    },
+    {
+      "date": "2026-11-03",
+      "description": "MERCHANT SERVICEMERCH FEE 8041575336 TOPS BY COPS",
+      "amount": 848.17,
+      "type": "debit"
+    },
+    {
+      "date": "2026-11-03",
+      "description": "M2 EQUIPMENT FINLEASECHG 4253 JACOB’S LADDER",
+      "amount": 1331.68,
+      "type": "debit"
+    },
+    {
+      "date": "2026-11-03",
+      "description": "AMEX EPAYMENT ACH PMT M2830 Jacobs Ladder",
+      "amount": 1500.0,
+      "type": "debit"
+    },
+    {
+      "date": "2026-11-03",
+      "description": "M S INTERNATIONAPPD STEVE POLLOCK 7146857500",
+      "amount": 41541.0,
+      "type": "debit"
+    },
+    {
+      "date": "2026-11-04",
+      "description": "Transfer from 5680 to 9334 Fun ds Transfer via Mobile Conf #",
+      "amount": 4000.0,
+      "type": "debit"
+    },
+    {
+      "date": "2026-11-04",
+      "description": "Transfer from 5680 to 9334 Fun ds Transfer via Mobile Conf #",
+      "amount": 4000.0,
+      "type": "debit"
+    },
+    {
+      "date": "2026-11-04",
+      "description": "DBT CRD 0927 11/03/25 56651843 OKLAHOMA ELECTRIC COOP",
+      "amount": 942.0,
+      "type": "debit"
+    },
+    {
+      "date": "2026-11-04",
+      "description": "GATEWAY SERVICES WEBPAYMENT \\WEB",
+      "amount": 10.7,
+      "type": "debit"
+    },
+    {
+      "date": "2026-11-04",
+      "description": "STATE FARM LIFE PPD TOPS BY COPS INC CONS COLL",
+      "amount": 174.0,
+      "type": "debit"
+    },
+    {
+      "date": "2026-11-04",
+      "description": "CITI CARD ONLINE PAYMENT 421845851744775 \\WEB",
+      "amount": 220.63,
+      "type": "debit"
+    },
+    {
+      "date": "2026-11-04",
+      "description": "CAPITAL ONE AUTO DIRECTPAY DP0EE7BC661990B \\WEB",
+      "amount": 499.24,
+      "type": "debit"
+    },
+    {
+      "date": "2026-11-04",
+      "description": "FIFTH THIRD BANK WEB PAY 580611012025 \\WEB",
+      "amount": 694.99,
+      "type": "debit"
+    },
+    {
+      "date": "2026-11-05",
+      "description": "AMEX EPAYMENT ACH PMT M7304 Jacobs Ladder",
+      "amount": 2000.0,
+      "type": "debit"
+    },
+    {
+      "date": "2026-11-06",
+      "description": "Transfer from 5680 to 9334 Fun ds Transfer via Mobile Conf #",
+      "amount": 3000.0,
+      "type": "debit"
+    },
+    {
+      "date": "2026-11-07",
+      "description": "Transfer from 5680 to 9334 Fun ds Transfer via Mobile Conf #",
+      "amount": 5000.0,
+      "type": "debit"
+    },
+    {
+      "date": "2026-11-07",
+      "description": "ATM W/D 1344 11/07/25 00004163 EVI* FIRE LAKE GRAND 777 GRAND CASINO B",
+      "amount": 606.0,
+      "type": "debit"
+    },
+    {
+      "date": "2026-11-07",
+      "description": "BK OF AMER VISA ONLINE PMT CKF874270217POSPOLLOCK,TERRY",
+      "amount": 1500.0,
+      "type": "debit"
+    },
+    {
+      "date": "2026-11-07",
+      "description": "LiquidityAccess 6316417100 133506562 Jacobs Ladder l",
+      "amount": 3104.17,
+      "type": "debit"
+    },
+    {
+      "date": "2026-11-07",
+      "description": "ONDECK CAPITAL 538916 296381611 JACOB’S LADDER",
+      "amount": 4383.33,
+      "type": "debit"
+    },
+    {
+      "date": "2026-11-10",
+      "description": "Transfer from 5680 to 9334 Fun ds Transfer via Mobile Conf #",
+      "amount": 4000.0,
+      "type": "debit"
+    },
+    {
+      "date": "2026-11-10",
+      "description": "Transfer to Loan Acct No. 403455694",
+      "amount": 2462.61,
+      "type": "debit"
+    },
+    {
+      "date": "2026-11-10",
+      "description": "DBT CRD 1528 11/08/25 72890579 STATE FARM INSURANCE 800-956-6310 IL",
+      "amount": 1212.31,
+      "type": "debit"
+    },
+    {
+      "date": "2026-11-10",
+      "description": "CITI CARD ONLINE PAYMENT 431849303383189 \\WEB",
+      "amount": 81.14,
+      "type": "debit"
+    },
+    {
+      "date": "2026-11-10",
+      "description": "CAPITAL ONE CRCARDPMT CA024520EDB237ETerry L Pollock",
+      "amount": 156.0,
+      "type": "debit"
+    },
+    {
+      "date": "2026-11-10",
+      "description": "M2 EQUIPMENT FINLEASECHG 7350 JACOB’S LADDER",
+      "amount": 1674.0,
+      "type": "debit"
+    },
+    {
+      "date": "2026-11-10",
+      "description": "M S INTERNATIONAPPD STEVE POLLOCK 7146857500",
+      "amount": 40844.57,
+      "type": "debit"
+    },
+    {
+      "date": "2026-11-12",
+      "description": "Transfer from 5680 to 9334 Fun ds Transfer via Mobile Conf #",
+      "amount": 6000.0,
+      "type": "debit"
+    },
+    {
+      "date": "2026-11-12",
+      "description": "Transfer from 5680 to 9334 Fun ds Transfer via Mobile Conf #",
+      "amount": 7000.0,
+      "type": "debit"
+    },
+    {
+      "date": "2026-11-12",
+      "description": "U.S. EMPLOYEES PPD POLLOCK,STEPHEN ACH ORIG",
+      "amount": 500.0,
+      "type": "debit"
+    },
+    {
+      "date": "2026-11-13",
+      "description": "CHASE CREDIT CRD EPAY 8876206680 \\WEB",
+      "amount": 1000.0,
+      "type": "debit"
+    },
+    {
+      "date": "2026-11-13",
+      "description": "AMEX EPAYMENT ACH PMT M9564 Jacobs Ladder",
+      "amount": 1500.0,
+      "type": "debit"
+    },
+    {
+      "date": "2026-11-13",
+      "description": "AMEX EPAYMENT ACH PMT M5712 Jacobs Ladder",
+      "amount": 1500.0,
+      "type": "debit"
+    },
+    {
+      "date": "2026-11-14",
+      "description": "Transfer from 5680 to 9334 Fun ds Transfer via Mobile Conf #",
+      "amount": 3000.0,
+      "type": "debit"
+    },
+    {
+      "date": "2026-11-14",
+      "description": "Transfer from 5680 to 9334 Fun ds Transfer via Mobile Conf #",
+      "amount": 4000.0,
+      "type": "debit"
+    },
+    {
+      "date": "2026-11-14",
+      "description": "CHASE CREDIT CRD EPAY 8878467544 \\WEB",
+      "amount": 200.0,
+      "type": "debit"
+    },
+    {
+      "date": "2026-11-14",
+      "description": "AMEX EPAYMENT ACH PMT M7624 Jacobs Ladder",
+      "amount": 1500.0,
+      "type": "debit"
+    },
+    {
+      "date": "2026-11-14",
+      "description": "LiquidityAccess 6316417100 133750573 Jacobs Ladder l",
+      "amount": 3104.17,
+      "type": "debit"
+    },
+    {
+      "date": "2026-11-14",
+      "description": "ONDECK CAPITAL 539064 297522983 JACOB’S LADDER",
+      "amount": 4383.33,
+      "type": "debit"
+    },
+    {
+      "date": "2026-11-17",
+      "description": "ATM W/D 1406 11/14/25 00008616 First United Bank 10731 S Western Av Oklahoma",
+      "amount": 800.0,
+      "type": "debit"
+    },
+    {
+      "date": "2026-11-17",
+      "description": "BK OF AMER VISA ONLINE PMT CKF874270217POSPOLLOCK,TERRY",
+      "amount": 35.0,
+      "type": "debit"
+    },
+    {
+      "date": "2026-11-17",
+      "description": "CHASE CREDIT CRD EPAY 8883544581 \\WEB",
+      "amount": 50.84,
+      "type": "debit"
+    },
+    {
+      "date": "2026-11-17",
+      "description": "JPMorgan Chase Ext Trnsfr 26549365844 STEPHEN POLLOCK",
+      "amount": 963.04,
+      "type": "debit"
+    },
+    {
+      "date": "2026-11-17",
+      "description": "AMEX EPAYMENT ACH PMT M6796 Jacobs Ladder",
+      "amount": 1500.0,
+      "type": "debit"
+    },
+    {
+      "date": "2026-11-17",
+      "description": "Equip Financing CNTRCT PMT 097-0213084-000Jacobs Ladder L",
+      "amount": 3610.28,
+      "type": "debit"
+    },
+    {
+      "date": "2026-11-17",
+      "description": "M S INTERNATIONAPPD STEVE POLLOCK 7146857500",
+      "amount": 30154.11,
+      "type": "debit"
+    },
+    {
+      "date": "2026-11-18",
+      "description": "AMEX EPAYMENT ACH PMT M8164 Jacobs Ladder",
+      "amount": 186.05,
+      "type": "debit"
+    },
+    {
+      "date": "2026-11-18",
+      "description": "AMEX EPAYMENT ACH PMT M7506 Jacobs Ladder",
+      "amount": 700.0,
+      "type": "debit"
+    },
+    {
+      "date": "2026-11-19",
+      "description": "Transfer from 5680 to 9334 Fun ds Transfer via Mobile Conf #",
+      "amount": 6000.0,
+      "type": "debit"
+    },
+    {
+      "date": "2026-11-19",
+      "description": "CHASE CREDIT CRD EPAY 8892500792 \\WEB",
+      "amount": 321.02,
+      "type": "debit"
+    },
+    {
+      "date": "2026-11-19",
+      "description": "AMEX EPAYMENT ACH PMT M7092 Jacobs Ladder",
+      "amount": 1000.0,
+      "type": "debit"
+    },
+    {
+      "date": "2026-11-20",
+      "description": "Transfer from 5680 to 9334 Fun ds Transfer via Mobile Conf #",
+      "amount": 2000.0,
+      "type": "debit"
+    },
+    {
+      "date": "2026-11-20",
+      "description": "DISCOVER E-PAYMENT 9750 \\WEB",
+      "amount": 99.0,
+      "type": "debit"
+    },
+    {
+      "date": "2026-11-20",
+      "description": "AMEX EPAYMENT ACH PMT M5118 Jacobs Ladder",
+      "amount": 500.0,
+      "type": "debit"
+    },
+    {
+      "date": "2026-11-20",
+      "description": "BK OF AMER VISA ONLINE PMT CKF874270217POSPOLLOCK,TERRY",
+      "amount": 1000.0,
+      "type": "debit"
+    },
+    {
+      "date": "2026-11-21",
+      "description": "Transfer from 5680 to 9334 Fun ds Transfer via Mobile Conf #",
+      "amount": 2000.0,
+      "type": "debit"
+    },
+    {
+      "date": "2026-11-21",
+      "description": "Transfer from 5680 to 9334 Fun ds Transfer via Mobile Conf #",
+      "amount": 3000.0,
+      "type": "debit"
+    },
+    {
+      "date": "2026-11-21",
+      "description": "POS DEB 1432 11/20/25 00086720 WM SUPERCENTER #212 333 N INTERSTATE D",
+      "amount": 172.63,
+      "type": "debit"
+    },
+    {
+      "date": "2026-11-21",
+      "description": "AMEX EPAYMENT ACH PMT M7538 Jacobs Ladder",
+      "amount": 279.44,
+      "type": "debit"
+    },
+    {
+      "date": "2026-11-21",
+      "description": "BK OF AMER VISA ONLINE PMT CKF890732716POSPOLLOCK,STEPHEN",
+      "amount": 1000.0,
+      "type": "debit"
+    },
+    {
+      "date": "2026-11-21",
+      "description": "AMEX EPAYMENT ACH PMT M8574 Jacobs Ladder",
+      "amount": 1000.0,
+      "type": "debit"
+    },
+    {
+      "date": "2026-11-21",
+      "description": "AMEX EPAYMENT ACH PMT M1428 Jacobs Ladder",
+      "amount": 1000.0,
+      "type": "debit"
+    },
+    {
+      "date": "2026-11-21",
+      "description": "LiquidityAccess 6316417100 134032293 Jacobs Ladder l",
+      "amount": 3104.17,
+      "type": "debit"
+    },
+    {
+      "date": "2026-11-21",
+      "description": "ONDECK CAPITAL 539270 298760952 JACOB’S LADDER",
+      "amount": 4383.33,
+      "type": "debit"
+    },
+    {
+      "date": "2026-11-24",
+      "description": "Transfer from 5680 to 9334 Fun ds Transfer via Mobile Conf #",
+      "amount": 2000.0,
+      "type": "debit"
+    },
+    {
+      "date": "2026-11-24",
+      "description": "Transfer from 5680 to 9334 Fun ds Transfer via Mobile Conf #",
+      "amount": 3000.0,
+      "type": "debit"
+    },
+    {
+      "date": "2026-11-24",
+      "description": "DISCOVER E-PAYMENT 3824 \\WEB",
+      "amount": 261.0,
+      "type": "debit"
+    },
+    {
+      "date": "2026-11-24",
+      "description": "AMEX EPAYMENT ACH PMT M3244 Jacobs Ladder",
+      "amount": 500.0,
+      "type": "debit"
+    },
+    {
+      "date": "2026-11-24",
+      "description": "AMEX EPAYMENT ACH PMT M9316 Jacobs Ladder",
+      "amount": 1000.0,
+      "type": "debit"
+    },
+    {
+      "date": "2026-11-24",
+      "description": "SBA EIDL LOAN PAYMENT 0000 STEVE POLLOCK",
+      "amount": 2512.0,
+      "type": "debit"
+    },
+    {
+      "date": "2026-11-24",
+      "description": "M2 EQUIPMENT FINLEASECHG 5685 JACOB’S LADDER",
+      "amount": 3200.0,
+      "type": "debit"
+    },
+    {
+      "date": "2026-11-25",
+      "description": "Transfer from 5680 to 9334 Fun ds Transfer via Mobile Conf #",
+      "amount": 4000.0,
+      "type": "debit"
+    },
+    {
+      "date": "2026-11-25",
+      "description": "M S INTERNATIONAPPD STEVE POLLOCK 7146857500",
+      "amount": 823.9,
+      "type": "debit"
+    },
+    {
+      "date": "2026-11-25",
+      "description": "BK OF AMER VISA ONLINE PMT CKF874270217POSPOLLOCK,TERRY",
+      "amount": 1000.0,
+      "type": "debit"
+    },
+    {
+      "date": "2026-11-25",
+      "description": "AMEX EPAYMENT ACH PMT M1374 Jacobs Ladder",
+      "amount": 2000.0,
+      "type": "debit"
+    },
+    {
+      "date": "2026-11-26",
+      "description": "Transfer from 5680 to 9334 Fun ds Transfer via Mobile Conf #",
+      "amount": 2000.0,
+      "type": "debit"
+    },
+    {
+      "date": "2026-11-26",
+      "description": "Transfer from 5680 to 9334 Fun ds Transfer via Mobile Conf #",
+      "amount": 2000.0,
+      "type": "debit"
+    },
+    {
+      "date": "2026-11-26",
+      "description": "Transfer from 5680 to 9334 Fun ds Transfer via Mobile Conf #",
+      "amount": 2000.0,
+      "type": "debit"
+    },
+    {
+      "date": "2026-11-26",
+      "description": "AMEX EPAYMENT ACH PMT M9036 Jacobs Ladder",
+      "amount": 1000.0,
+      "type": "debit"
+    },
+    {
+      "date": "2026-11-26",
+      "description": "AMEX EPAYMENT ACH PMT M6856 Jacobs Ladder",
+      "amount": 1500.0,
+      "type": "debit"
+    },
+    {
+      "date": "2026-11-28",
+      "description": "Transfer from 5680 to 9334 Fun ds Transfer via Mobile Conf #",
+      "amount": 2000.0,
+      "type": "debit"
+    },
+    {
+      "date": "2026-11-28",
+      "description": "LiquidityAccess 6316417100 134251825 Jacobs Ladder l",
+      "amount": 3104.17,
+      "type": "debit"
+    },
+    {
+      "date": "2026-11-28",
+      "description": "M S INTERNATIONAPPD STEVE POLLOCK 7146857500",
+      "amount": 30071.85,
+      "type": "debit"
+    },
+    {
+      "date": "2026-11-04",
+      "description": "Check",
+      "amount": 3000.0,
+      "type": "debit"
+    },
+    {
+      "date": "2026-11-07",
+      "description": "Check",
+      "amount": 6424.08,
+      "type": "debit"
+    },
+    {
+      "date": "2026-11-12",
+      "description": "Check",
+      "amount": 389.8,
+      "type": "debit"
+    },
+    {
+      "date": "2026-11-12",
+      "description": "Check",
+      "amount": 1350.0,
+      "type": "debit"
+    },
+    {
+      "date": "2026-11-07",
+      "description": "Check",
+      "amount": 2500.0,
+      "type": "debit"
+    },
+    {
+      "date": "2026-11-10",
+      "description": "Check",
+      "amount": 500.0,
+      "type": "debit"
+    },
+    {
+      "date": "2026-11-13",
+      "description": "Check",
+      "amount": 2500.0,
+      "type": "debit"
+    },
+    {
+      "date": "2026-11-14",
+      "description": "Check",
+      "amount": 1500.0,
+      "type": "debit"
+    },
+    {
+      "date": "2026-11-20",
+      "description": "Check",
+      "amount": 3310.0,
+      "type": "debit"
+    },
+    {
+      "date": "2026-11-25",
+      "description": "Check",
+      "amount": 3696.04,
+      "type": "debit"
+    },
+    {
+      "date": "2026-11-28",
+      "description": "Check",
+      "amount": 340.0,
+      "type": "debit"
+    },
+    {
+      "date": "2026-11-05",
+      "description": "Check",
+      "amount": 290.76,
+      "type": "debit"
+    },
+    {
+      "date": "2026-11-14",
+      "description": "Check",
+      "amount": 145.38,
+      "type": "debit"
+    },
+    {
+      "date": "2026-11-14",
+      "description": "Check",
+      "amount": 145.38,
+      "type": "debit"
+    },
+    {
+      "date": "2026-11-25",
+      "description": "Check",
+      "amount": 145.38,
+      "type": "debit"
+    },
+    {
+      "date": "2026-11-25",
+      "description": "Check",
+      "amount": 145.38,
+      "type": "debit"
+    }
+  ],
+  "metadata": {
+    "pdf_file": "bank_statement-November_1764950323.pdf",
+    "extraction_date": "2026-01-03T14:05:49.931476",
+    "model_used": "gpt-4o"
+  }
+}

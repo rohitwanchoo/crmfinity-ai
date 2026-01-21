@@ -1,0 +1,170 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Toast Test</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <style>
+        .bg-success-500 { background-color: #22c55e; }
+        .bg-danger-500 { background-color: #ef4444; }
+        .bg-warning-500 { background-color: #f59e0b; }
+        .bg-primary-500 { background-color: #3b82f6; }
+    </style>
+</head>
+<body class="bg-gray-100 p-8">
+    <div class="max-w-2xl mx-auto">
+        <h1 class="text-2xl font-bold mb-6">Toast Notification Test</h1>
+
+        <div class="space-y-4">
+            <div class="flex gap-4 flex-wrap">
+                <button onclick="Toast.success('Verification completed successfully!')"
+                        class="px-4 py-2 bg-green-500 text-white rounded hover:bg-green-600">
+                    Test Success
+                </button>
+
+                <button onclick="Toast.error('Failed to run verification. Please try again.')"
+                        class="px-4 py-2 bg-red-500 text-white rounded hover:bg-red-600">
+                    Test Error
+                </button>
+
+                <button onclick="Toast.warning('Please enter an email address')"
+                        class="px-4 py-2 bg-yellow-500 text-white rounded hover:bg-yellow-600">
+                    Test Warning
+                </button>
+
+                <button onclick="Toast.info('Running all verifications...')"
+                        class="px-4 py-2 bg-blue-500 text-white rounded hover:bg-blue-600">
+                    Test Info
+                </button>
+            </div>
+
+            <div class="flex gap-4 flex-wrap">
+                <button onclick="testMultipleToasts()"
+                        class="px-4 py-2 bg-purple-500 text-white rounded hover:bg-purple-600">
+                    Test Multiple Toasts
+                </button>
+
+                <button onclick="testMultilineToast()"
+                        class="px-4 py-2 bg-indigo-500 text-white rounded hover:bg-indigo-600">
+                    Test Multiline
+                </button>
+
+                <button onclick="testLongRunning()"
+                        class="px-4 py-2 bg-gray-700 text-white rounded hover:bg-gray-800">
+                    Test Loading -> Success
+                </button>
+            </div>
+        </div>
+
+        <div class="mt-8 p-4 bg-white rounded shadow">
+            <h2 class="font-semibold mb-2">Instructions:</h2>
+            <ul class="list-disc list-inside text-gray-600 space-y-1">
+                <li>Click any button to trigger a toast notification</li>
+                <li>Toasts appear in the top-right corner</li>
+                <li>They auto-dismiss after 5 seconds (errors: 8 seconds)</li>
+                <li>Click the X button to dismiss early</li>
+            </ul>
+        </div>
+    </div>
+
+    <!-- Toast Container -->
+    <div id="toast-container" class="fixed top-4 right-4 z-50 space-y-2"></div>
+
+    <script>
+        // Toast Notification System (same as in the app)
+        const Toast = {
+            container: null,
+
+            init() {
+                this.container = document.getElementById('toast-container');
+            },
+
+            show(message, type = 'success', duration = 5000) {
+                if (!this.container) this.init();
+
+                const toast = document.createElement('div');
+                toast.className = `toast-notification transform translate-x-full transition-all duration-300 ease-out`;
+
+                const colors = {
+                    success: 'bg-success-500',
+                    error: 'bg-danger-500',
+                    warning: 'bg-warning-500',
+                    info: 'bg-primary-500'
+                };
+
+                const icons = {
+                    success: '<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z"/>',
+                    error: '<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10 14l2-2m0 0l2-2m-2 2l-2-2m2 2l2 2m7-2a9 9 0 11-18 0 9 9 0 0118 0z"/>',
+                    warning: '<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z"/>',
+                    info: '<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"/>'
+                };
+
+                const formattedMessage = message.replace(/\n/g, '<br>');
+
+                toast.innerHTML = `
+                    <div class="${colors[type]} text-white px-4 py-3 rounded-lg shadow-lg flex items-start max-w-md">
+                        <svg class="w-5 h-5 mr-3 flex-shrink-0 mt-0.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            ${icons[type]}
+                        </svg>
+                        <div class="flex-1 text-sm">${formattedMessage}</div>
+                        <button onclick="Toast.dismiss(this.closest('.toast-notification'))" class="ml-3 flex-shrink-0 text-white/80 hover:text-white">
+                            <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"/>
+                            </svg>
+                        </button>
+                    </div>
+                `;
+
+                this.container.appendChild(toast);
+
+                requestAnimationFrame(() => {
+                    toast.classList.remove('translate-x-full');
+                    toast.classList.add('translate-x-0');
+                });
+
+                if (duration > 0) {
+                    setTimeout(() => this.dismiss(toast), duration);
+                }
+
+                return toast;
+            },
+
+            dismiss(toast) {
+                if (!toast) return;
+                toast.classList.remove('translate-x-0');
+                toast.classList.add('translate-x-full');
+                setTimeout(() => toast.remove(), 300);
+            },
+
+            success(message, duration) { return this.show(message, 'success', duration); },
+            error(message, duration) { return this.show(message, 'error', duration || 8000); },
+            warning(message, duration) { return this.show(message, 'warning', duration); },
+            info(message, duration) { return this.show(message, 'info', duration); }
+        };
+
+        // Test functions
+        function testMultipleToasts() {
+            Toast.success('Identity Verification completed');
+            setTimeout(() => Toast.success('Personal Credit Report completed'), 300);
+            setTimeout(() => Toast.success('MCA Stacking Check completed'), 600);
+            setTimeout(() => Toast.info('Application advanced to: under review'), 1000);
+        }
+
+        function testMultilineToast() {
+            Toast.success('All verifications completed!\n\n✓ Identity Verification\n✓ Personal Credit Report\n✓ MCA Stacking Check');
+        }
+
+        function testLongRunning() {
+            const loadingToast = Toast.info('Running all verifications...', 0);
+            setTimeout(() => {
+                Toast.dismiss(loadingToast);
+                Toast.success('All verifications completed successfully!');
+            }, 2000);
+        }
+
+        // Initialize
+        document.addEventListener('DOMContentLoaded', () => Toast.init());
+    </script>
+</body>
+</html>

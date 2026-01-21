@@ -1,0 +1,2644 @@
+{
+    "openapi": "3.0.0",
+    "info": {
+        "title": "Bank Statement Analyzer API",
+        "description": "API for analyzing bank statements using AI-powered transaction extraction and classification. Supports PDF bank statement uploads, transaction analysis, MCA (Merchant Cash Advance) detection, and revenue classification.",
+        "contact": {
+            "name": "CRMFinity Support",
+            "email": "support@crmfinity.com"
+        },
+        "version": "1.0.0"
+    },
+    "servers": [
+        {
+            "url": "/api/v1",
+            "description": "API Server v1"
+        }
+    ],
+    "paths": {
+        "/auth/login": {
+            "post": {
+                "tags": [
+                    "Authentication"
+                ],
+                "summary": "Login and get API token",
+                "description": "Authenticate with email and password to receive a Bearer token for API access.",
+                "operationId": "99d66635c4992aeaa6aa44ff653d0563",
+                "requestBody": {
+                    "required": true,
+                    "content": {
+                        "application/json": {
+                            "schema": {
+                                "required": [
+                                    "email",
+                                    "password"
+                                ],
+                                "properties": {
+                                    "email": {
+                                        "description": "User email address",
+                                        "type": "string",
+                                        "format": "email",
+                                        "example": "user@example.com"
+                                    },
+                                    "password": {
+                                        "description": "User password",
+                                        "type": "string",
+                                        "format": "password",
+                                        "example": "password123"
+                                    },
+                                    "device_name": {
+                                        "description": "Name of the device/client requesting the token (optional)",
+                                        "type": "string",
+                                        "example": "API Client"
+                                    }
+                                },
+                                "type": "object"
+                            }
+                        }
+                    }
+                },
+                "responses": {
+                    "200": {
+                        "description": "Login successful",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "properties": {
+                                        "success": {
+                                            "type": "boolean",
+                                            "example": true
+                                        },
+                                        "message": {
+                                            "type": "string",
+                                            "example": "Login successful"
+                                        },
+                                        "data": {
+                                            "properties": {
+                                                "token": {
+                                                    "type": "string",
+                                                    "example": "1|abcdef123456..."
+                                                },
+                                                "token_type": {
+                                                    "type": "string",
+                                                    "example": "Bearer"
+                                                },
+                                                "user": {
+                                                    "properties": {
+                                                        "id": {
+                                                            "type": "integer",
+                                                            "example": 1
+                                                        },
+                                                        "email": {
+                                                            "type": "string",
+                                                            "example": "user@example.com"
+                                                        },
+                                                        "full_name": {
+                                                            "type": "string",
+                                                            "example": "John Doe"
+                                                        }
+                                                    },
+                                                    "type": "object"
+                                                }
+                                            },
+                                            "type": "object"
+                                        }
+                                    },
+                                    "type": "object"
+                                }
+                            }
+                        }
+                    },
+                    "401": {
+                        "description": "Invalid credentials",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "properties": {
+                                        "success": {
+                                            "type": "boolean",
+                                            "example": false
+                                        },
+                                        "message": {
+                                            "type": "string",
+                                            "example": "The provided credentials are incorrect."
+                                        }
+                                    },
+                                    "type": "object"
+                                }
+                            }
+                        }
+                    },
+                    "422": {
+                        "description": "Validation error",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/ErrorResponse"
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        },
+        "/auth/user": {
+            "get": {
+                "tags": [
+                    "Authentication"
+                ],
+                "summary": "Get current user",
+                "description": "Get the currently authenticated user details.",
+                "operationId": "32d03117b496ae02c2543b61438d24ad",
+                "responses": {
+                    "200": {
+                        "description": "User details retrieved successfully",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "properties": {
+                                        "success": {
+                                            "type": "boolean",
+                                            "example": true
+                                        },
+                                        "data": {
+                                            "properties": {
+                                                "id": {
+                                                    "type": "integer",
+                                                    "example": 1
+                                                },
+                                                "email": {
+                                                    "type": "string",
+                                                    "example": "user@example.com"
+                                                },
+                                                "full_name": {
+                                                    "type": "string",
+                                                    "example": "John Doe"
+                                                },
+                                                "username": {
+                                                    "type": "string",
+                                                    "example": "johndoe"
+                                                },
+                                                "last_login": {
+                                                    "type": "string",
+                                                    "format": "datetime"
+                                                }
+                                            },
+                                            "type": "object"
+                                        }
+                                    },
+                                    "type": "object"
+                                }
+                            }
+                        }
+                    },
+                    "401": {
+                        "description": "Unauthenticated",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "properties": {
+                                        "message": {
+                                            "type": "string",
+                                            "example": "Unauthenticated."
+                                        }
+                                    },
+                                    "type": "object"
+                                }
+                            }
+                        }
+                    }
+                },
+                "security": [
+                    {
+                        "sanctumAuth": []
+                    }
+                ]
+            }
+        },
+        "/auth/tokens": {
+            "get": {
+                "tags": [
+                    "Authentication"
+                ],
+                "summary": "List API tokens",
+                "description": "Get a list of all active API tokens for the authenticated user.",
+                "operationId": "32092da0c1796fe755db8bf28adf538d",
+                "responses": {
+                    "200": {
+                        "description": "Tokens retrieved successfully",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "properties": {
+                                        "success": {
+                                            "type": "boolean",
+                                            "example": true
+                                        },
+                                        "data": {
+                                            "type": "array",
+                                            "items": {
+                                                "properties": {
+                                                    "id": {
+                                                        "type": "integer",
+                                                        "example": 1
+                                                    },
+                                                    "name": {
+                                                        "type": "string",
+                                                        "example": "API Client"
+                                                    },
+                                                    "last_used_at": {
+                                                        "type": "string",
+                                                        "format": "datetime",
+                                                        "nullable": true
+                                                    },
+                                                    "created_at": {
+                                                        "type": "string",
+                                                        "format": "datetime"
+                                                    }
+                                                },
+                                                "type": "object"
+                                            }
+                                        }
+                                    },
+                                    "type": "object"
+                                }
+                            }
+                        }
+                    },
+                    "401": {
+                        "description": "Unauthenticated",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "properties": {
+                                        "message": {
+                                            "type": "string",
+                                            "example": "Unauthenticated."
+                                        }
+                                    },
+                                    "type": "object"
+                                }
+                            }
+                        }
+                    }
+                },
+                "security": [
+                    {
+                        "sanctumAuth": []
+                    }
+                ]
+            }
+        },
+        "/auth/tokens/{tokenId}": {
+            "delete": {
+                "tags": [
+                    "Authentication"
+                ],
+                "summary": "Revoke a token",
+                "description": "Revoke a specific API token by its ID.",
+                "operationId": "34bedb4aa6419bc07a70bf4870b2686d",
+                "parameters": [
+                    {
+                        "name": "tokenId",
+                        "in": "path",
+                        "description": "Token ID to revoke",
+                        "required": true,
+                        "schema": {
+                            "type": "integer"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "Token revoked successfully",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "properties": {
+                                        "success": {
+                                            "type": "boolean",
+                                            "example": true
+                                        },
+                                        "message": {
+                                            "type": "string",
+                                            "example": "Token revoked successfully"
+                                        }
+                                    },
+                                    "type": "object"
+                                }
+                            }
+                        }
+                    },
+                    "404": {
+                        "description": "Token not found",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/ErrorResponse"
+                                }
+                            }
+                        }
+                    },
+                    "401": {
+                        "description": "Unauthenticated",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "properties": {
+                                        "message": {
+                                            "type": "string",
+                                            "example": "Unauthenticated."
+                                        }
+                                    },
+                                    "type": "object"
+                                }
+                            }
+                        }
+                    }
+                },
+                "security": [
+                    {
+                        "sanctumAuth": []
+                    }
+                ]
+            }
+        },
+        "/auth/logout": {
+            "post": {
+                "tags": [
+                    "Authentication"
+                ],
+                "summary": "Logout",
+                "description": "Revoke the current API token (logout).",
+                "operationId": "6abf3b64a4bc7838d56346f05a5153af",
+                "responses": {
+                    "200": {
+                        "description": "Logged out successfully",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "properties": {
+                                        "success": {
+                                            "type": "boolean",
+                                            "example": true
+                                        },
+                                        "message": {
+                                            "type": "string",
+                                            "example": "Logged out successfully"
+                                        }
+                                    },
+                                    "type": "object"
+                                }
+                            }
+                        }
+                    },
+                    "401": {
+                        "description": "Unauthenticated",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "properties": {
+                                        "message": {
+                                            "type": "string",
+                                            "example": "Unauthenticated."
+                                        }
+                                    },
+                                    "type": "object"
+                                }
+                            }
+                        }
+                    }
+                },
+                "security": [
+                    {
+                        "sanctumAuth": []
+                    }
+                ]
+            }
+        },
+        "/auth/logout-all": {
+            "post": {
+                "tags": [
+                    "Authentication"
+                ],
+                "summary": "Logout from all devices",
+                "description": "Revoke all API tokens for the current user.",
+                "operationId": "8a0e47e08fb7ff4a767e76fd65943833",
+                "responses": {
+                    "200": {
+                        "description": "Logged out from all devices",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "properties": {
+                                        "success": {
+                                            "type": "boolean",
+                                            "example": true
+                                        },
+                                        "message": {
+                                            "type": "string",
+                                            "example": "Logged out from all devices"
+                                        },
+                                        "tokens_revoked": {
+                                            "type": "integer",
+                                            "example": 3
+                                        }
+                                    },
+                                    "type": "object"
+                                }
+                            }
+                        }
+                    },
+                    "401": {
+                        "description": "Unauthenticated",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "properties": {
+                                        "message": {
+                                            "type": "string",
+                                            "example": "Unauthenticated."
+                                        }
+                                    },
+                                    "type": "object"
+                                }
+                            }
+                        }
+                    }
+                },
+                "security": [
+                    {
+                        "sanctumAuth": []
+                    }
+                ]
+            }
+        },
+        "/bank-statement/analyze": {
+            "post": {
+                "tags": [
+                    "Bank Statement Analysis"
+                ],
+                "summary": "Analyze bank statement PDF(s)",
+                "description": "Upload one or more PDF bank statements for AI-powered analysis. Returns transaction data, monthly summaries, and MCA detection results.",
+                "operationId": "120c5d7ae7f23a887a3cba1ae3bed2b2",
+                "requestBody": {
+                    "required": true,
+                    "content": {
+                        "multipart/form-data": {
+                            "schema": {
+                                "required": [
+                                    "statements"
+                                ],
+                                "properties": {
+                                    "statements": {
+                                        "description": "PDF bank statement file(s) to analyze (max 20MB each)",
+                                        "type": "array",
+                                        "items": {
+                                            "type": "string",
+                                            "format": "binary"
+                                        }
+                                    },
+                                    "model": {
+                                        "description": "OpenAI model to use for analysis",
+                                        "type": "string",
+                                        "default": "gpt-4o",
+                                        "enum": [
+                                            "gpt-4o",
+                                            "gpt-4o-mini"
+                                        ]
+                                    }
+                                },
+                                "type": "object"
+                            }
+                        }
+                    }
+                },
+                "responses": {
+                    "200": {
+                        "description": "Analysis completed successfully",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "properties": {
+                                        "success": {
+                                            "type": "boolean",
+                                            "example": true
+                                        },
+                                        "results": {
+                                            "type": "array",
+                                            "items": {
+                                                "$ref": "#/components/schemas/AnalysisResult"
+                                            }
+                                        }
+                                    },
+                                    "type": "object"
+                                }
+                            }
+                        }
+                    },
+                    "400": {
+                        "description": "Validation error",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/ErrorResponse"
+                                }
+                            }
+                        }
+                    },
+                    "500": {
+                        "description": "Analysis failed",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/ErrorResponse"
+                                }
+                            }
+                        }
+                    }
+                },
+                "security": [
+                    {
+                        "sanctumAuth": []
+                    }
+                ]
+            }
+        },
+        "/bank-statement/sessions": {
+            "get": {
+                "tags": [
+                    "Sessions"
+                ],
+                "summary": "Get all analysis sessions",
+                "description": "Retrieve a paginated list of all bank statement analysis sessions.",
+                "operationId": "877b1c69afe7be52769411b593bd07e7",
+                "parameters": [
+                    {
+                        "name": "page",
+                        "in": "query",
+                        "description": "Page number",
+                        "schema": {
+                            "type": "integer",
+                            "default": 1
+                        }
+                    },
+                    {
+                        "name": "per_page",
+                        "in": "query",
+                        "description": "Items per page",
+                        "schema": {
+                            "type": "integer",
+                            "default": 20,
+                            "maximum": 100
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "Sessions retrieved successfully",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "properties": {
+                                        "success": {
+                                            "type": "boolean",
+                                            "example": true
+                                        },
+                                        "data": {
+                                            "type": "array",
+                                            "items": {
+                                                "$ref": "#/components/schemas/SessionSummary"
+                                            }
+                                        },
+                                        "pagination": {
+                                            "$ref": "#/components/schemas/Pagination"
+                                        }
+                                    },
+                                    "type": "object"
+                                }
+                            }
+                        }
+                    }
+                },
+                "security": [
+                    {
+                        "sanctumAuth": []
+                    }
+                ]
+            }
+        },
+        "/bank-statement/sessions/{sessionId}": {
+            "get": {
+                "tags": [
+                    "Sessions"
+                ],
+                "summary": "Get session details",
+                "description": "Retrieve detailed information about a specific analysis session.",
+                "operationId": "e649abd7923cff85295fbad4378ca1f4",
+                "parameters": [
+                    {
+                        "name": "sessionId",
+                        "in": "path",
+                        "description": "Session UUID",
+                        "required": true,
+                        "schema": {
+                            "type": "string",
+                            "format": "uuid"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "Session retrieved successfully",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "properties": {
+                                        "success": {
+                                            "type": "boolean",
+                                            "example": true
+                                        },
+                                        "data": {
+                                            "$ref": "#/components/schemas/SessionDetail"
+                                        }
+                                    },
+                                    "type": "object"
+                                }
+                            }
+                        }
+                    },
+                    "404": {
+                        "description": "Session not found",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/ErrorResponse"
+                                }
+                            }
+                        }
+                    }
+                },
+                "security": [
+                    {
+                        "sanctumAuth": []
+                    }
+                ]
+            },
+            "delete": {
+                "tags": [
+                    "Sessions"
+                ],
+                "summary": "Delete a session",
+                "description": "Delete an analysis session and all its transactions.",
+                "operationId": "b5376f3db6010ddfbea24e2b5aebe75c",
+                "parameters": [
+                    {
+                        "name": "sessionId",
+                        "in": "path",
+                        "description": "Session UUID",
+                        "required": true,
+                        "schema": {
+                            "type": "string",
+                            "format": "uuid"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "Session deleted successfully",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "properties": {
+                                        "success": {
+                                            "type": "boolean",
+                                            "example": true
+                                        },
+                                        "message": {
+                                            "type": "string",
+                                            "example": "Session deleted successfully"
+                                        }
+                                    },
+                                    "type": "object"
+                                }
+                            }
+                        }
+                    },
+                    "404": {
+                        "description": "Session not found",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/ErrorResponse"
+                                }
+                            }
+                        }
+                    }
+                },
+                "security": [
+                    {
+                        "sanctumAuth": []
+                    }
+                ]
+            }
+        },
+        "/bank-statement/sessions/{sessionId}/transactions": {
+            "get": {
+                "tags": [
+                    "Sessions"
+                ],
+                "summary": "Get session transactions",
+                "description": "Retrieve all transactions from a specific analysis session.",
+                "operationId": "047f463e7a4f197867628aee7a6c0cc7",
+                "parameters": [
+                    {
+                        "name": "sessionId",
+                        "in": "path",
+                        "description": "Session UUID",
+                        "required": true,
+                        "schema": {
+                            "type": "string",
+                            "format": "uuid"
+                        }
+                    },
+                    {
+                        "name": "type",
+                        "in": "query",
+                        "description": "Filter by transaction type",
+                        "schema": {
+                            "type": "string",
+                            "enum": [
+                                "credit",
+                                "debit"
+                            ]
+                        }
+                    },
+                    {
+                        "name": "date_from",
+                        "in": "query",
+                        "description": "Filter transactions from this date",
+                        "schema": {
+                            "type": "string",
+                            "format": "date"
+                        }
+                    },
+                    {
+                        "name": "date_to",
+                        "in": "query",
+                        "description": "Filter transactions up to this date",
+                        "schema": {
+                            "type": "string",
+                            "format": "date"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "Transactions retrieved successfully",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "properties": {
+                                        "success": {
+                                            "type": "boolean",
+                                            "example": true
+                                        },
+                                        "data": {
+                                            "type": "array",
+                                            "items": {
+                                                "$ref": "#/components/schemas/Transaction"
+                                            }
+                                        },
+                                        "summary": {
+                                            "$ref": "#/components/schemas/TransactionSummary"
+                                        }
+                                    },
+                                    "type": "object"
+                                }
+                            }
+                        }
+                    },
+                    "404": {
+                        "description": "Session not found",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/ErrorResponse"
+                                }
+                            }
+                        }
+                    }
+                },
+                "security": [
+                    {
+                        "sanctumAuth": []
+                    }
+                ]
+            }
+        },
+        "/bank-statement/sessions/{sessionId}/summary": {
+            "get": {
+                "tags": [
+                    "Sessions"
+                ],
+                "summary": "Get session summary",
+                "description": "Retrieve a summary of the analysis session including totals and statistics.",
+                "operationId": "cac4123c3bcdaae7610d1c368c3e0538",
+                "parameters": [
+                    {
+                        "name": "sessionId",
+                        "in": "path",
+                        "description": "Session UUID",
+                        "required": true,
+                        "schema": {
+                            "type": "string",
+                            "format": "uuid"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "Summary retrieved successfully",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "properties": {
+                                        "success": {
+                                            "type": "boolean",
+                                            "example": true
+                                        },
+                                        "data": {
+                                            "$ref": "#/components/schemas/SessionSummaryDetail"
+                                        }
+                                    },
+                                    "type": "object"
+                                }
+                            }
+                        }
+                    },
+                    "404": {
+                        "description": "Session not found",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/ErrorResponse"
+                                }
+                            }
+                        }
+                    }
+                },
+                "security": [
+                    {
+                        "sanctumAuth": []
+                    }
+                ]
+            }
+        },
+        "/bank-statement/sessions/{sessionId}/monthly": {
+            "get": {
+                "tags": [
+                    "Sessions"
+                ],
+                "summary": "Get monthly breakdown",
+                "description": "Retrieve monthly breakdown of transactions including deposits, adjustments, and true revenue calculations.",
+                "operationId": "ed6a053cb5d9a20e795b7acace5e6486",
+                "parameters": [
+                    {
+                        "name": "sessionId",
+                        "in": "path",
+                        "description": "Session UUID",
+                        "required": true,
+                        "schema": {
+                            "type": "string",
+                            "format": "uuid"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "Monthly data retrieved successfully",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "properties": {
+                                        "success": {
+                                            "type": "boolean",
+                                            "example": true
+                                        },
+                                        "data": {
+                                            "$ref": "#/components/schemas/MonthlyBreakdown"
+                                        }
+                                    },
+                                    "type": "object"
+                                }
+                            }
+                        }
+                    },
+                    "404": {
+                        "description": "Session not found",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/ErrorResponse"
+                                }
+                            }
+                        }
+                    }
+                },
+                "security": [
+                    {
+                        "sanctumAuth": []
+                    }
+                ]
+            }
+        },
+        "/bank-statement/sessions/{sessionId}/mca-analysis": {
+            "get": {
+                "tags": [
+                    "Sessions"
+                ],
+                "summary": "Get MCA analysis",
+                "description": "Retrieve Merchant Cash Advance (MCA) payment analysis for a session.",
+                "operationId": "ee324b7e3ac79927ce17463954741b8f",
+                "parameters": [
+                    {
+                        "name": "sessionId",
+                        "in": "path",
+                        "description": "Session UUID",
+                        "required": true,
+                        "schema": {
+                            "type": "string",
+                            "format": "uuid"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "MCA analysis retrieved successfully",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "properties": {
+                                        "success": {
+                                            "type": "boolean",
+                                            "example": true
+                                        },
+                                        "data": {
+                                            "$ref": "#/components/schemas/McaAnalysis"
+                                        }
+                                    },
+                                    "type": "object"
+                                }
+                            }
+                        }
+                    },
+                    "404": {
+                        "description": "Session not found",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/ErrorResponse"
+                                }
+                            }
+                        }
+                    }
+                },
+                "security": [
+                    {
+                        "sanctumAuth": []
+                    }
+                ]
+            }
+        },
+        "/bank-statement/sessions/{sessionId}/download": {
+            "get": {
+                "tags": [
+                    "Sessions"
+                ],
+                "summary": "Download transactions as CSV",
+                "description": "Download all transactions from a session as a CSV file.",
+                "operationId": "f010329ee131d7e21e298075aae9b463",
+                "parameters": [
+                    {
+                        "name": "sessionId",
+                        "in": "path",
+                        "description": "Session UUID",
+                        "required": true,
+                        "schema": {
+                            "type": "string",
+                            "format": "uuid"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "CSV file download",
+                        "content": {
+                            "text/csv": {
+                                "schema": {
+                                    "type": "string",
+                                    "format": "binary"
+                                }
+                            }
+                        }
+                    },
+                    "404": {
+                        "description": "Session not found",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/ErrorResponse"
+                                }
+                            }
+                        }
+                    }
+                },
+                "security": [
+                    {
+                        "sanctumAuth": []
+                    }
+                ]
+            }
+        },
+        "/bank-statement/transactions/{transactionId}/toggle-type": {
+            "post": {
+                "tags": [
+                    "Transactions"
+                ],
+                "summary": "Toggle transaction type",
+                "description": "Toggle a transaction between credit and debit. This correction is saved for AI learning.",
+                "operationId": "6db98def75157451bef46d948cd41fd7",
+                "parameters": [
+                    {
+                        "name": "transactionId",
+                        "in": "path",
+                        "description": "Transaction ID",
+                        "required": true,
+                        "schema": {
+                            "type": "integer"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "Transaction type toggled successfully",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "properties": {
+                                        "success": {
+                                            "type": "boolean",
+                                            "example": true
+                                        },
+                                        "message": {
+                                            "type": "string",
+                                            "example": "Transaction type updated. AI will learn from this correction."
+                                        },
+                                        "new_type": {
+                                            "type": "string",
+                                            "enum": [
+                                                "credit",
+                                                "debit"
+                                            ]
+                                        },
+                                        "session_totals": {
+                                            "properties": {
+                                                "total_credits": {
+                                                    "type": "string",
+                                                    "example": "15,000.00"
+                                                },
+                                                "total_debits": {
+                                                    "type": "string",
+                                                    "example": "10,000.00"
+                                                },
+                                                "net_flow": {
+                                                    "type": "string",
+                                                    "example": "5,000.00"
+                                                }
+                                            },
+                                            "type": "object"
+                                        }
+                                    },
+                                    "type": "object"
+                                }
+                            }
+                        }
+                    },
+                    "404": {
+                        "description": "Transaction not found",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/ErrorResponse"
+                                }
+                            }
+                        }
+                    }
+                },
+                "security": [
+                    {
+                        "sanctumAuth": []
+                    }
+                ]
+            }
+        },
+        "/bank-statement/transactions/{transactionId}/toggle-revenue": {
+            "post": {
+                "tags": [
+                    "Transactions"
+                ],
+                "summary": "Toggle revenue classification",
+                "description": "Toggle a credit transaction between true_revenue and adjustment. This helps AI learn revenue classification.",
+                "operationId": "de7e5d18fb483febdc2dc6648d58ef76",
+                "parameters": [
+                    {
+                        "name": "transactionId",
+                        "in": "path",
+                        "description": "Transaction ID",
+                        "required": true,
+                        "schema": {
+                            "type": "integer"
+                        }
+                    }
+                ],
+                "requestBody": {
+                    "required": true,
+                    "content": {
+                        "application/json": {
+                            "schema": {
+                                "required": [
+                                    "current_classification"
+                                ],
+                                "properties": {
+                                    "current_classification": {
+                                        "description": "Current classification to toggle from",
+                                        "type": "string",
+                                        "enum": [
+                                            "true_revenue",
+                                            "adjustment"
+                                        ]
+                                    }
+                                },
+                                "type": "object"
+                            }
+                        }
+                    }
+                },
+                "responses": {
+                    "200": {
+                        "description": "Revenue classification toggled successfully",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "properties": {
+                                        "success": {
+                                            "type": "boolean",
+                                            "example": true
+                                        },
+                                        "message": {
+                                            "type": "string"
+                                        },
+                                        "new_classification": {
+                                            "type": "string",
+                                            "enum": [
+                                                "true_revenue",
+                                                "adjustment"
+                                            ]
+                                        },
+                                        "amount": {
+                                            "type": "number",
+                                            "format": "float"
+                                        }
+                                    },
+                                    "type": "object"
+                                }
+                            }
+                        }
+                    },
+                    "404": {
+                        "description": "Transaction not found",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/ErrorResponse"
+                                }
+                            }
+                        }
+                    }
+                },
+                "security": [
+                    {
+                        "sanctumAuth": []
+                    }
+                ]
+            }
+        },
+        "/bank-statement/transactions/{transactionId}/toggle-mca": {
+            "post": {
+                "tags": [
+                    "Transactions"
+                ],
+                "summary": "Toggle MCA status",
+                "description": "Mark or unmark a debit transaction as an MCA (Merchant Cash Advance) payment.",
+                "operationId": "4011cea1867e0337ec17aced1dcc7a88",
+                "parameters": [
+                    {
+                        "name": "transactionId",
+                        "in": "path",
+                        "description": "Transaction ID",
+                        "required": true,
+                        "schema": {
+                            "type": "integer"
+                        }
+                    }
+                ],
+                "requestBody": {
+                    "required": true,
+                    "content": {
+                        "application/json": {
+                            "schema": {
+                                "required": [
+                                    "is_mca"
+                                ],
+                                "properties": {
+                                    "is_mca": {
+                                        "description": "Whether this is an MCA payment",
+                                        "type": "boolean"
+                                    },
+                                    "lender_id": {
+                                        "description": "MCA lender ID (required if is_mca is true)",
+                                        "type": "string"
+                                    },
+                                    "lender_name": {
+                                        "description": "MCA lender name (required if is_mca is true)",
+                                        "type": "string"
+                                    }
+                                },
+                                "type": "object"
+                            }
+                        }
+                    }
+                },
+                "responses": {
+                    "200": {
+                        "description": "MCA status toggled successfully",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "properties": {
+                                        "success": {
+                                            "type": "boolean",
+                                            "example": true
+                                        },
+                                        "message": {
+                                            "type": "string"
+                                        },
+                                        "is_mca": {
+                                            "type": "boolean"
+                                        },
+                                        "lender_id": {
+                                            "type": "string"
+                                        },
+                                        "lender_name": {
+                                            "type": "string"
+                                        },
+                                        "amount": {
+                                            "type": "number",
+                                            "format": "float"
+                                        }
+                                    },
+                                    "type": "object"
+                                }
+                            }
+                        }
+                    },
+                    "404": {
+                        "description": "Transaction not found",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/ErrorResponse"
+                                }
+                            }
+                        }
+                    }
+                },
+                "security": [
+                    {
+                        "sanctumAuth": []
+                    }
+                ]
+            }
+        },
+        "/bank-statement/mca-lenders": {
+            "get": {
+                "tags": [
+                    "Reference Data"
+                ],
+                "summary": "Get MCA lenders list",
+                "description": "Retrieve a list of known MCA (Merchant Cash Advance) lenders for dropdown selection.",
+                "operationId": "cce6d1296fc15f929c2792953b6c2ebc",
+                "responses": {
+                    "200": {
+                        "description": "Lenders retrieved successfully",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "properties": {
+                                        "success": {
+                                            "type": "boolean",
+                                            "example": true
+                                        },
+                                        "lenders": {
+                                            "type": "array",
+                                            "items": {
+                                                "$ref": "#/components/schemas/McaLender"
+                                            }
+                                        }
+                                    },
+                                    "type": "object"
+                                }
+                            }
+                        }
+                    }
+                },
+                "security": [
+                    {
+                        "sanctumAuth": []
+                    }
+                ]
+            }
+        },
+        "/bank-statement/stats": {
+            "get": {
+                "tags": [
+                    "Reference Data"
+                ],
+                "summary": "Get overall statistics",
+                "description": "Retrieve overall statistics for the bank statement analyzer.",
+                "operationId": "e6a16cd327164f45b33fbe33b9a9e615",
+                "responses": {
+                    "200": {
+                        "description": "Statistics retrieved successfully",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "properties": {
+                                        "success": {
+                                            "type": "boolean",
+                                            "example": true
+                                        },
+                                        "data": {
+                                            "properties": {
+                                                "total_sessions": {
+                                                    "type": "integer",
+                                                    "example": 150
+                                                },
+                                                "total_transactions": {
+                                                    "type": "integer",
+                                                    "example": 5000
+                                                },
+                                                "total_credits": {
+                                                    "type": "number",
+                                                    "format": "float",
+                                                    "example": 500000
+                                                },
+                                                "total_debits": {
+                                                    "type": "number",
+                                                    "format": "float",
+                                                    "example": 450000
+                                                },
+                                                "total_corrections": {
+                                                    "type": "integer",
+                                                    "example": 25
+                                                },
+                                                "mca_patterns_learned": {
+                                                    "type": "integer",
+                                                    "example": 15
+                                                }
+                                            },
+                                            "type": "object"
+                                        }
+                                    },
+                                    "type": "object"
+                                }
+                            }
+                        }
+                    }
+                },
+                "security": [
+                    {
+                        "sanctumAuth": []
+                    }
+                ]
+            }
+        },
+        "/bank-statement/learned-patterns": {
+            "get": {
+                "tags": [
+                    "Reference Data"
+                ],
+                "summary": "Get learned patterns",
+                "description": "Retrieve statistics and list of learned transaction patterns used for auto-correction.",
+                "operationId": "70a2289b1d70ea633e4b2e0dd14f91fd",
+                "parameters": [
+                    {
+                        "name": "page",
+                        "in": "query",
+                        "description": "Page number",
+                        "schema": {
+                            "type": "integer",
+                            "default": 1
+                        }
+                    },
+                    {
+                        "name": "per_page",
+                        "in": "query",
+                        "description": "Items per page",
+                        "schema": {
+                            "type": "integer",
+                            "default": 50
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "Patterns retrieved successfully",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "properties": {
+                                        "success": {
+                                            "type": "boolean",
+                                            "example": true
+                                        },
+                                        "stats": {
+                                            "properties": {
+                                                "total_patterns": {
+                                                    "type": "integer"
+                                                },
+                                                "manual_overrides": {
+                                                    "type": "integer"
+                                                },
+                                                "openai_learned": {
+                                                    "type": "integer"
+                                                },
+                                                "high_confidence": {
+                                                    "type": "integer"
+                                                },
+                                                "credit_patterns": {
+                                                    "type": "integer"
+                                                },
+                                                "debit_patterns": {
+                                                    "type": "integer"
+                                                }
+                                            },
+                                            "type": "object"
+                                        },
+                                        "patterns": {
+                                            "type": "array",
+                                            "items": {
+                                                "type": "object"
+                                            }
+                                        }
+                                    },
+                                    "type": "object"
+                                }
+                            }
+                        }
+                    }
+                },
+                "security": [
+                    {
+                        "sanctumAuth": []
+                    }
+                ]
+            },
+            "delete": {
+                "tags": [
+                    "Reference Data"
+                ],
+                "summary": "Clear all learned patterns",
+                "description": "Delete all learned patterns. Use with caution - this will reset all AI learning.",
+                "operationId": "313dc5814b025483d50a6b4196d5a087",
+                "responses": {
+                    "200": {
+                        "description": "All patterns cleared",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "properties": {
+                                        "success": {
+                                            "type": "boolean",
+                                            "example": true
+                                        },
+                                        "message": {
+                                            "type": "string"
+                                        },
+                                        "patterns_deleted": {
+                                            "type": "integer"
+                                        }
+                                    },
+                                    "type": "object"
+                                }
+                            }
+                        }
+                    }
+                },
+                "security": [
+                    {
+                        "sanctumAuth": []
+                    }
+                ]
+            }
+        },
+        "/bank-statement/learned-patterns/{patternId}": {
+            "delete": {
+                "tags": [
+                    "Reference Data"
+                ],
+                "summary": "Reset a learned pattern",
+                "description": "Delete a learned pattern so it can be re-learned from future transactions.",
+                "operationId": "72b3ce4a464c68c961d97525ef65767d",
+                "parameters": [
+                    {
+                        "name": "patternId",
+                        "in": "path",
+                        "description": "Pattern ID to reset",
+                        "required": true,
+                        "schema": {
+                            "type": "integer"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "Pattern reset successfully",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "properties": {
+                                        "success": {
+                                            "type": "boolean",
+                                            "example": true
+                                        },
+                                        "message": {
+                                            "type": "string",
+                                            "example": "Pattern reset successfully"
+                                        }
+                                    },
+                                    "type": "object"
+                                }
+                            }
+                        }
+                    },
+                    "404": {
+                        "description": "Pattern not found",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/ErrorResponse"
+                                }
+                            }
+                        }
+                    }
+                },
+                "security": [
+                    {
+                        "sanctumAuth": []
+                    }
+                ]
+            }
+        },
+        "/api/v1/pricing/calculate": {
+            "post": {
+                "tags": [
+                    "MCA Pricing"
+                ],
+                "summary": "Calculate MCA offer",
+                "description": "Calculate a complete MCA offer with 20% withhold cap enforcement, factor rate adjustments, and full math breakdown.",
+                "operationId": "bd66085073f47858d7c897bd09e641bb",
+                "requestBody": {
+                    "required": true,
+                    "content": {
+                        "application/json": {
+                            "schema": {
+                                "required": [
+                                    "monthly_true_revenue",
+                                    "requested_amount"
+                                ],
+                                "properties": {
+                                    "monthly_true_revenue": {
+                                        "type": "number",
+                                        "example": 100000
+                                    },
+                                    "existing_daily_payment": {
+                                        "type": "number",
+                                        "example": 500
+                                    },
+                                    "requested_amount": {
+                                        "type": "number",
+                                        "example": 50000
+                                    },
+                                    "position": {
+                                        "type": "integer",
+                                        "example": 2
+                                    },
+                                    "term_months": {
+                                        "type": "integer",
+                                        "example": 6
+                                    },
+                                    "factor_rate": {
+                                        "type": "number",
+                                        "example": 1.35
+                                    },
+                                    "industry": {
+                                        "type": "string",
+                                        "example": "restaurant"
+                                    },
+                                    "credit_score": {
+                                        "type": "integer",
+                                        "example": 680
+                                    },
+                                    "risk_score": {
+                                        "type": "integer",
+                                        "example": 65
+                                    },
+                                    "volatility_level": {
+                                        "type": "string",
+                                        "enum": [
+                                            "low",
+                                            "medium",
+                                            "high"
+                                        ]
+                                    }
+                                },
+                                "type": "object"
+                            }
+                        }
+                    }
+                },
+                "responses": {
+                    "200": {
+                        "description": "Offer calculated successfully",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "properties": {
+                                        "success": {
+                                            "type": "boolean",
+                                            "example": true
+                                        },
+                                        "data": {
+                                            "type": "object"
+                                        }
+                                    },
+                                    "type": "object"
+                                }
+                            }
+                        }
+                    },
+                    "422": {
+                        "description": "Validation error"
+                    }
+                },
+                "security": [
+                    {
+                        "sanctumAuth": []
+                    }
+                ]
+            }
+        },
+        "/api/v1/pricing/capacity": {
+            "post": {
+                "tags": [
+                    "MCA Pricing"
+                ],
+                "summary": "Check merchant capacity",
+                "description": "Check remaining capacity for additional MCA positions based on 20% withhold cap.",
+                "operationId": "bcbd5f2fd00902136134d4e9688158c7",
+                "requestBody": {
+                    "required": true,
+                    "content": {
+                        "application/json": {
+                            "schema": {
+                                "required": [
+                                    "monthly_true_revenue"
+                                ],
+                                "properties": {
+                                    "monthly_true_revenue": {
+                                        "type": "number",
+                                        "example": 100000
+                                    },
+                                    "existing_daily_payment": {
+                                        "type": "number",
+                                        "example": 500
+                                    },
+                                    "industry": {
+                                        "type": "string",
+                                        "example": "restaurant"
+                                    }
+                                },
+                                "type": "object"
+                            }
+                        }
+                    }
+                },
+                "responses": {
+                    "200": {
+                        "description": "Capacity check successful",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "properties": {
+                                        "success": {
+                                            "type": "boolean",
+                                            "example": true
+                                        },
+                                        "data": {
+                                            "type": "object"
+                                        }
+                                    },
+                                    "type": "object"
+                                }
+                            }
+                        }
+                    }
+                },
+                "security": [
+                    {
+                        "sanctumAuth": []
+                    }
+                ]
+            }
+        },
+        "/api/v1/pricing/validate": {
+            "post": {
+                "tags": [
+                    "MCA Pricing"
+                ],
+                "summary": "Validate offer terms",
+                "description": "Server-side validation of offer terms to ensure they meet business rules.",
+                "operationId": "3619f4a8e6cfb27037a3437aefb9f505",
+                "requestBody": {
+                    "required": true,
+                    "content": {
+                        "application/json": {
+                            "schema": {
+                                "properties": {
+                                    "funding_amount": {
+                                        "type": "number",
+                                        "example": 50000
+                                    },
+                                    "factor_rate": {
+                                        "type": "number",
+                                        "example": 1.35
+                                    },
+                                    "term_months": {
+                                        "type": "integer",
+                                        "example": 6
+                                    },
+                                    "daily_payment": {
+                                        "type": "number",
+                                        "example": 500
+                                    },
+                                    "monthly_true_revenue": {
+                                        "type": "number",
+                                        "example": 100000
+                                    },
+                                    "existing_daily_payment": {
+                                        "type": "number",
+                                        "example": 400
+                                    }
+                                },
+                                "type": "object"
+                            }
+                        }
+                    }
+                },
+                "responses": {
+                    "200": {
+                        "description": "Validation result",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "properties": {
+                                        "valid": {
+                                            "type": "boolean"
+                                        },
+                                        "errors": {
+                                            "type": "array",
+                                            "items": {
+                                                "type": "string"
+                                            }
+                                        }
+                                    },
+                                    "type": "object"
+                                }
+                            }
+                        }
+                    }
+                },
+                "security": [
+                    {
+                        "sanctumAuth": []
+                    }
+                ]
+            }
+        },
+        "/api/v1/pricing/scenarios": {
+            "post": {
+                "tags": [
+                    "MCA Pricing"
+                ],
+                "summary": "Generate offer scenarios",
+                "description": "Generate multiple offer scenarios with different terms for comparison.",
+                "operationId": "75dbe677b62b0f4f118204454218f8eb",
+                "requestBody": {
+                    "required": true,
+                    "content": {
+                        "application/json": {
+                            "schema": {
+                                "required": [
+                                    "monthly_true_revenue",
+                                    "requested_amount"
+                                ],
+                                "properties": {
+                                    "monthly_true_revenue": {
+                                        "type": "number",
+                                        "example": 100000
+                                    },
+                                    "existing_daily_payment": {
+                                        "type": "number",
+                                        "example": 500
+                                    },
+                                    "requested_amount": {
+                                        "type": "number",
+                                        "example": 50000
+                                    },
+                                    "position": {
+                                        "type": "integer",
+                                        "example": 2
+                                    },
+                                    "industry": {
+                                        "type": "string",
+                                        "example": "restaurant"
+                                    },
+                                    "credit_score": {
+                                        "type": "integer",
+                                        "example": 680
+                                    },
+                                    "risk_score": {
+                                        "type": "integer",
+                                        "example": 65
+                                    }
+                                },
+                                "type": "object"
+                            }
+                        }
+                    }
+                },
+                "responses": {
+                    "200": {
+                        "description": "Scenarios generated successfully",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "properties": {
+                                        "success": {
+                                            "type": "boolean",
+                                            "example": true
+                                        },
+                                        "scenarios": {
+                                            "type": "object"
+                                        }
+                                    },
+                                    "type": "object"
+                                }
+                            }
+                        }
+                    }
+                },
+                "security": [
+                    {
+                        "sanctumAuth": []
+                    }
+                ]
+            }
+        },
+        "/api/v1/pricing/industries": {
+            "get": {
+                "tags": [
+                    "MCA Pricing"
+                ],
+                "summary": "Get industry list",
+                "description": "Get list of industries with their risk levels and adjustments.",
+                "operationId": "5f0d26ceca62008f9ad5ea17c96e3511",
+                "responses": {
+                    "200": {
+                        "description": "Industry list retrieved",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "properties": {
+                                        "success": {
+                                            "type": "boolean",
+                                            "example": true
+                                        },
+                                        "industries": {
+                                            "type": "array",
+                                            "items": {
+                                                "type": "object"
+                                            }
+                                        }
+                                    },
+                                    "type": "object"
+                                }
+                            }
+                        }
+                    }
+                },
+                "security": [
+                    {
+                        "sanctumAuth": []
+                    }
+                ]
+            }
+        },
+        "/api/v1/pricing/config": {
+            "get": {
+                "tags": [
+                    "MCA Pricing"
+                ],
+                "summary": "Get pricing configuration",
+                "description": "Get public pricing configuration values for UI display.",
+                "operationId": "7395ae9ea1b97e217f57a577d3a7d9c1",
+                "responses": {
+                    "200": {
+                        "description": "Configuration retrieved",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "properties": {
+                                        "success": {
+                                            "type": "boolean",
+                                            "example": true
+                                        },
+                                        "config": {
+                                            "type": "object"
+                                        }
+                                    },
+                                    "type": "object"
+                                }
+                            }
+                        }
+                    }
+                },
+                "security": [
+                    {
+                        "sanctumAuth": []
+                    }
+                ]
+            }
+        }
+    },
+    "components": {
+        "schemas": {
+            "ErrorResponse": {
+                "title": "Error Response",
+                "description": "Standard error response",
+                "properties": {
+                    "success": {
+                        "description": "OpenAPI Schema definitions for Bank Statement Analyzer API",
+                        "type": "boolean",
+                        "example": false
+                    },
+                    "error": {
+                        "type": "string",
+                        "example": "Error message here"
+                    },
+                    "errors": {
+                        "type": "object",
+                        "nullable": true,
+                        "additionalProperties": {
+                            "type": "array",
+                            "items": {
+                                "type": "string"
+                            }
+                        }
+                    }
+                },
+                "type": "object"
+            },
+            "Pagination": {
+                "title": "Pagination",
+                "description": "Pagination metadata",
+                "properties": {
+                    "current_page": {
+                        "type": "integer",
+                        "example": 1
+                    },
+                    "last_page": {
+                        "type": "integer",
+                        "example": 10
+                    },
+                    "per_page": {
+                        "type": "integer",
+                        "example": 20
+                    },
+                    "total": {
+                        "type": "integer",
+                        "example": 200
+                    }
+                },
+                "type": "object"
+            },
+            "Transaction": {
+                "title": "Transaction",
+                "description": "A bank transaction",
+                "properties": {
+                    "id": {
+                        "type": "integer",
+                        "example": 1
+                    },
+                    "transaction_date": {
+                        "type": "string",
+                        "format": "date",
+                        "example": "2024-01-15"
+                    },
+                    "description": {
+                        "type": "string",
+                        "example": "DIRECT DEPOSIT - PAYROLL"
+                    },
+                    "amount": {
+                        "type": "number",
+                        "format": "float",
+                        "example": 5000
+                    },
+                    "type": {
+                        "type": "string",
+                        "enum": [
+                            "credit",
+                            "debit"
+                        ],
+                        "example": "credit"
+                    },
+                    "original_type": {
+                        "type": "string",
+                        "enum": [
+                            "credit",
+                            "debit"
+                        ],
+                        "example": "credit"
+                    },
+                    "was_corrected": {
+                        "type": "boolean",
+                        "example": false
+                    },
+                    "confidence": {
+                        "type": "number",
+                        "format": "float",
+                        "example": 1
+                    },
+                    "confidence_label": {
+                        "type": "string",
+                        "enum": [
+                            "high",
+                            "medium",
+                            "low"
+                        ],
+                        "example": "high"
+                    },
+                    "is_mca_payment": {
+                        "type": "boolean",
+                        "example": false,
+                        "nullable": true
+                    },
+                    "mca_lender": {
+                        "type": "string",
+                        "example": "OnDeck Capital",
+                        "nullable": true
+                    }
+                },
+                "type": "object"
+            },
+            "TransactionSummary": {
+                "title": "Transaction Summary",
+                "description": "Summary of transactions",
+                "properties": {
+                    "total_transactions": {
+                        "type": "integer",
+                        "example": 150
+                    },
+                    "credit_count": {
+                        "type": "integer",
+                        "example": 50
+                    },
+                    "debit_count": {
+                        "type": "integer",
+                        "example": 100
+                    },
+                    "total_credits": {
+                        "type": "number",
+                        "format": "float",
+                        "example": 75000
+                    },
+                    "total_debits": {
+                        "type": "number",
+                        "format": "float",
+                        "example": 60000
+                    },
+                    "net_flow": {
+                        "type": "number",
+                        "format": "float",
+                        "example": 15000
+                    }
+                },
+                "type": "object"
+            },
+            "SessionSummary": {
+                "title": "Session Summary",
+                "description": "Summary of an analysis session",
+                "properties": {
+                    "id": {
+                        "type": "integer",
+                        "example": 1
+                    },
+                    "session_id": {
+                        "type": "string",
+                        "format": "uuid",
+                        "example": "550e8400-e29b-41d4-a716-446655440000"
+                    },
+                    "filename": {
+                        "type": "string",
+                        "example": "bank_statement_jan_2024.pdf"
+                    },
+                    "pages": {
+                        "type": "integer",
+                        "example": 5
+                    },
+                    "total_transactions": {
+                        "type": "integer",
+                        "example": 150
+                    },
+                    "total_credits": {
+                        "type": "number",
+                        "format": "float",
+                        "example": 75000
+                    },
+                    "total_debits": {
+                        "type": "number",
+                        "format": "float",
+                        "example": 60000
+                    },
+                    "net_flow": {
+                        "type": "number",
+                        "format": "float",
+                        "example": 15000
+                    },
+                    "analysis_type": {
+                        "type": "string",
+                        "example": "openai"
+                    },
+                    "model_used": {
+                        "type": "string",
+                        "example": "gpt-4o"
+                    },
+                    "api_cost": {
+                        "type": "number",
+                        "format": "float",
+                        "example": 0.15
+                    },
+                    "created_at": {
+                        "type": "string",
+                        "format": "datetime",
+                        "example": "2024-01-15T10:30:00Z"
+                    },
+                    "updated_at": {
+                        "type": "string",
+                        "format": "datetime",
+                        "example": "2024-01-15T10:30:00Z"
+                    }
+                },
+                "type": "object"
+            },
+            "SessionDetail": {
+                "title": "Session Detail",
+                "description": "Detailed information about an analysis session",
+                "allOf": [
+                    {
+                        "$ref": "#/components/schemas/SessionSummary"
+                    },
+                    {
+                        "properties": {
+                            "user_id": {
+                                "type": "integer",
+                                "example": 1,
+                                "nullable": true
+                            },
+                            "high_confidence_count": {
+                                "type": "integer",
+                                "example": 140
+                            },
+                            "medium_confidence_count": {
+                                "type": "integer",
+                                "example": 8
+                            },
+                            "low_confidence_count": {
+                                "type": "integer",
+                                "example": 2
+                            }
+                        },
+                        "type": "object"
+                    }
+                ]
+            },
+            "SessionSummaryDetail": {
+                "title": "Session Summary Detail",
+                "description": "Detailed summary for a session",
+                "properties": {
+                    "session_id": {
+                        "type": "string",
+                        "format": "uuid"
+                    },
+                    "filename": {
+                        "type": "string"
+                    },
+                    "analyzed_at": {
+                        "type": "string",
+                        "format": "datetime"
+                    },
+                    "total_transactions": {
+                        "type": "integer"
+                    },
+                    "credit_count": {
+                        "type": "integer"
+                    },
+                    "debit_count": {
+                        "type": "integer"
+                    },
+                    "total_credits": {
+                        "type": "number",
+                        "format": "float"
+                    },
+                    "total_debits": {
+                        "type": "number",
+                        "format": "float"
+                    },
+                    "net_flow": {
+                        "type": "number",
+                        "format": "float"
+                    },
+                    "api_cost": {
+                        "type": "number",
+                        "format": "float"
+                    },
+                    "model_used": {
+                        "type": "string"
+                    },
+                    "pages": {
+                        "type": "integer"
+                    }
+                },
+                "type": "object"
+            },
+            "AnalysisResult": {
+                "title": "Analysis Result",
+                "description": "Result of analyzing a single bank statement",
+                "properties": {
+                    "filename": {
+                        "type": "string",
+                        "example": "bank_statement_jan_2024.pdf"
+                    },
+                    "session_id": {
+                        "type": "string",
+                        "format": "uuid",
+                        "example": "550e8400-e29b-41d4-a716-446655440000"
+                    },
+                    "success": {
+                        "type": "boolean",
+                        "example": true
+                    },
+                    "error": {
+                        "type": "string",
+                        "nullable": true
+                    },
+                    "summary": {
+                        "properties": {
+                            "total_transactions": {
+                                "type": "integer",
+                                "example": 150
+                            },
+                            "credit_count": {
+                                "type": "integer",
+                                "example": 50
+                            },
+                            "debit_count": {
+                                "type": "integer",
+                                "example": 100
+                            },
+                            "credit_total": {
+                                "type": "number",
+                                "format": "float",
+                                "example": 75000
+                            },
+                            "debit_total": {
+                                "type": "number",
+                                "format": "float",
+                                "example": 60000
+                            },
+                            "net_balance": {
+                                "type": "number",
+                                "format": "float",
+                                "example": 15000
+                            }
+                        },
+                        "type": "object"
+                    },
+                    "api_cost": {
+                        "properties": {
+                            "total_cost": {
+                                "type": "number",
+                                "format": "float",
+                                "example": 0.15
+                            },
+                            "total_tokens": {
+                                "type": "integer",
+                                "example": 5000
+                            },
+                            "input_tokens": {
+                                "type": "integer",
+                                "example": 4000
+                            },
+                            "output_tokens": {
+                                "type": "integer",
+                                "example": 1000
+                            }
+                        },
+                        "type": "object"
+                    },
+                    "transaction_count": {
+                        "type": "integer",
+                        "example": 150
+                    },
+                    "monthly_data": {
+                        "$ref": "#/components/schemas/MonthlyBreakdown"
+                    },
+                    "mca_analysis": {
+                        "$ref": "#/components/schemas/McaAnalysis"
+                    }
+                },
+                "type": "object"
+            },
+            "MonthlyData": {
+                "title": "Monthly Data",
+                "description": "Data for a single month",
+                "properties": {
+                    "month_key": {
+                        "type": "string",
+                        "example": "2024-01"
+                    },
+                    "month_name": {
+                        "type": "string",
+                        "example": "January 2024"
+                    },
+                    "deposits": {
+                        "type": "number",
+                        "format": "float",
+                        "example": 25000
+                    },
+                    "deposit_count": {
+                        "type": "integer",
+                        "example": 15
+                    },
+                    "adjustments": {
+                        "type": "number",
+                        "format": "float",
+                        "example": 3000
+                    },
+                    "adjustment_count": {
+                        "type": "integer",
+                        "example": 3
+                    },
+                    "true_revenue": {
+                        "type": "number",
+                        "format": "float",
+                        "example": 22000
+                    },
+                    "debits": {
+                        "type": "number",
+                        "format": "float",
+                        "example": 18000
+                    },
+                    "debit_count": {
+                        "type": "integer",
+                        "example": 45
+                    },
+                    "days_in_month": {
+                        "type": "integer",
+                        "example": 31
+                    },
+                    "average_daily": {
+                        "type": "number",
+                        "format": "float",
+                        "example": 709.68
+                    }
+                },
+                "type": "object"
+            },
+            "MonthlyBreakdown": {
+                "title": "Monthly Breakdown",
+                "description": "Monthly breakdown of transactions with totals and averages",
+                "properties": {
+                    "months": {
+                        "type": "array",
+                        "items": {
+                            "$ref": "#/components/schemas/MonthlyData"
+                        }
+                    },
+                    "totals": {
+                        "properties": {
+                            "deposits": {
+                                "type": "number",
+                                "format": "float",
+                                "example": 75000
+                            },
+                            "adjustments": {
+                                "type": "number",
+                                "format": "float",
+                                "example": 9000
+                            },
+                            "true_revenue": {
+                                "type": "number",
+                                "format": "float",
+                                "example": 66000
+                            },
+                            "debits": {
+                                "type": "number",
+                                "format": "float",
+                                "example": 54000
+                            }
+                        },
+                        "type": "object"
+                    },
+                    "averages": {
+                        "properties": {
+                            "deposits": {
+                                "type": "number",
+                                "format": "float",
+                                "example": 25000
+                            },
+                            "adjustments": {
+                                "type": "number",
+                                "format": "float",
+                                "example": 3000
+                            },
+                            "true_revenue": {
+                                "type": "number",
+                                "format": "float",
+                                "example": 22000
+                            },
+                            "debits": {
+                                "type": "number",
+                                "format": "float",
+                                "example": 18000
+                            }
+                        },
+                        "type": "object"
+                    },
+                    "month_count": {
+                        "type": "integer",
+                        "example": 3
+                    }
+                },
+                "type": "object"
+            },
+            "McaLender": {
+                "title": "MCA Lender",
+                "description": "An MCA lender",
+                "properties": {
+                    "id": {
+                        "type": "string",
+                        "example": "ondeck"
+                    },
+                    "name": {
+                        "type": "string",
+                        "example": "OnDeck Capital"
+                    }
+                },
+                "type": "object"
+            },
+            "McaLenderAnalysis": {
+                "title": "MCA Lender Analysis",
+                "description": "Analysis of payments to a single MCA lender",
+                "properties": {
+                    "lender_id": {
+                        "type": "string",
+                        "example": "ondeck"
+                    },
+                    "lender_name": {
+                        "type": "string",
+                        "example": "OnDeck Capital"
+                    },
+                    "payment_count": {
+                        "type": "integer",
+                        "example": 22
+                    },
+                    "total_amount": {
+                        "type": "number",
+                        "format": "float",
+                        "example": 11000
+                    },
+                    "average_payment": {
+                        "type": "number",
+                        "format": "float",
+                        "example": 500
+                    },
+                    "frequency": {
+                        "type": "string",
+                        "enum": [
+                            "daily",
+                            "weekly",
+                            "bi_weekly",
+                            "monthly",
+                            "irregular"
+                        ],
+                        "example": "daily"
+                    },
+                    "frequency_label": {
+                        "type": "string",
+                        "example": "Daily"
+                    }
+                },
+                "type": "object"
+            },
+            "McaAnalysis": {
+                "title": "MCA Analysis",
+                "description": "Complete MCA payment analysis",
+                "properties": {
+                    "total_mca_count": {
+                        "description": "Number of different MCA lenders detected",
+                        "type": "integer",
+                        "example": 2
+                    },
+                    "total_mca_payments": {
+                        "description": "Total number of MCA payments",
+                        "type": "integer",
+                        "example": 44
+                    },
+                    "total_mca_amount": {
+                        "description": "Total amount of all MCA payments",
+                        "type": "number",
+                        "format": "float",
+                        "example": 22000
+                    },
+                    "lenders": {
+                        "type": "array",
+                        "items": {
+                            "$ref": "#/components/schemas/McaLenderAnalysis"
+                        }
+                    }
+                },
+                "type": "object"
+            }
+        },
+        "securitySchemes": {
+            "sanctumAuth": {
+                "type": "oauth2",
+                "description": "Login with email and password to get access token",
+                "flows": {
+                    "password": {
+                        "tokenUrl": "/api/v1/auth/login",
+                        "scopes": {}
+                    }
+                }
+            }
+        }
+    },
+    "tags": [
+        {
+            "name": "Authentication",
+            "description": "API authentication endpoints for token management"
+        },
+        {
+            "name": "Bank Statement Analysis",
+            "description": "Endpoints for uploading and analyzing bank statements"
+        },
+        {
+            "name": "Sessions",
+            "description": "Endpoints for managing analysis sessions"
+        },
+        {
+            "name": "Transactions",
+            "description": "Endpoints for transaction corrections and classifications"
+        },
+        {
+            "name": "Reference Data",
+            "description": "Endpoints for reference data like MCA lenders"
+        },
+        {
+            "name": "MCA Pricing",
+            "description": "Endpoints for MCA offer calculation and pricing"
+        }
+    ]
+}

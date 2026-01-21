@@ -1,0 +1,147 @@
+======================================================================
+BANK STATEMENT TRANSACTIONS
+Extracted from: bank_statement-November_1764950323.pdf
+Date: 2026-01-03 14:05:49
+======================================================================
+
+CREDITS (29 transactions)
+----------------------------------------------------------------------
+2026-11-03 | $  3,659.00 | Deposit
+2026-11-04 | $ 23,486.00 | Deposit
+2026-11-05 | $ 24,833.00 | Ideal Homes Of NPPD JACOBS LADDER LLC dbPayment
+2026-11-05 | $  1,000.00 | Deposit
+2026-11-05 | $  4,240.50 | Deposit
+2026-11-06 | $    739.00 | Deposit
+2026-11-07 | $ 15,305.00 | LANDMARK FINE HOPPD Tops By Cop Payment
+2026-11-07 | $  3,146.00 | Deposit
+2026-11-07 | $ 12,436.00 | Deposit
+2026-11-10 | $ 13,450.00 | Deposit
+2026-11-12 | $  3,308.75 | Ideal Homes Of NPPD JACOBS LADDER LLC dbPayment
+2026-11-12 | $  6,305.50 | Deposit
+2026-11-13 | $  1,100.00 | MERCHANT SERVICEMERCH DEP 8041575336 TOPS BY COPS
+2026-11-13 | $  6,290.00 | Deposit
+2026-11-14 | $  5,535.00 | LANDMARK FINE HOPPD Tops By Cop Payment
+2026-11-14 | $ 20,552.75 | Ideal Homes Of NPPD JACOBS LADDER LLC dbPayment
+2026-11-14 | $ 12,485.00 | Deposit
+2026-11-17 | $  3,608.00 | Deposit
+2026-11-18 | $  3,748.00 | Deposit
+2026-11-19 | $  9,039.75 | Ideal Homes Of NPPD JACOBS LADDER LLC dbPayment
+2026-11-20 | $  5,084.20 | Deposit
+2026-11-21 | $  6,167.50 | Ideal Homes Of NPPD JACOBS LADDER LLC dbPayment
+2026-11-21 | $ 15,899.00 | LANDMARK FINE HOPPD Tops By Cop Payment
+2026-11-21 | $  7,256.00 | Deposit
+2026-11-24 | $  4,190.00 | Deposit
+2026-11-26 | $ 17,474.50 | Ideal Homes Of NPPD JACOBS LADDER LLC dbPayment
+2026-11-26 | $    685.00 | Deposit
+2026-11-28 | $  4,911.75 | Ideal Homes Of NPPD JACOBS LADDER LLC dbPayment
+2026-11-28 | $ 21,460.00 | LANDMARK FINE HOPPD Tops By Cop Payment
+
+
+DEBITS (99 transactions)
+----------------------------------------------------------------------
+2026-11-03 | $    430.58 | CITI AUTOPAY PAYMENT 271843713920227 \WEB
+2026-11-03 | $    848.17 | MERCHANT SERVICEMERCH FEE 8041575336 TOPS BY COPS
+2026-11-03 | $  1,331.68 | M2 EQUIPMENT FINLEASECHG 4253 JACOB’S LADDER
+2026-11-03 | $  1,500.00 | AMEX EPAYMENT ACH PMT M2830 Jacobs Ladder
+2026-11-03 | $ 41,541.00 | M S INTERNATIONAPPD STEVE POLLOCK 7146857500
+2026-11-04 | $  4,000.00 | Transfer from 5680 to 9334 Fun ds Transfer via Mobile Conf #
+2026-11-04 | $  4,000.00 | Transfer from 5680 to 9334 Fun ds Transfer via Mobile Conf #
+2026-11-04 | $    942.00 | DBT CRD 0927 11/03/25 56651843 OKLAHOMA ELECTRIC COOP
+2026-11-04 | $     10.70 | GATEWAY SERVICES WEBPAYMENT \WEB
+2026-11-04 | $    174.00 | STATE FARM LIFE PPD TOPS BY COPS INC CONS COLL
+2026-11-04 | $    220.63 | CITI CARD ONLINE PAYMENT 421845851744775 \WEB
+2026-11-04 | $    499.24 | CAPITAL ONE AUTO DIRECTPAY DP0EE7BC661990B \WEB
+2026-11-04 | $    694.99 | FIFTH THIRD BANK WEB PAY 580611012025 \WEB
+2026-11-04 | $  3,000.00 | Check
+2026-11-05 | $  2,000.00 | AMEX EPAYMENT ACH PMT M7304 Jacobs Ladder
+2026-11-05 | $    290.76 | Check
+2026-11-06 | $  3,000.00 | Transfer from 5680 to 9334 Fun ds Transfer via Mobile Conf #
+2026-11-07 | $  5,000.00 | Transfer from 5680 to 9334 Fun ds Transfer via Mobile Conf #
+2026-11-07 | $    606.00 | ATM W/D 1344 11/07/25 00004163 EVI* FIRE LAKE GRAND 777 GRAND CASINO B
+2026-11-07 | $  1,500.00 | BK OF AMER VISA ONLINE PMT CKF874270217POSPOLLOCK,TERRY
+2026-11-07 | $  3,104.17 | LiquidityAccess 6316417100 133506562 Jacobs Ladder l
+2026-11-07 | $  4,383.33 | ONDECK CAPITAL 538916 296381611 JACOB’S LADDER
+2026-11-07 | $  6,424.08 | Check
+2026-11-07 | $  2,500.00 | Check
+2026-11-10 | $  4,000.00 | Transfer from 5680 to 9334 Fun ds Transfer via Mobile Conf #
+2026-11-10 | $  2,462.61 | Transfer to Loan Acct No. 403455694
+2026-11-10 | $  1,212.31 | DBT CRD 1528 11/08/25 72890579 STATE FARM INSURANCE 800-956-6310 IL
+2026-11-10 | $     81.14 | CITI CARD ONLINE PAYMENT 431849303383189 \WEB
+2026-11-10 | $    156.00 | CAPITAL ONE CRCARDPMT CA024520EDB237ETerry L Pollock
+2026-11-10 | $  1,674.00 | M2 EQUIPMENT FINLEASECHG 7350 JACOB’S LADDER
+2026-11-10 | $ 40,844.57 | M S INTERNATIONAPPD STEVE POLLOCK 7146857500
+2026-11-10 | $    500.00 | Check
+2026-11-12 | $  6,000.00 | Transfer from 5680 to 9334 Fun ds Transfer via Mobile Conf #
+2026-11-12 | $  7,000.00 | Transfer from 5680 to 9334 Fun ds Transfer via Mobile Conf #
+2026-11-12 | $    500.00 | U.S. EMPLOYEES PPD POLLOCK,STEPHEN ACH ORIG
+2026-11-12 | $    389.80 | Check
+2026-11-12 | $  1,350.00 | Check
+2026-11-13 | $  1,000.00 | CHASE CREDIT CRD EPAY 8876206680 \WEB
+2026-11-13 | $  1,500.00 | AMEX EPAYMENT ACH PMT M9564 Jacobs Ladder
+2026-11-13 | $  1,500.00 | AMEX EPAYMENT ACH PMT M5712 Jacobs Ladder
+2026-11-13 | $  2,500.00 | Check
+2026-11-14 | $  3,000.00 | Transfer from 5680 to 9334 Fun ds Transfer via Mobile Conf #
+2026-11-14 | $  4,000.00 | Transfer from 5680 to 9334 Fun ds Transfer via Mobile Conf #
+2026-11-14 | $    200.00 | CHASE CREDIT CRD EPAY 8878467544 \WEB
+2026-11-14 | $  1,500.00 | AMEX EPAYMENT ACH PMT M7624 Jacobs Ladder
+2026-11-14 | $  3,104.17 | LiquidityAccess 6316417100 133750573 Jacobs Ladder l
+2026-11-14 | $  4,383.33 | ONDECK CAPITAL 539064 297522983 JACOB’S LADDER
+2026-11-14 | $  1,500.00 | Check
+2026-11-14 | $    145.38 | Check
+2026-11-14 | $    145.38 | Check
+2026-11-17 | $    800.00 | ATM W/D 1406 11/14/25 00008616 First United Bank 10731 S Western Av Oklahoma
+2026-11-17 | $     35.00 | BK OF AMER VISA ONLINE PMT CKF874270217POSPOLLOCK,TERRY
+2026-11-17 | $     50.84 | CHASE CREDIT CRD EPAY 8883544581 \WEB
+2026-11-17 | $    963.04 | JPMorgan Chase Ext Trnsfr 26549365844 STEPHEN POLLOCK
+2026-11-17 | $  1,500.00 | AMEX EPAYMENT ACH PMT M6796 Jacobs Ladder
+2026-11-17 | $  3,610.28 | Equip Financing CNTRCT PMT 097-0213084-000Jacobs Ladder L
+2026-11-17 | $ 30,154.11 | M S INTERNATIONAPPD STEVE POLLOCK 7146857500
+2026-11-18 | $    186.05 | AMEX EPAYMENT ACH PMT M8164 Jacobs Ladder
+2026-11-18 | $    700.00 | AMEX EPAYMENT ACH PMT M7506 Jacobs Ladder
+2026-11-19 | $  6,000.00 | Transfer from 5680 to 9334 Fun ds Transfer via Mobile Conf #
+2026-11-19 | $    321.02 | CHASE CREDIT CRD EPAY 8892500792 \WEB
+2026-11-19 | $  1,000.00 | AMEX EPAYMENT ACH PMT M7092 Jacobs Ladder
+2026-11-20 | $  2,000.00 | Transfer from 5680 to 9334 Fun ds Transfer via Mobile Conf #
+2026-11-20 | $     99.00 | DISCOVER E-PAYMENT 9750 \WEB
+2026-11-20 | $    500.00 | AMEX EPAYMENT ACH PMT M5118 Jacobs Ladder
+2026-11-20 | $  1,000.00 | BK OF AMER VISA ONLINE PMT CKF874270217POSPOLLOCK,TERRY
+2026-11-20 | $  3,310.00 | Check
+2026-11-21 | $  2,000.00 | Transfer from 5680 to 9334 Fun ds Transfer via Mobile Conf #
+2026-11-21 | $  3,000.00 | Transfer from 5680 to 9334 Fun ds Transfer via Mobile Conf #
+2026-11-21 | $    172.63 | POS DEB 1432 11/20/25 00086720 WM SUPERCENTER #212 333 N INTERSTATE D
+2026-11-21 | $    279.44 | AMEX EPAYMENT ACH PMT M7538 Jacobs Ladder
+2026-11-21 | $  1,000.00 | BK OF AMER VISA ONLINE PMT CKF890732716POSPOLLOCK,STEPHEN
+2026-11-21 | $  1,000.00 | AMEX EPAYMENT ACH PMT M8574 Jacobs Ladder
+2026-11-21 | $  1,000.00 | AMEX EPAYMENT ACH PMT M1428 Jacobs Ladder
+2026-11-21 | $  3,104.17 | LiquidityAccess 6316417100 134032293 Jacobs Ladder l
+2026-11-21 | $  4,383.33 | ONDECK CAPITAL 539270 298760952 JACOB’S LADDER
+2026-11-24 | $  2,000.00 | Transfer from 5680 to 9334 Fun ds Transfer via Mobile Conf #
+2026-11-24 | $  3,000.00 | Transfer from 5680 to 9334 Fun ds Transfer via Mobile Conf #
+2026-11-24 | $    261.00 | DISCOVER E-PAYMENT 3824 \WEB
+2026-11-24 | $    500.00 | AMEX EPAYMENT ACH PMT M3244 Jacobs Ladder
+2026-11-24 | $  1,000.00 | AMEX EPAYMENT ACH PMT M9316 Jacobs Ladder
+2026-11-24 | $  2,512.00 | SBA EIDL LOAN PAYMENT 0000 STEVE POLLOCK
+2026-11-24 | $  3,200.00 | M2 EQUIPMENT FINLEASECHG 5685 JACOB’S LADDER
+2026-11-25 | $  4,000.00 | Transfer from 5680 to 9334 Fun ds Transfer via Mobile Conf #
+2026-11-25 | $    823.90 | M S INTERNATIONAPPD STEVE POLLOCK 7146857500
+2026-11-25 | $  1,000.00 | BK OF AMER VISA ONLINE PMT CKF874270217POSPOLLOCK,TERRY
+2026-11-25 | $  2,000.00 | AMEX EPAYMENT ACH PMT M1374 Jacobs Ladder
+2026-11-25 | $  3,696.04 | Check
+2026-11-25 | $    145.38 | Check
+2026-11-25 | $    145.38 | Check
+2026-11-26 | $  2,000.00 | Transfer from 5680 to 9334 Fun ds Transfer via Mobile Conf #
+2026-11-26 | $  2,000.00 | Transfer from 5680 to 9334 Fun ds Transfer via Mobile Conf #
+2026-11-26 | $  2,000.00 | Transfer from 5680 to 9334 Fun ds Transfer via Mobile Conf #
+2026-11-26 | $  1,000.00 | AMEX EPAYMENT ACH PMT M9036 Jacobs Ladder
+2026-11-26 | $  1,500.00 | AMEX EPAYMENT ACH PMT M6856 Jacobs Ladder
+2026-11-28 | $  2,000.00 | Transfer from 5680 to 9334 Fun ds Transfer via Mobile Conf #
+2026-11-28 | $  3,104.17 | LiquidityAccess 6316417100 134251825 Jacobs Ladder l
+2026-11-28 | $ 30,071.85 | M S INTERNATIONAPPD STEVE POLLOCK 7146857500
+2026-11-28 | $    340.00 | Check
+
+
+======================================================================
+Total Credits:  $257,395.20
+Total Debits:   $315,118.65
+Net Balance:    $-57,723.45
+======================================================================

@@ -1,0 +1,126 @@
+<x-app-layout>
+    <x-slot name="header">
+        <div class="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
+            <div>
+                <h2 class="font-semibold text-xl text-gray-800 dark:text-gray-200 leading-tight">
+                    Edit Pattern for {{ $lender['name'] }}
+                </h2>
+                <p class="text-sm text-gray-600 dark:text-gray-400 mt-1">Update transaction pattern</p>
+            </div>
+            <div class="flex gap-3">
+                <a href="{{ route('bankstatement.lender-detail', $lender['id']) }}" class="inline-flex items-center px-4 py-2 bg-gray-200 dark:bg-gray-700 border border-transparent rounded-md font-semibold text-xs text-gray-700 dark:text-gray-300 uppercase tracking-widest hover:bg-gray-300 dark:hover:bg-gray-600 transition ease-in-out duration-150">
+                    <svg class="w-4 h-4 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10 19l-7-7m0 0l7-7m-7 7h18" />
+                    </svg>
+                    Cancel
+                </a>
+            </div>
+        </div>
+    </x-slot>
+
+    <div class="py-12">
+        <div class="max-w-4xl mx-auto sm:px-6 lg:px-8">
+            <div class="bg-white dark:bg-gray-800 overflow-hidden shadow-sm sm:rounded-lg">
+                <div class="p-6">
+                    <form action="{{ route('bankstatement.lenders.pattern.update', [$lender['id'], $pattern->id]) }}" method="POST">
+                        @csrf
+                        @method('PUT')
+
+                        <!-- Lender Info -->
+                        <div class="mb-6 p-4 bg-gray-50 dark:bg-gray-700 rounded-lg">
+                            <div class="flex items-center justify-between">
+                                <div class="flex items-center">
+                                    <div class="h-12 w-12 bg-purple-100 dark:bg-purple-900 rounded-full flex items-center justify-center">
+                                        <span class="text-purple-600 dark:text-purple-400 font-semibold text-lg">
+                                            {{ strtoupper(substr($lender['name'], 0, 2)) }}
+                                        </span>
+                                    </div>
+                                    <div class="ml-4">
+                                        <h3 class="text-lg font-semibold text-gray-900 dark:text-gray-100">{{ $lender['name'] }}</h3>
+                                        <p class="text-sm text-gray-600 dark:text-gray-400">ID: {{ $lender['id'] }}</p>
+                                    </div>
+                                </div>
+                                <div class="text-right">
+                                    <p class="text-sm text-gray-600 dark:text-gray-400">Used</p>
+                                    <p class="text-lg font-semibold text-gray-900 dark:text-gray-100">{{ number_format($pattern->usage_count) }}x</p>
+                                </div>
+                            </div>
+                        </div>
+
+                        <!-- Transaction Pattern -->
+                        <div class="mb-6">
+                            <label for="description_pattern" class="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
+                                Transaction Pattern <span class="text-red-500">*</span>
+                            </label>
+                            <textarea name="description_pattern" id="description_pattern" rows="3" required autofocus
+                                class="block w-full rounded-md border-gray-300 dark:border-gray-600 dark:bg-gray-700 dark:text-gray-100 shadow-sm focus:border-purple-500 focus:ring-purple-500"
+                                placeholder="e.g., ACH DEBIT - ONDECK CAPITAL">{{ old('description_pattern', $pattern->description_pattern) }}</textarea>
+                            @error('description_pattern')
+                                <p class="mt-1 text-sm text-red-600 dark:text-red-400">{{ $message }}</p>
+                            @enderror
+                            <p class="mt-1 text-xs text-gray-500 dark:text-gray-400">
+                                Update the transaction description pattern
+                            </p>
+                        </div>
+
+                        <!-- Warning Card -->
+                        <div class="mb-6 bg-yellow-50 dark:bg-yellow-900/20 border border-yellow-200 dark:border-yellow-800 rounded-lg p-4">
+                            <div class="flex">
+                                <div class="flex-shrink-0">
+                                    <svg class="w-5 h-5 text-yellow-600 dark:text-yellow-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
+                                    </svg>
+                                </div>
+                                <div class="ml-3">
+                                    <h3 class="text-sm font-medium text-yellow-800 dark:text-yellow-300">Important</h3>
+                                    <div class="mt-2 text-sm text-yellow-700 dark:text-yellow-400">
+                                        <p>Modifying this pattern will affect future pattern matching. This pattern has been used <strong>{{ number_format($pattern->usage_count) }}</strong> time(s).</p>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+
+                        <!-- Pattern Info -->
+                        <div class="mb-6 grid grid-cols-2 gap-4 p-4 bg-gray-50 dark:bg-gray-700 rounded-lg">
+                            <div>
+                                <p class="text-xs text-gray-600 dark:text-gray-400">Created</p>
+                                <p class="text-sm font-medium text-gray-900 dark:text-gray-100">{{ $pattern->created_at->format('M d, Y h:i A') }}</p>
+                            </div>
+                            <div>
+                                <p class="text-xs text-gray-600 dark:text-gray-400">Last Updated</p>
+                                <p class="text-sm font-medium text-gray-900 dark:text-gray-100">{{ $pattern->updated_at->diffForHumans() }}</p>
+                            </div>
+                        </div>
+
+                        <!-- Actions -->
+                        <div class="flex items-center justify-between">
+                            <button type="button" onclick="if(confirm('Are you sure you want to delete this pattern?')) { document.getElementById('delete-form').submit(); }" class="inline-flex items-center px-4 py-2 bg-red-600 border border-transparent rounded-md font-semibold text-xs text-white uppercase tracking-widest hover:bg-red-700 active:bg-red-800 focus:outline-none focus:ring-2 focus:ring-red-500 focus:ring-offset-2 dark:focus:ring-offset-gray-800 transition ease-in-out duration-150">
+                                <svg class="w-4 h-4 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
+                                </svg>
+                                Delete Pattern
+                            </button>
+                            <div class="flex items-center gap-4">
+                                <a href="{{ route('bankstatement.lender-detail', $lender['id']) }}" class="inline-flex items-center px-4 py-2 bg-gray-200 dark:bg-gray-700 border border-transparent rounded-md font-semibold text-xs text-gray-700 dark:text-gray-300 uppercase tracking-widest hover:bg-gray-300 dark:hover:bg-gray-600 transition ease-in-out duration-150">
+                                    Cancel
+                                </a>
+                                <button type="submit" class="inline-flex items-center px-6 py-3 bg-purple-600 border border-transparent rounded-md font-semibold text-sm text-white uppercase tracking-widest hover:bg-purple-700 active:bg-purple-800 focus:outline-none focus:ring-2 focus:ring-purple-500 focus:ring-offset-2 dark:focus:ring-offset-gray-800 transition ease-in-out duration-150">
+                                    <svg class="w-5 h-5 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7" />
+                                    </svg>
+                                    Update Pattern
+                                </button>
+                            </div>
+                        </div>
+                    </form>
+
+                    <!-- Delete Form -->
+                    <form id="delete-form" action="{{ route('bankstatement.lenders.pattern.delete', [$lender['id'], $pattern->id]) }}" method="POST" class="hidden">
+                        @csrf
+                        @method('DELETE')
+                    </form>
+                </div>
+            </div>
+        </div>
+    </div>
+</x-app-layout>
