@@ -265,6 +265,8 @@ class BankStatementController extends Controller
                         'was_corrected' => $txn->was_corrected,
                         'is_mca_payment' => $txn->is_mca_payment ?? false,
                         'mca_lender' => $txn->mca_lender ?? null,
+                        'category' => $txn->category ?? null,
+                        'subcategory' => $txn->subcategory ?? null,
                     ];
                 })
                 ->toArray();
@@ -808,6 +810,7 @@ class BankStatementController extends Controller
     public function toggleCategory(Request $request)
     {
         $request->validate([
+            'transaction_id' => 'nullable|integer',
             'description' => 'required|string',
             'amount' => 'required|numeric',
             'type' => 'required|in:credit,debit',
@@ -826,6 +829,17 @@ class BankStatementController extends Controller
                 'success' => false,
                 'message' => 'Invalid category selected.',
             ], 400);
+        }
+
+        // Update the actual transaction record if transaction_id is provided
+        if ($request->transaction_id) {
+            $transaction = AnalyzedTransaction::find($request->transaction_id);
+            if ($transaction) {
+                $transaction->update([
+                    'category' => $category,
+                    'subcategory' => $subcategory,
+                ]);
+            }
         }
 
         // Save to transaction_categories table for AI learning

@@ -409,6 +409,7 @@
                     'Accept': 'application/json'
                 },
                 body: JSON.stringify({
+                    transaction_id: currentTransactionId,
                     description: description,
                     amount: amount,
                     type: currentTransactionType,

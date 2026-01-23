@@ -4133,6 +4133,22 @@
             const amountText = row.querySelector('td:nth-child(4)').textContent.trim();
             const amount = parseFloat(amountText.replace(/[$,]/g, ''));
 
+            // Check if the transaction ID is numeric (actual database ID) or a composite ID
+            const transactionId = !isNaN(currentTransactionIdResults) ? parseInt(currentTransactionIdResults) : null;
+
+            const requestBody = {
+                description: description,
+                amount: amount,
+                type: currentTransactionTypeResults,
+                category: categoryKey,
+                subcategory: null
+            };
+
+            // Only include transaction_id if it's a valid database ID
+            if (transactionId) {
+                requestBody.transaction_id = transactionId;
+            }
+
             fetch('{{ route("bankstatement.toggle-category") }}', {
                 method: 'POST',
                 headers: {
@@ -4140,13 +4156,7 @@
                     'X-CSRF-TOKEN': '{{ csrf_token() }}',
                     'Accept': 'application/json'
                 },
-                body: JSON.stringify({
-                    description: description,
-                    amount: amount,
-                    type: currentTransactionTypeResults,
-                    category: categoryKey,
-                    subcategory: null
-                })
+                body: JSON.stringify(requestBody)
             })
             .then(response => response.json())
             .then(data => {
