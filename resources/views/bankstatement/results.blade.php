@@ -1,4 +1,22 @@
 <x-app-layout>
+    <style>
+        /* Category color indicators for modal */
+        .category-color-purple { background-color: rgb(147, 51, 234); }
+        .category-color-blue { background-color: rgb(59, 130, 246); }
+        .category-color-indigo { background-color: rgb(99, 102, 241); }
+        .category-color-green { background-color: rgb(34, 197, 94); }
+        .category-color-cyan { background-color: rgb(6, 182, 212); }
+        .category-color-teal { background-color: rgb(20, 184, 166); }
+        .category-color-gray { background-color: rgb(107, 114, 128); }
+        .category-color-amber { background-color: rgb(245, 158, 11); }
+        .category-color-orange { background-color: rgb(249, 115, 22); }
+        .category-color-red { background-color: rgb(239, 68, 68); }
+        .category-color-pink { background-color: rgb(236, 72, 153); }
+        .category-color-yellow { background-color: rgb(234, 179, 8); }
+        .category-color-emerald { background-color: rgb(16, 185, 129); }
+        .category-color-lime { background-color: rgb(132, 204, 22); }
+    </style>
+
     <x-slot name="header">
         <h2 class="font-semibold text-xl text-gray-800 dark:text-gray-200 leading-tight">
             Analysis Results
@@ -1264,6 +1282,7 @@
                                             <tr>
                                                 <th class="px-4 py-2 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase">Date</th>
                                                 <th class="px-4 py-2 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase">Description</th>
+                                                <th class="px-4 py-2 text-center text-xs font-medium text-gray-500 dark:text-gray-400 uppercase">Category</th>
                                                 <th class="px-4 py-2 text-right text-xs font-medium text-gray-500 dark:text-gray-400 uppercase">Amount</th>
                                                 <th class="px-4 py-2 text-center text-xs font-medium text-gray-500 dark:text-gray-400 uppercase">Type</th>
                                                 <th class="px-4 py-2 text-center text-xs font-medium text-gray-500 dark:text-gray-400 uppercase">Classification</th>
@@ -1281,9 +1300,24 @@
                                                 $mcaFundingLenderName = $txn['mca_funding_lender_name'] ?? null;
                                                 $uniqueId = $result['session_id'] . '_' . $month['month_key'] . '_' . $txnIndex;
                                             @endphp
-                                            <tr class="hover:bg-gray-50 dark:hover:bg-gray-750 txn-row-{{ $uniqueId }}" data-month="{{ $month['month_key'] }}" data-session="{{ $result['session_id'] }}">
+                                            <tr class="hover:bg-gray-50 dark:hover:bg-gray-750 txn-row-{{ $uniqueId }}" data-month="{{ $month['month_key'] }}" data-session="{{ $result['session_id'] }}" data-transaction-id="{{ $txn['id'] ?? $uniqueId }}">
                                                 <td class="px-4 py-2 text-sm text-gray-900 dark:text-gray-100 whitespace-nowrap">{{ $txn['date'] }}</td>
                                                 <td class="px-4 py-2 text-sm text-gray-900 dark:text-gray-100 max-w-md">{{ $txn['description'] }}</td>
+                                                <td class="px-4 py-2 text-center" id="category-cell-{{ $uniqueId }}">
+                                                    @if(isset($txn['category']) && $txn['category'])
+                                                        <span class="inline-flex items-center px-2 py-0.5 rounded text-xs font-medium category-badge" data-category="{{ $txn['category'] }}">
+                                                            {{ ucwords(str_replace('_', ' ', $txn['category'])) }}
+                                                        </span>
+                                                    @else
+                                                        <button onclick="openCategoryModalResults('{{ $uniqueId }}', '{{ addslashes($txn['description']) }}', {{ $txn['amount'] }}, '{{ $txn['type'] }}')"
+                                                                class="inline-flex items-center px-2 py-0.5 text-xs text-gray-500 dark:text-gray-400 hover:text-blue-600 dark:hover:text-blue-400 transition">
+                                                            <svg class="w-3 h-3 mr-1" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M7 7h.01M7 3h5c.512 0 1.024.195 1.414.586l7 7a2 2 0 010 2.828l-7 7a2 2 0 01-2.828 0l-7-7A1.994 1.994 0 013 12V7a4 4 0 014-4z"></path>
+                                                            </svg>
+                                                            Classify
+                                                        </button>
+                                                    @endif
+                                                </td>
                                                 <td class="px-4 py-2 text-sm text-right font-medium {{ $txn['type'] === 'credit' ? 'text-green-600 dark:text-green-400' : 'text-red-600 dark:text-red-400' }}">
                                                     ${{ number_format($txn['amount'], 2) }}
                                                 </td>
@@ -3926,4 +3960,174 @@
             </div>
         </div>
     </div>
+
+    <!-- Category Classification Modal -->
+    <div id="category-modal-results" class="hidden fixed inset-0 bg-gray-500 bg-opacity-75 transition-opacity z-50">
+        <div class="fixed inset-0 overflow-y-auto">
+            <div class="flex min-h-full items-center justify-center p-4">
+                <div class="relative transform overflow-hidden rounded-lg bg-white dark:bg-gray-800 text-left shadow-xl transition-all w-full max-w-lg">
+                    <div class="bg-white dark:bg-gray-800 px-6 pt-5 pb-4">
+                        <div class="flex items-center justify-between mb-4">
+                            <h3 class="text-lg font-medium text-gray-900 dark:text-white">Classify Transaction</h3>
+                            <button onclick="closeCategoryModalResults()" class="text-gray-400 hover:text-gray-500 dark:hover:text-gray-300">
+                                <svg class="h-6 w-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"></path>
+                                </svg>
+                            </button>
+                        </div>
+
+                        <div class="mb-4">
+                            <p class="text-sm text-gray-500 dark:text-gray-400 mb-1">Description</p>
+                            <p id="modal-description-results" class="text-sm font-medium text-gray-900 dark:text-white"></p>
+                        </div>
+
+                        <div class="mb-4">
+                            <label class="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">Select Category</label>
+                            <div id="category-grid-results" class="grid grid-cols-2 gap-2 max-h-96 overflow-y-auto">
+                                <!-- Categories will be loaded here -->
+                            </div>
+                        </div>
+                    </div>
+                    <div class="bg-gray-50 dark:bg-gray-700 px-6 py-3 flex justify-end gap-2">
+                        <button onclick="closeCategoryModalResults()" class="px-4 py-2 text-sm font-medium text-gray-700 dark:text-gray-300 bg-white dark:bg-gray-600 border border-gray-300 dark:border-gray-500 rounded-md hover:bg-gray-50 dark:hover:bg-gray-500">
+                            Cancel
+                        </button>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        let currentTransactionIdResults = null;
+        let currentTransactionTypeResults = null;
+        let categoriesDataResults = null;
+
+        // Load categories on page load
+        document.addEventListener('DOMContentLoaded', function() {
+            loadCategoriesResults();
+            applyCategoryColorsResults();
+        });
+
+        function loadCategoriesResults() {
+            fetch('{{ route("bankstatement.categories") }}')
+                .then(response => response.json())
+                .then(data => {
+                    categoriesDataResults = data.categories;
+                })
+                .catch(error => {
+                    console.error('Error loading categories:', error);
+                });
+        }
+
+        function openCategoryModalResults(transactionId, description, amount, type) {
+            currentTransactionIdResults = transactionId;
+            currentTransactionTypeResults = type;
+
+            document.getElementById('modal-description-results').textContent = description;
+
+            if (!categoriesDataResults) {
+                alert('Categories are still loading. Please try again in a moment.');
+                return;
+            }
+
+            // Filter categories based on transaction type
+            const filteredCategories = Object.entries(categoriesDataResults).filter(([key, cat]) =>
+                cat.type === 'both' || cat.type === type
+            );
+
+            // Build category grid
+            const grid = document.getElementById('category-grid-results');
+            grid.innerHTML = filteredCategories.map(([key, cat]) => `
+                <button onclick="selectCategoryResults('${key}')"
+                        class="flex items-center gap-2 px-3 py-2 text-left text-sm border rounded-lg hover:bg-gray-50 dark:hover:bg-gray-700 transition category-option"
+                        data-category="${key}">
+                    <span class="w-3 h-3 rounded-full category-color-${cat.color}"></span>
+                    <span class="text-gray-900 dark:text-white">${cat.label}</span>
+                </button>
+            `).join('');
+
+            document.getElementById('category-modal-results').classList.remove('hidden');
+        }
+
+        function closeCategoryModalResults() {
+            document.getElementById('category-modal-results').classList.add('hidden');
+            currentTransactionIdResults = null;
+            currentTransactionTypeResults = null;
+        }
+
+        function selectCategoryResults(categoryKey) {
+            if (!currentTransactionIdResults) return;
+
+            const description = document.getElementById('modal-description-results').textContent;
+            const row = document.querySelector(`tr[data-transaction-id="${currentTransactionIdResults}"]`);
+            const amountText = row.querySelector('td:nth-child(4)').textContent.trim();
+            const amount = parseFloat(amountText.replace(/[$,]/g, ''));
+
+            fetch('{{ route("bankstatement.toggle-category") }}', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                    'X-CSRF-TOKEN': '{{ csrf_token() }}',
+                    'Accept': 'application/json'
+                },
+                body: JSON.stringify({
+                    description: description,
+                    amount: amount,
+                    type: currentTransactionTypeResults,
+                    category: categoryKey,
+                    subcategory: null
+                })
+            })
+            .then(response => response.json())
+            .then(data => {
+                if (data.success) {
+                    // Update the category cell
+                    const categoryCell = document.getElementById('category-cell-' + currentTransactionIdResults);
+                    const categoryInfo = categoriesDataResults[categoryKey];
+                    categoryCell.innerHTML = `
+                        <span class="inline-flex items-center px-2 py-0.5 rounded text-xs font-medium category-badge bg-${categoryInfo.color}-100 text-${categoryInfo.color}-800 dark:bg-${categoryInfo.color}-900 dark:text-${categoryInfo.color}-200"
+                              data-category="${categoryKey}">
+                            ${categoryInfo.label}
+                        </span>
+                    `;
+
+                    closeCategoryModalResults();
+
+                    // Show success message
+                    showNotificationResults(data.message, 'success');
+                } else {
+                    showNotificationResults(data.message || 'Failed to classify transaction', 'error');
+                }
+            })
+            .catch(error => {
+                console.error('Error:', error);
+                showNotificationResults('An error occurred while classifying the transaction', 'error');
+            });
+        }
+
+        function applyCategoryColorsResults() {
+            document.querySelectorAll('.category-badge').forEach(badge => {
+                const category = badge.dataset.category;
+                if (categoriesDataResults && categoriesDataResults[category]) {
+                    const color = categoriesDataResults[category].color;
+                    badge.classList.add(`bg-${color}-100`, `text-${color}-800`);
+                    badge.classList.add(`dark:bg-${color}-900`, `dark:text-${color}-200`);
+                }
+            });
+        }
+
+        function showNotificationResults(message, type) {
+            const bgColor = type === 'success' ? 'bg-green-500' : 'bg-red-500';
+            const notification = document.createElement('div');
+            notification.className = `fixed top-4 right-4 ${bgColor} text-white px-6 py-3 rounded-lg shadow-lg z-50 transition-opacity`;
+            notification.textContent = message;
+            document.body.appendChild(notification);
+
+            setTimeout(() => {
+                notification.style.opacity = '0';
+                setTimeout(() => notification.remove(), 300);
+            }, 3000);
+        }
+    </script>
 </x-app-layout>

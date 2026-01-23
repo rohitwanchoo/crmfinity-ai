@@ -1,4 +1,22 @@
 <x-app-layout>
+    <style>
+        /* Category color indicators for modal */
+        .category-color-purple { background-color: rgb(147, 51, 234); }
+        .category-color-blue { background-color: rgb(59, 130, 246); }
+        .category-color-indigo { background-color: rgb(99, 102, 241); }
+        .category-color-green { background-color: rgb(34, 197, 94); }
+        .category-color-cyan { background-color: rgb(6, 182, 212); }
+        .category-color-teal { background-color: rgb(20, 184, 166); }
+        .category-color-gray { background-color: rgb(107, 114, 128); }
+        .category-color-amber { background-color: rgb(245, 158, 11); }
+        .category-color-orange { background-color: rgb(249, 115, 22); }
+        .category-color-red { background-color: rgb(239, 68, 68); }
+        .category-color-pink { background-color: rgb(236, 72, 153); }
+        .category-color-yellow { background-color: rgb(234, 179, 8); }
+        .category-color-emerald { background-color: rgb(16, 185, 129); }
+        .category-color-lime { background-color: rgb(132, 204, 22); }
+    </style>
+
     <x-slot name="header">
         <h2 class="font-semibold text-xl text-gray-800 dark:text-gray-200 leading-tight">
             Analysis Details: {{ Str::limit($session->filename, 40) }}
@@ -124,6 +142,7 @@
                                     <th class="px-4 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase">#</th>
                                     <th class="px-4 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase">Date</th>
                                     <th class="px-4 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase">Description</th>
+                                    <th class="px-4 py-3 text-center text-xs font-medium text-gray-500 dark:text-gray-400 uppercase">Category</th>
                                     <th class="px-4 py-3 text-right text-xs font-medium text-gray-500 dark:text-gray-400 uppercase">Amount</th>
                                     <th class="px-4 py-3 text-center text-xs font-medium text-gray-500 dark:text-gray-400 uppercase">Type</th>
                                     <th class="px-4 py-3 text-center text-xs font-medium text-gray-500 dark:text-gray-400 uppercase">Action</th>
@@ -131,7 +150,7 @@
                             </thead>
                             <tbody class="bg-white dark:bg-gray-800 divide-y divide-gray-200 dark:divide-gray-700">
                                 @foreach($transactions as $index => $txn)
-                                <tr class="hover:bg-gray-50 dark:hover:bg-gray-700" id="txn-row-{{ $txn->id }}">
+                                <tr class="hover:bg-gray-50 dark:hover:bg-gray-700" id="txn-row-{{ $txn->id }}" data-transaction-id="{{ $txn->id }}">
                                     <td class="px-4 py-3 text-sm text-gray-500 dark:text-gray-400">{{ $index + 1 }}</td>
                                     <td class="px-4 py-3 text-sm text-gray-900 dark:text-gray-100 whitespace-nowrap">{{ $txn->transaction_date->format('Y-m-d') }}</td>
                                     <td class="px-4 py-3 text-sm text-gray-900 dark:text-gray-100">
@@ -140,6 +159,21 @@
                                         <span class="ml-1 inline-flex items-center px-1.5 py-0.5 rounded text-xs font-medium bg-yellow-100 text-yellow-800 dark:bg-yellow-900 dark:text-yellow-200">
                                             Corrected
                                         </span>
+                                        @endif
+                                    </td>
+                                    <td class="px-4 py-3 text-center" id="category-cell-{{ $txn->id }}">
+                                        @if($txn->category)
+                                            <span class="inline-flex items-center px-2 py-0.5 rounded text-xs font-medium category-badge" data-category="{{ $txn->category }}">
+                                                {{ ucwords(str_replace('_', ' ', $txn->category)) }}
+                                            </span>
+                                        @else
+                                            <button onclick="openCategoryModal({{ $txn->id }}, '{{ addslashes($txn->description) }}', {{ $txn->amount }}, '{{ $txn->type }}')"
+                                                    class="inline-flex items-center px-2 py-1 text-xs text-gray-500 dark:text-gray-400 hover:text-blue-600 dark:hover:text-blue-400 transition">
+                                                <svg class="w-3 h-3 mr-1" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M7 7h.01M7 3h5c.512 0 1.024.195 1.414.586l7 7a2 2 0 010 2.828l-7 7a2 2 0 01-2.828 0l-7-7A1.994 1.994 0 013 12V7a4 4 0 014-4z"></path>
+                                                </svg>
+                                                Classify
+                                            </button>
                                         @endif
                                     </td>
                                     <td class="px-4 py-3 text-sm text-right font-medium amount-cell" id="amount-{{ $txn->id }}" data-type="{{ $txn->type }}">
@@ -197,7 +231,174 @@
         </div>
     </div>
 
+    <!-- Category Classification Modal -->
+    <div id="category-modal" class="hidden fixed inset-0 bg-gray-500 bg-opacity-75 transition-opacity z-50">
+        <div class="fixed inset-0 overflow-y-auto">
+            <div class="flex min-h-full items-center justify-center p-4">
+                <div class="relative transform overflow-hidden rounded-lg bg-white dark:bg-gray-800 text-left shadow-xl transition-all w-full max-w-lg">
+                    <div class="bg-white dark:bg-gray-800 px-6 pt-5 pb-4">
+                        <div class="flex items-center justify-between mb-4">
+                            <h3 class="text-lg font-medium text-gray-900 dark:text-white">Classify Transaction</h3>
+                            <button onclick="closeCategoryModal()" class="text-gray-400 hover:text-gray-500 dark:hover:text-gray-300">
+                                <svg class="h-6 w-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"></path>
+                                </svg>
+                            </button>
+                        </div>
+
+                        <div class="mb-4">
+                            <p class="text-sm text-gray-500 dark:text-gray-400 mb-1">Description</p>
+                            <p id="modal-description" class="text-sm font-medium text-gray-900 dark:text-white"></p>
+                        </div>
+
+                        <div class="mb-4">
+                            <label class="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">Select Category</label>
+                            <div id="category-grid" class="grid grid-cols-2 gap-2 max-h-96 overflow-y-auto">
+                                <!-- Categories will be loaded here -->
+                            </div>
+                        </div>
+                    </div>
+                    <div class="bg-gray-50 dark:bg-gray-700 px-6 py-3 flex justify-end gap-2">
+                        <button onclick="closeCategoryModal()" class="px-4 py-2 text-sm font-medium text-gray-700 dark:text-gray-300 bg-white dark:bg-gray-600 border border-gray-300 dark:border-gray-500 rounded-md hover:bg-gray-50 dark:hover:bg-gray-500">
+                            Cancel
+                        </button>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
     <script>
+        let currentTransactionId = null;
+        let currentTransactionType = null;
+        let categoriesData = null;
+
+        // Load categories on page load
+        document.addEventListener('DOMContentLoaded', function() {
+            loadCategories();
+            applyCategoryColors();
+        });
+
+        function loadCategories() {
+            fetch('{{ route("bankstatement.categories") }}')
+                .then(response => response.json())
+                .then(data => {
+                    categoriesData = data.categories;
+                })
+                .catch(error => {
+                    console.error('Error loading categories:', error);
+                });
+        }
+
+        function openCategoryModal(transactionId, description, amount, type) {
+            currentTransactionId = transactionId;
+            currentTransactionType = type;
+
+            document.getElementById('modal-description').textContent = description;
+
+            if (!categoriesData) {
+                alert('Categories are still loading. Please try again in a moment.');
+                return;
+            }
+
+            // Filter categories based on transaction type
+            const filteredCategories = Object.entries(categoriesData).filter(([key, cat]) =>
+                cat.type === 'both' || cat.type === type
+            );
+
+            // Build category grid
+            const grid = document.getElementById('category-grid');
+            grid.innerHTML = filteredCategories.map(([key, cat]) => `
+                <button onclick="selectCategory('${key}')"
+                        class="flex items-center gap-2 px-3 py-2 text-left text-sm border rounded-lg hover:bg-gray-50 dark:hover:bg-gray-700 transition category-option"
+                        data-category="${key}">
+                    <span class="w-3 h-3 rounded-full category-color-${cat.color}"></span>
+                    <span class="text-gray-900 dark:text-white">${cat.label}</span>
+                </button>
+            `).join('');
+
+            document.getElementById('category-modal').classList.remove('hidden');
+        }
+
+        function closeCategoryModal() {
+            document.getElementById('category-modal').classList.add('hidden');
+            currentTransactionId = null;
+            currentTransactionType = null;
+        }
+
+        function selectCategory(categoryKey) {
+            if (!currentTransactionId) return;
+
+            const description = document.getElementById('modal-description').textContent;
+            const row = document.querySelector(`tr[data-transaction-id="${currentTransactionId}"]`);
+            const amount = parseFloat(row.querySelector('[id^="amount-"]').textContent.replace(/[$,]/g, ''));
+
+            fetch('{{ route("bankstatement.toggle-category") }}', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                    'X-CSRF-TOKEN': '{{ csrf_token() }}',
+                    'Accept': 'application/json'
+                },
+                body: JSON.stringify({
+                    description: description,
+                    amount: amount,
+                    type: currentTransactionType,
+                    category: categoryKey,
+                    subcategory: null
+                })
+            })
+            .then(response => response.json())
+            .then(data => {
+                if (data.success) {
+                    // Update the category cell
+                    const categoryCell = document.getElementById('category-cell-' + currentTransactionId);
+                    const categoryInfo = categoriesData[categoryKey];
+                    categoryCell.innerHTML = `
+                        <span class="inline-flex items-center px-2 py-0.5 rounded text-xs font-medium category-badge bg-${categoryInfo.color}-100 text-${categoryInfo.color}-800 dark:bg-${categoryInfo.color}-900 dark:text-${categoryInfo.color}-200"
+                              data-category="${categoryKey}">
+                            ${categoryInfo.label}
+                        </span>
+                    `;
+
+                    closeCategoryModal();
+
+                    // Show success message
+                    showNotification(data.message, 'success');
+                } else {
+                    showNotification(data.message || 'Failed to classify transaction', 'error');
+                }
+            })
+            .catch(error => {
+                console.error('Error:', error);
+                showNotification('An error occurred while classifying the transaction', 'error');
+            });
+        }
+
+        function applyCategoryColors() {
+            document.querySelectorAll('.category-badge').forEach(badge => {
+                const category = badge.dataset.category;
+                if (categoriesData && categoriesData[category]) {
+                    const color = categoriesData[category].color;
+                    badge.classList.add(`bg-${color}-100`, `text-${color}-800`);
+                    badge.classList.add(`dark:bg-${color}-900`, `dark:text-${color}-200`);
+                }
+            });
+        }
+
+        function showNotification(message, type) {
+            const bgColor = type === 'success' ? 'bg-green-500' : 'bg-red-500';
+            const notification = document.createElement('div');
+            notification.className = `fixed top-4 right-4 ${bgColor} text-white px-6 py-3 rounded-lg shadow-lg z-50 transition-opacity`;
+            notification.textContent = message;
+            document.body.appendChild(notification);
+
+            setTimeout(() => {
+                notification.style.opacity = '0';
+                setTimeout(() => notification.remove(), 300);
+            }, 3000);
+        }
+
         function toggleType(transactionId, currentType) {
             const btn = document.getElementById('toggle-btn-' + transactionId);
             btn.disabled = true;
