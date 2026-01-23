@@ -36,6 +36,8 @@ Route::middleware('auth')->group(function () {
         Route::post('/toggle-type', [BankStatementController::class, 'toggleType'])->name('toggle-type');
         Route::post('/toggle-revenue', [BankStatementController::class, 'toggleRevenue'])->name('toggle-revenue');
         Route::post('/toggle-mca', [BankStatementController::class, 'toggleMca'])->name('toggle-mca');
+        Route::post('/toggle-category', [BankStatementController::class, 'toggleCategory'])->name('toggle-category');
+        Route::get('/categories', [BankStatementController::class, 'getCategories'])->name('categories');
         Route::post('/batch-classify', [BankStatementController::class, 'batchClassify'])->name('batch-classify');
         Route::get('/mca-lenders', [BankStatementController::class, 'getMcaLenders'])->name('mca-lenders');
         Route::get('/view-analysis', [BankStatementController::class, 'viewAnalysis'])->name('view-analysis');

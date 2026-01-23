@@ -9,6 +9,7 @@ use App\Models\AnalysisSession;
 use App\Models\AnalyzedTransaction;
 use App\Models\RevenueClassification;
 use App\Models\McaPattern;
+use App\Models\TransactionCategory;
 
 class BankStatementController extends Controller
 {
@@ -798,6 +799,69 @@ class BankStatementController extends Controller
             'lender_id' => $lenderId,
             'lender_name' => $lenderName,
             'amount' => (float) $request->amount,
+        ]);
+    }
+
+    /**
+     * Toggle transaction category classification
+     */
+    public function toggleCategory(Request $request)
+    {
+        $request->validate([
+            'description' => 'required|string',
+            'amount' => 'required|numeric',
+            'type' => 'required|in:credit,debit',
+            'category' => 'required|string',
+            'subcategory' => 'nullable|string',
+        ]);
+
+        $category = $request->category;
+        $subcategory = $request->subcategory;
+        $transactionType = $request->type;
+
+        // Validate category exists in standard categories
+        $standardCategories = TransactionCategory::getStandardCategories();
+        if (!isset($standardCategories[$category])) {
+            return response()->json([
+                'success' => false,
+                'message' => 'Invalid category selected.',
+            ], 400);
+        }
+
+        // Save to transaction_categories table for AI learning
+        TransactionCategory::recordCategory(
+            $request->description,
+            $category,
+            $subcategory,
+            $transactionType,
+            auth()->id()
+        );
+
+        $categoryLabel = $standardCategories[$category]['label'];
+        $message = "Transaction classified as '{$categoryLabel}'. AI will learn from this.";
+
+        Log::info("BankStatement Category Classification: '{$request->description}' classified as {$category}");
+
+        return response()->json([
+            'success' => true,
+            'message' => $message,
+            'category' => $category,
+            'category_label' => $categoryLabel,
+            'subcategory' => $subcategory,
+            'amount' => (float) $request->amount,
+        ]);
+    }
+
+    /**
+     * Get available transaction categories
+     */
+    public function getCategories()
+    {
+        $categories = TransactionCategory::getStandardCategories();
+
+        return response()->json([
+            'success' => true,
+            'categories' => $categories,
         ]);
     }
 
