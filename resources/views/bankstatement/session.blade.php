@@ -33,33 +33,57 @@
                 </div>
             </div>
 
+            <!-- Analysis Summary Header with Toggle -->
+            <div class="mb-4 flex items-center justify-between">
+                <h3 class="text-lg font-semibold text-gray-900 dark:text-gray-100">Analysis Summary</h3>
+                <!-- View Mode Toggle -->
+                <div class="flex items-center gap-2 bg-gray-100 dark:bg-gray-700 rounded-lg p-1">
+                    <button onclick="toggleDashboardView('credit')" id="credit-view-btn" class="px-4 py-2 text-sm font-medium rounded-md transition-all duration-200 bg-white dark:bg-gray-800 text-green-600 dark:text-green-400 shadow-sm">
+                        <div class="flex items-center gap-2">
+                            <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M7 11l5-5m0 0l5 5m-5-5v12"></path>
+                            </svg>
+                            Credit View
+                        </div>
+                    </button>
+                    <button onclick="toggleDashboardView('debit')" id="debit-view-btn" class="px-4 py-2 text-sm font-medium rounded-md transition-all duration-200 text-gray-600 dark:text-gray-400 hover:bg-gray-200 dark:hover:bg-gray-600">
+                        <div class="flex items-center gap-2">
+                            <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M17 13l-5 5m0 0l-5-5m5 5V6"></path>
+                            </svg>
+                            Debit View
+                        </div>
+                    </button>
+                </div>
+            </div>
+
             <!-- Summary Cards -->
             <div class="grid grid-cols-2 md:grid-cols-6 gap-4 mb-6">
-                <div class="bg-white dark:bg-gray-800 p-4 rounded-lg shadow-sm">
+                <div class="metric-card bg-white dark:bg-gray-800 p-4 rounded-lg shadow-sm transition-all duration-300" data-metric-type="neutral">
                     <p class="text-sm text-gray-500 dark:text-gray-400">File</p>
                     <p class="text-sm font-semibold text-gray-900 dark:text-gray-100 truncate" title="{{ $session->filename }}">{{ $session->filename }}</p>
                 </div>
-                <div class="bg-white dark:bg-gray-800 p-4 rounded-lg shadow-sm">
+                <div class="metric-card bg-white dark:bg-gray-800 p-4 rounded-lg shadow-sm transition-all duration-300" data-metric-type="neutral">
                     <p class="text-sm text-gray-500 dark:text-gray-400">Transactions</p>
                     <p class="text-2xl font-bold text-gray-900 dark:text-gray-100">{{ $session->total_transactions }}</p>
                 </div>
-                <div class="bg-white dark:bg-gray-800 p-4 rounded-lg shadow-sm">
+                <div class="metric-card bg-white dark:bg-gray-800 p-4 rounded-lg shadow-sm transition-all duration-300" data-metric-type="credit">
                     <p class="text-sm text-gray-500 dark:text-gray-400">Total Credits</p>
-                    <p class="text-2xl font-bold text-green-600 dark:text-green-400" id="total-credits">${{ number_format($session->total_credits, 2) }}</p>
-                    <p class="text-xs text-gray-500"><span id="credit-count">{{ $credits->count() }}</span> transactions</p>
+                    <p class="metric-value text-2xl font-bold text-green-600 dark:text-green-400" id="total-credits">${{ number_format($session->total_credits, 2) }}</p>
+                    <p class="metric-subtext text-xs text-gray-500"><span id="credit-count">{{ $credits->count() }}</span> transactions</p>
                 </div>
-                <div class="bg-white dark:bg-gray-800 p-4 rounded-lg shadow-sm">
+                <div class="metric-card bg-white dark:bg-gray-800 p-4 rounded-lg shadow-sm transition-all duration-300" data-metric-type="debit">
                     <p class="text-sm text-gray-500 dark:text-gray-400">Total Debits</p>
-                    <p class="text-2xl font-bold text-red-600 dark:text-red-400" id="total-debits">${{ number_format($session->total_debits, 2) }}</p>
-                    <p class="text-xs text-gray-500"><span id="debit-count">{{ $debits->count() }}</span> transactions</p>
+                    <p class="metric-value text-2xl font-bold text-red-600 dark:text-red-400" id="total-debits">${{ number_format($session->total_debits, 2) }}</p>
+                    <p class="metric-subtext text-xs text-gray-500"><span id="debit-count">{{ $debits->count() }}</span> transactions</p>
                 </div>
-                <div class="bg-white dark:bg-gray-800 p-4 rounded-lg shadow-sm">
+                <div class="metric-card bg-white dark:bg-gray-800 p-4 rounded-lg shadow-sm transition-all duration-300" data-metric-type="neutral">
                     <p class="text-sm text-gray-500 dark:text-gray-400">Net Balance</p>
                     <p class="text-2xl font-bold {{ $session->net_flow >= 0 ? 'text-green-600 dark:text-green-400' : 'text-red-600 dark:text-red-400' }}" id="net-balance">
                         ${{ number_format($session->net_flow, 2) }}
                     </p>
                 </div>
-                <div class="bg-white dark:bg-gray-800 p-4 rounded-lg shadow-sm">
+                <div class="metric-card bg-white dark:bg-gray-800 p-4 rounded-lg shadow-sm transition-all duration-300" data-metric-type="neutral">
                     <p class="text-sm text-gray-500 dark:text-gray-400">API Cost</p>
                     <p class="text-2xl font-bold text-gray-900 dark:text-gray-100">${{ number_format($session->api_cost ?? 0, 4) }}</p>
                     <p class="text-xs text-gray-500">LSC AI</p>
@@ -258,6 +282,84 @@
                 toast.style.opacity = '0';
                 setTimeout(() => toast.remove(), 300);
             }, 3000);
+        }
+
+        // Toggle Dashboard View between Credit and Debit focus
+        function toggleDashboardView(viewMode) {
+            const creditBtn = document.getElementById('credit-view-btn');
+            const debitBtn = document.getElementById('debit-view-btn');
+            const metricCards = document.querySelectorAll('.metric-card');
+
+            // Update button states
+            if (viewMode === 'credit') {
+                // Credit button active
+                creditBtn.className = 'px-4 py-2 text-sm font-medium rounded-md transition-all duration-200 bg-white dark:bg-gray-800 text-green-600 dark:text-green-400 shadow-sm';
+                debitBtn.className = 'px-4 py-2 text-sm font-medium rounded-md transition-all duration-200 text-gray-600 dark:text-gray-400 hover:bg-gray-200 dark:hover:bg-gray-600';
+
+                // Highlight credit metrics, de-emphasize debit metrics
+                metricCards.forEach(card => {
+                    const metricType = card.getAttribute('data-metric-type');
+
+                    if (metricType === 'credit') {
+                        // Emphasize credit metrics
+                        card.classList.remove('opacity-60', 'scale-95');
+                        card.classList.add('scale-105', 'shadow-lg', 'ring-2', 'ring-green-500', 'ring-opacity-50');
+
+                        const value = card.querySelector('.metric-value');
+                        const subtext = card.querySelector('.metric-subtext');
+                        if (value) value.classList.add('text-3xl');
+                        if (subtext) subtext.classList.remove('text-xs');
+                        if (subtext) subtext.classList.add('text-sm', 'font-medium');
+                    } else if (metricType === 'debit') {
+                        // De-emphasize debit metrics
+                        card.classList.add('opacity-60', 'scale-95');
+                        card.classList.remove('scale-105', 'shadow-lg', 'ring-2', 'ring-red-500', 'ring-opacity-50');
+
+                        const value = card.querySelector('.metric-value');
+                        const subtext = card.querySelector('.metric-subtext');
+                        if (value) value.classList.remove('text-3xl');
+                        if (subtext) subtext.classList.remove('text-sm', 'font-medium');
+                        if (subtext) subtext.classList.add('text-xs');
+                    } else {
+                        // Neutral metrics - normal state
+                        card.classList.remove('opacity-60', 'scale-95', 'scale-105', 'shadow-lg', 'ring-2', 'ring-green-500', 'ring-red-500', 'ring-opacity-50');
+                    }
+                });
+            } else if (viewMode === 'debit') {
+                // Debit button active
+                debitBtn.className = 'px-4 py-2 text-sm font-medium rounded-md transition-all duration-200 bg-white dark:bg-gray-800 text-red-600 dark:text-red-400 shadow-sm';
+                creditBtn.className = 'px-4 py-2 text-sm font-medium rounded-md transition-all duration-200 text-gray-600 dark:text-gray-400 hover:bg-gray-200 dark:hover:bg-gray-600';
+
+                // Highlight debit metrics, de-emphasize credit metrics
+                metricCards.forEach(card => {
+                    const metricType = card.getAttribute('data-metric-type');
+
+                    if (metricType === 'debit') {
+                        // Emphasize debit metrics
+                        card.classList.remove('opacity-60', 'scale-95');
+                        card.classList.add('scale-105', 'shadow-lg', 'ring-2', 'ring-red-500', 'ring-opacity-50');
+
+                        const value = card.querySelector('.metric-value');
+                        const subtext = card.querySelector('.metric-subtext');
+                        if (value) value.classList.add('text-3xl');
+                        if (subtext) subtext.classList.remove('text-xs');
+                        if (subtext) subtext.classList.add('text-sm', 'font-medium');
+                    } else if (metricType === 'credit') {
+                        // De-emphasize credit metrics
+                        card.classList.add('opacity-60', 'scale-95');
+                        card.classList.remove('scale-105', 'shadow-lg', 'ring-2', 'ring-green-500', 'ring-opacity-50');
+
+                        const value = card.querySelector('.metric-value');
+                        const subtext = card.querySelector('.metric-subtext');
+                        if (value) value.classList.remove('text-3xl');
+                        if (subtext) subtext.classList.remove('text-sm', 'font-medium');
+                        if (subtext) subtext.classList.add('text-xs');
+                    } else {
+                        // Neutral metrics - normal state
+                        card.classList.remove('opacity-60', 'scale-95', 'scale-105', 'shadow-lg', 'ring-2', 'ring-green-500', 'ring-red-500', 'ring-opacity-50');
+                    }
+                });
+            }
         }
     </script>
 </x-app-layout>

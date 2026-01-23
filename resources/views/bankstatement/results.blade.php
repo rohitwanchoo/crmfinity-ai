@@ -147,36 +147,55 @@
                                 <p class="text-sm text-gray-500 dark:text-gray-400">{{ count($allSuccessfulResults) }} {{ Str::plural('file', count($allSuccessfulResults)) }} analyzed • {{ $monthCount }} {{ Str::plural('month', $monthCount) }} of data</p>
                             </div>
                         </div>
+                        <!-- View Mode Toggle -->
+                        <div class="flex items-center gap-2 bg-gray-100 dark:bg-gray-700 rounded-lg p-1">
+                            <button onclick="toggleDashboardView('credit')" id="credit-view-btn" class="px-4 py-2 text-sm font-medium rounded-md transition-all duration-200 bg-white dark:bg-gray-800 text-green-600 dark:text-green-400 shadow-sm">
+                                <div class="flex items-center gap-2">
+                                    <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M7 11l5-5m0 0l5 5m-5-5v12"></path>
+                                    </svg>
+                                    Credit View
+                                </div>
+                            </button>
+                            <button onclick="toggleDashboardView('debit')" id="debit-view-btn" class="px-4 py-2 text-sm font-medium rounded-md transition-all duration-200 text-gray-600 dark:text-gray-400 hover:bg-gray-200 dark:hover:bg-gray-600">
+                                <div class="flex items-center gap-2">
+                                    <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M17 13l-5 5m0 0l-5-5m5 5V6"></path>
+                                    </svg>
+                                    Debit View
+                                </div>
+                            </button>
+                        </div>
                     </div>
 
                     <!-- Combined Summary Stats -->
                     <div class="grid grid-cols-2 md:grid-cols-6 gap-4 mb-6">
-                        <div class="bg-gray-50 dark:bg-gray-700 p-4 rounded-lg">
+                        <div class="metric-card bg-gray-50 dark:bg-gray-700 p-4 rounded-lg transition-all duration-300" data-metric-type="neutral">
                             <p class="text-sm text-gray-500 dark:text-gray-400">Total Transactions</p>
                             <p class="text-2xl font-bold text-gray-900 dark:text-gray-100">{{ number_format($combinedTotals['transactions']) }}</p>
                         </div>
-                        <div class="bg-gray-50 dark:bg-gray-700 p-4 rounded-lg">
+                        <div class="metric-card bg-gray-50 dark:bg-gray-700 p-4 rounded-lg transition-all duration-300" data-metric-type="credit">
                             <p class="text-sm text-gray-500 dark:text-gray-400">Total Deposits</p>
-                            <p class="text-2xl font-bold text-green-600 dark:text-green-400">${{ number_format($combinedTotals['deposits'], 2) }}</p>
-                            <p class="text-xs text-gray-500">{{ $combinedTotals['deposit_count'] }} transactions</p>
+                            <p class="metric-value text-2xl font-bold text-green-600 dark:text-green-400">${{ number_format($combinedTotals['deposits'], 2) }}</p>
+                            <p class="metric-subtext text-xs text-gray-500">{{ $combinedTotals['deposit_count'] }} transactions</p>
                         </div>
-                        <div class="bg-gray-50 dark:bg-gray-700 p-4 rounded-lg">
+                        <div class="metric-card bg-gray-50 dark:bg-gray-700 p-4 rounded-lg transition-all duration-300" data-metric-type="neutral">
                             <p class="text-sm text-gray-500 dark:text-gray-400">Adjustments</p>
                             <p class="text-2xl font-bold text-orange-600 dark:text-orange-400">${{ number_format($combinedTotals['adjustments'], 2) }}</p>
                         </div>
-                        <div class="bg-green-50 dark:bg-green-900/30 p-4 rounded-lg border-2 border-green-300 dark:border-green-700">
+                        <div class="metric-card bg-green-50 dark:bg-green-900/30 p-4 rounded-lg border-2 border-green-300 dark:border-green-700 transition-all duration-300" data-metric-type="credit">
                             <p class="text-sm text-green-700 dark:text-green-300 font-medium">True Revenue</p>
-                            <p class="text-2xl font-bold text-green-600 dark:text-green-400">${{ number_format($combinedTotals['true_revenue'], 2) }}</p>
-                            <p class="text-xs text-green-600">Avg: ${{ number_format($combinedAverages['true_revenue'], 2) }}/mo</p>
+                            <p class="metric-value text-2xl font-bold text-green-600 dark:text-green-400">${{ number_format($combinedTotals['true_revenue'], 2) }}</p>
+                            <p class="metric-subtext text-xs text-green-600">Avg: ${{ number_format($combinedAverages['true_revenue'], 2) }}/mo</p>
                         </div>
-                        <div class="bg-gray-50 dark:bg-gray-700 p-4 rounded-lg">
+                        <div class="metric-card bg-gray-50 dark:bg-gray-700 p-4 rounded-lg transition-all duration-300" data-metric-type="debit">
                             <p class="text-sm text-gray-500 dark:text-gray-400">Total Debits</p>
-                            <p class="text-2xl font-bold text-red-600 dark:text-red-400">${{ number_format($combinedTotals['debits'], 2) }}</p>
-                            <p class="text-xs text-gray-500">{{ $combinedTotals['debit_count'] }} transactions</p>
+                            <p class="metric-value text-2xl font-bold text-red-600 dark:text-red-400">${{ number_format($combinedTotals['debits'], 2) }}</p>
+                            <p class="metric-subtext text-xs text-gray-500">{{ $combinedTotals['debit_count'] }} transactions</p>
                         </div>
-                        <div class="bg-gray-50 dark:bg-gray-700 p-4 rounded-lg">
+                        <div class="metric-card bg-gray-50 dark:bg-gray-700 p-4 rounded-lg transition-all duration-300" data-metric-type="debit">
                             <p class="text-sm text-gray-500 dark:text-gray-400">NSF/OD Fees</p>
-                            <p class="text-2xl font-bold {{ $combinedTotals['nsf_count'] > 0 ? 'text-red-600 dark:text-red-400' : 'text-gray-900 dark:text-gray-100' }}">{{ $combinedTotals['nsf_count'] }}</p>
+                            <p class="metric-value text-2xl font-bold {{ $combinedTotals['nsf_count'] > 0 ? 'text-red-600 dark:text-red-400' : 'text-gray-900 dark:text-gray-100' }}">{{ $combinedTotals['nsf_count'] }}</p>
                         </div>
                     </div>
 
@@ -632,12 +651,25 @@
                             <!-- Withhold Percentage -->
                             <div>
                                 <label class="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Withhold Percentage</label>
-                                <div class="flex items-center gap-2">
+                                <div class="flex items-center gap-2" id="withhold-slider-container">
                                     <input type="range" id="mca-calc-withhold-slider" min="5" max="25" value="20" class="flex-1" onchange="updateWithholdPercent(this.value)">
                                     <div class="flex items-center">
                                         <input type="number" id="mca-calc-withhold-percent" class="w-16 text-center border border-gray-300 dark:border-gray-600 dark:bg-gray-700 dark:text-white rounded px-2 py-1" value="20" step="1" min="5" max="25" onchange="updateWithholdSlider(this.value)">
                                         <span class="ml-1 text-gray-600 dark:text-gray-400">%</span>
                                     </div>
+                                </div>
+
+                                <!-- Manual Override Toggle -->
+                                <div class="mt-3 flex items-center">
+                                    <input type="checkbox" id="mca-calc-withhold-override-toggle" class="rounded border-gray-300 text-blue-600 focus:ring-blue-500" onchange="toggleWithholdOverride()">
+                                    <label for="mca-calc-withhold-override-toggle" class="ml-2 text-sm text-gray-600 dark:text-gray-400">Use custom withhold percentage</label>
+                                </div>
+                                <div id="mca-calc-withhold-override-input" class="mt-2 hidden">
+                                    <div class="flex items-center gap-2">
+                                        <input type="number" id="mca-calc-withhold-override-value" class="flex-1 text-sm border border-gray-300 dark:border-gray-600 dark:bg-gray-700 dark:text-white rounded px-3 py-2" placeholder="Enter custom %" step="0.1" min="0" max="100" onchange="recalculateWithWithholdOverride()">
+                                        <span class="text-gray-600 dark:text-gray-400">%</span>
+                                    </div>
+                                    <p class="text-xs text-blue-600 dark:text-blue-400 mt-1">Enter any percentage (0-100%) to override standard range</p>
                                 </div>
                             </div>
 
@@ -664,14 +696,91 @@
                                 </div>
                             </div>
 
-                            <!-- Term Months -->
+                            <!-- Term Selection -->
                             <div>
-                                <label class="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Term (Months)</label>
-                                <select id="mca-calc-term-months" class="w-full border border-gray-300 dark:border-gray-600 dark:bg-gray-700 dark:text-white rounded-lg px-3 py-2" onchange="recalculateOffer()">
-                                    @for($i = 1; $i <= 24; $i++)
-                                    <option value="{{ $i }}" {{ $i === 9 ? 'selected' : '' }}>{{ $i }} {{ $i === 1 ? 'Month' : 'Months' }}</option>
-                                    @endfor
-                                </select>
+                                <label class="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">Payment Frequency</label>
+
+                                <!-- Radio Buttons for Payment Frequency -->
+                                <div class="grid grid-cols-2 gap-2 mb-3">
+                                    <label class="flex items-center p-2 border border-gray-300 dark:border-gray-600 rounded-lg cursor-pointer hover:bg-gray-50 dark:hover:bg-gray-700 transition">
+                                        <input type="radio" name="term-type" value="daily" class="mr-2 text-blue-600 focus:ring-blue-500" onchange="switchTermType('daily')">
+                                        <span class="text-sm text-gray-700 dark:text-gray-300">Daily</span>
+                                    </label>
+                                    <label class="flex items-center p-2 border border-gray-300 dark:border-gray-600 rounded-lg cursor-pointer hover:bg-gray-50 dark:hover:bg-gray-700 transition">
+                                        <input type="radio" name="term-type" value="weekly" class="mr-2 text-blue-600 focus:ring-blue-500" onchange="switchTermType('weekly')">
+                                        <span class="text-sm text-gray-700 dark:text-gray-300">Weekly</span>
+                                    </label>
+                                    <label class="flex items-center p-2 border border-gray-300 dark:border-gray-600 rounded-lg cursor-pointer hover:bg-gray-50 dark:hover:bg-gray-700 transition">
+                                        <input type="radio" name="term-type" value="biweekly" class="mr-2 text-blue-600 focus:ring-blue-500" onchange="switchTermType('biweekly')">
+                                        <span class="text-sm text-gray-700 dark:text-gray-300">Bi-Weekly</span>
+                                    </label>
+                                    <label class="flex items-center p-2 border border-gray-300 dark:border-gray-600 rounded-lg cursor-pointer hover:bg-gray-50 dark:hover:bg-gray-700 transition bg-blue-50 dark:bg-blue-900/30 border-blue-500">
+                                        <input type="radio" name="term-type" value="monthly" class="mr-2 text-blue-600 focus:ring-blue-500" onchange="switchTermType('monthly')" checked>
+                                        <span class="text-sm font-medium text-blue-700 dark:text-blue-300">Monthly</span>
+                                    </label>
+                                </div>
+
+                                <!-- Dropdown for Daily -->
+                                <div id="term-dropdown-daily" class="hidden">
+                                    <label class="block text-xs text-gray-500 dark:text-gray-400 mb-1">Number of Daily Payments</label>
+                                    <select id="mca-calc-term-daily" class="w-full border border-gray-300 dark:border-gray-600 dark:bg-gray-700 dark:text-white rounded-lg px-3 py-2" onchange="recalculateOffer()">
+                                        <option value="60">60 Payments (~3 months)</option>
+                                        <option value="90">90 Payments (~4 months)</option>
+                                        <option value="120">120 Payments (~6 months)</option>
+                                        <option value="150">150 Payments (~7 months)</option>
+                                        <option value="180" selected>180 Payments (~9 months)</option>
+                                        <option value="195">195 Payments (~9.5 months)</option>
+                                        <option value="210">210 Payments (~10 months)</option>
+                                        <option value="240">240 Payments (~12 months)</option>
+                                        <option value="260">260 Payments (1 year)</option>
+                                    </select>
+                                </div>
+
+                                <!-- Dropdown for Weekly -->
+                                <div id="term-dropdown-weekly" class="hidden">
+                                    <label class="block text-xs text-gray-500 dark:text-gray-400 mb-1">Number of Weekly Payments</label>
+                                    <select id="mca-calc-term-weekly" class="w-full border border-gray-300 dark:border-gray-600 dark:bg-gray-700 dark:text-white rounded-lg px-3 py-2" onchange="recalculateOffer()">
+                                        <option value="12">12 Payments (~3 months)</option>
+                                        <option value="16">16 Payments (~4 months)</option>
+                                        <option value="20">20 Payments (~5 months)</option>
+                                        <option value="24">24 Payments (~6 months)</option>
+                                        <option value="28">28 Payments (~7 months)</option>
+                                        <option value="32">32 Payments (~8 months)</option>
+                                        <option value="36" selected>36 Payments (~9 months)</option>
+                                        <option value="40">40 Payments (~10 months)</option>
+                                        <option value="44">44 Payments (~11 months)</option>
+                                        <option value="48">48 Payments (~12 months)</option>
+                                        <option value="52">52 Payments (1 year)</option>
+                                    </select>
+                                </div>
+
+                                <!-- Dropdown for Bi-Weekly -->
+                                <div id="term-dropdown-biweekly" class="hidden">
+                                    <label class="block text-xs text-gray-500 dark:text-gray-400 mb-1">Number of Bi-Weekly Payments</label>
+                                    <select id="mca-calc-term-biweekly" class="w-full border border-gray-300 dark:border-gray-600 dark:bg-gray-700 dark:text-white rounded-lg px-3 py-2" onchange="recalculateOffer()">
+                                        <option value="6">6 Payments (~3 months)</option>
+                                        <option value="8">8 Payments (~4 months)</option>
+                                        <option value="10">10 Payments (~5 months)</option>
+                                        <option value="12">12 Payments (~6 months)</option>
+                                        <option value="14">14 Payments (~7 months)</option>
+                                        <option value="16">16 Payments (~8 months)</option>
+                                        <option value="18" selected>18 Payments (~9 months)</option>
+                                        <option value="20">20 Payments (~10 months)</option>
+                                        <option value="22">22 Payments (~11 months)</option>
+                                        <option value="24">24 Payments (~12 months)</option>
+                                        <option value="26">26 Payments (1 year)</option>
+                                    </select>
+                                </div>
+
+                                <!-- Dropdown for Monthly -->
+                                <div id="term-dropdown-monthly">
+                                    <label class="block text-xs text-gray-500 dark:text-gray-400 mb-1">Number of Monthly Payments</label>
+                                    <select id="mca-calc-term-monthly" class="w-full border border-gray-300 dark:border-gray-600 dark:bg-gray-700 dark:text-white rounded-lg px-3 py-2" onchange="recalculateOffer()">
+                                        @for($i = 1; $i <= 24; $i++)
+                                        <option value="{{ $i }}" {{ $i === 9 ? 'selected' : '' }}>{{ $i }} {{ $i === 1 ? 'Payment' : 'Payments' }}</option>
+                                        @endfor
+                                    </select>
+                                </div>
                             </div>
                         </div>
 
@@ -682,8 +791,21 @@
                             <!-- Funded Amount (based on withhold constraint) -->
                             <div class="bg-purple-50 dark:bg-purple-900/30 p-4 rounded-lg border border-purple-200 dark:border-purple-800">
                                 <label class="block text-sm font-medium text-purple-700 dark:text-purple-300 mb-1">Funded Amount</label>
-                                <p class="text-xs text-purple-600 dark:text-purple-400 mb-2">Based on withhold constraint</p>
+                                <p class="text-xs text-purple-600 dark:text-purple-400 mb-2" id="funded-amount-subtitle">Based on withhold constraint</p>
                                 <div class="text-3xl font-bold text-purple-600 dark:text-purple-400" id="mca-calc-funded-amount">$0.00</div>
+
+                                <!-- Manual Override Toggle -->
+                                <div class="mt-3 flex items-center">
+                                    <input type="checkbox" id="mca-calc-funded-override-toggle" class="rounded border-gray-300 text-purple-600 focus:ring-purple-500" onchange="toggleFundedOverride()">
+                                    <label for="mca-calc-funded-override-toggle" class="ml-2 text-sm text-purple-700 dark:text-purple-300">Manual override</label>
+                                </div>
+                                <div id="mca-calc-funded-override-input" class="mt-2 hidden">
+                                    <div class="relative">
+                                        <span class="absolute left-3 top-2 text-gray-500">$</span>
+                                        <input type="number" id="mca-calc-funded-override-value" class="w-full pl-8 pr-3 py-2 text-sm border border-purple-300 dark:border-purple-600 dark:bg-gray-700 dark:text-white rounded" placeholder="Enter funded amount" step="0.01" min="0" onchange="recalculateWithFundedOverride()">
+                                    </div>
+                                    <p class="text-xs text-purple-600 dark:text-purple-400 mt-1">Enter custom funded amount to recalculate utilization</p>
+                                </div>
                             </div>
 
                             <!-- Calculated Results -->
@@ -2950,12 +3072,98 @@
             recalculateOffer();
         }
 
+        // Switch Term Type (Daily, Weekly, BiWeekly, Monthly)
+        function switchTermType(type) {
+            // Hide all dropdowns
+            document.getElementById('term-dropdown-daily').classList.add('hidden');
+            document.getElementById('term-dropdown-weekly').classList.add('hidden');
+            document.getElementById('term-dropdown-biweekly').classList.add('hidden');
+            document.getElementById('term-dropdown-monthly').classList.add('hidden');
+
+            // Remove all label highlights
+            document.querySelectorAll('input[name="term-type"]').forEach(radio => {
+                const label = radio.closest('label');
+                label.classList.remove('bg-blue-50', 'dark:bg-blue-900/30', 'border-blue-500');
+                const span = label.querySelector('span');
+                span.classList.remove('font-medium', 'text-blue-700', 'dark:text-blue-300');
+                span.classList.add('text-gray-700', 'dark:text-gray-300');
+            });
+
+            // Show selected dropdown and highlight label
+            const selectedRadio = document.querySelector(`input[name="term-type"][value="${type}"]`);
+            const selectedLabel = selectedRadio.closest('label');
+            selectedLabel.classList.add('bg-blue-50', 'dark:bg-blue-900/30', 'border-blue-500');
+            const selectedSpan = selectedLabel.querySelector('span');
+            selectedSpan.classList.add('font-medium', 'text-blue-700', 'dark:text-blue-300');
+            selectedSpan.classList.remove('text-gray-700', 'dark:text-gray-300');
+
+            document.getElementById(`term-dropdown-${type}`).classList.remove('hidden');
+
+            // Recalculate offer
+            recalculateOffer();
+        }
+
+        // Get Term in Months (convert from selected payment frequency)
+        function getTermInMonths() {
+            const termType = document.querySelector('input[name="term-type"]:checked').value;
+
+            switch(termType) {
+                case 'daily':
+                    const daily = parseInt(document.getElementById('mca-calc-term-daily').value) || 180;
+                    return daily / 21.67; // Convert daily payments to months (~21.67 business days per month)
+                case 'weekly':
+                    const weekly = parseInt(document.getElementById('mca-calc-term-weekly').value) || 36;
+                    return weekly / 4.33; // Convert weekly payments to months (4.33 weeks = 1 month)
+                case 'biweekly':
+                    const biweekly = parseInt(document.getElementById('mca-calc-term-biweekly').value) || 18;
+                    return biweekly / 2.17; // Convert bi-weekly payments to months (2.17 payments = 1 month)
+                case 'monthly':
+                default:
+                    return parseInt(document.getElementById('mca-calc-term-monthly').value) || 9;
+            }
+        }
+
+        // Get Term Display Text
+        function getTermDisplayText() {
+            const termType = document.querySelector('input[name="term-type"]:checked').value;
+
+            switch(termType) {
+                case 'daily':
+                    const daily = parseInt(document.getElementById('mca-calc-term-daily').value) || 180;
+                    return `${daily} daily payments`;
+                case 'weekly':
+                    const weekly = parseInt(document.getElementById('mca-calc-term-weekly').value) || 36;
+                    return `${weekly} weekly payments`;
+                case 'biweekly':
+                    const biweekly = parseInt(document.getElementById('mca-calc-term-biweekly').value) || 18;
+                    return `${biweekly} bi-weekly payments`;
+                case 'monthly':
+                default:
+                    const monthly = parseInt(document.getElementById('mca-calc-term-monthly').value) || 9;
+                    return `${monthly} monthly ${monthly === 1 ? 'payment' : 'payments'}`;
+            }
+        }
+
         function recalculateOffer() {
+            // Check if any overrides are active, if so, route to appropriate function
+            const withholdOverride = document.getElementById('mca-calc-withhold-override-toggle').checked;
+            const fundedOverride = document.getElementById('mca-calc-funded-override-toggle').checked;
+
+            if (withholdOverride) {
+                recalculateWithWithholdOverride();
+                return;
+            }
+
+            if (fundedOverride) {
+                recalculateWithFundedOverride();
+                return;
+            }
+
             const trueRevenue = getTrueRevenue();
             const existingPayment = parseFloat(document.getElementById('mca-calc-existing-payment').value) || 0;
             const withholdPercent = parseFloat(document.getElementById('mca-calc-withhold-percent').value) || 20;
             const factorRate = parseFloat(document.getElementById('mca-calc-factor-rate').value) || 1.30;
-            const termMonths = parseInt(document.getElementById('mca-calc-term-months').value) || 9;
+            const termMonths = getTermInMonths();
 
             // Calculate cap amount and new payment available
             const capAmount = trueRevenue * (withholdPercent / 100);
@@ -2983,7 +3191,7 @@
             document.getElementById('mca-calc-result-monthly').textContent = formatCurrency(monthlyPayment);
             document.getElementById('mca-calc-result-weekly').textContent = formatCurrency(weeklyPayment);
             document.getElementById('mca-calc-result-daily').textContent = formatCurrency(dailyPayment);
-            document.getElementById('mca-calc-result-term').textContent = termMonths + (termMonths === 1 ? ' month' : ' months');
+            document.getElementById('mca-calc-result-term').textContent = getTermDisplayText();
 
             // Update utilization bar
             const utilizationBar = document.getElementById('mca-calc-utilization-bar');
@@ -3026,30 +3234,316 @@
         }
 
         function resetCalculator() {
+            // Reset revenue override
             document.getElementById('mca-calc-override-toggle').checked = false;
             document.getElementById('mca-calc-override-value').value = '';
             document.getElementById('mca-calc-override-input').classList.add('hidden');
             document.getElementById('mca-calc-true-revenue').classList.remove('text-gray-400', 'line-through');
             document.getElementById('mca-calc-true-revenue').classList.add('text-green-600', 'dark:text-green-400');
+
+            // Reset funded amount override
+            document.getElementById('mca-calc-funded-override-toggle').checked = false;
+            document.getElementById('mca-calc-funded-override-value').value = '';
+            document.getElementById('mca-calc-funded-override-input').classList.add('hidden');
+            document.getElementById('mca-calc-funded-amount').classList.remove('text-gray-400', 'line-through');
+            document.getElementById('funded-amount-subtitle').textContent = 'Based on withhold constraint';
+
+            // Reset withhold percentage override
+            document.getElementById('mca-calc-withhold-override-toggle').checked = false;
+            document.getElementById('mca-calc-withhold-override-value').value = '';
+            document.getElementById('mca-calc-withhold-override-input').classList.add('hidden');
+            document.getElementById('withhold-slider-container').classList.remove('opacity-50', 'pointer-events-none');
+
+            // Reset other values
             document.getElementById('mca-calc-withhold-percent').value = 20;
             document.getElementById('mca-calc-withhold-slider').value = 20;
             document.getElementById('mca-calc-factor-rate').value = 1.30;
             document.getElementById('mca-calc-factor-slider').value = 1.30;
-            document.getElementById('mca-calc-term-months').value = 9;
+
+            // Reset term type to monthly
+            document.querySelector('input[name="term-type"][value="monthly"]').checked = true;
+            switchTermType('monthly');
+            document.getElementById('mca-calc-term-monthly').value = 9;
+
             recalculateOffer();
+        }
+
+        // Toggle Funded Amount Override
+        function toggleFundedOverride() {
+            const toggle = document.getElementById('mca-calc-funded-override-toggle');
+            const input = document.getElementById('mca-calc-funded-override-input');
+            const fundedAmountDisplay = document.getElementById('mca-calc-funded-amount');
+            const subtitle = document.getElementById('funded-amount-subtitle');
+
+            if (toggle.checked) {
+                input.classList.remove('hidden');
+                fundedAmountDisplay.classList.add('text-gray-400', 'line-through');
+                subtitle.textContent = 'Manual override active';
+            } else {
+                input.classList.add('hidden');
+                fundedAmountDisplay.classList.remove('text-gray-400', 'line-through');
+                subtitle.textContent = 'Based on withhold constraint';
+                document.getElementById('mca-calc-funded-override-value').value = '';
+                recalculateOffer();
+            }
+        }
+
+        // Recalculate with Funded Amount Override
+        function recalculateWithFundedOverride() {
+            const override = document.getElementById('mca-calc-funded-override-toggle').checked;
+
+            if (!override) {
+                // Check if withhold is overridden
+                const withholdOverride = document.getElementById('mca-calc-withhold-override-toggle').checked;
+                if (withholdOverride) {
+                    recalculateWithWithholdOverride();
+                } else {
+                    recalculateOffer();
+                }
+                return;
+            }
+
+            const manualFundedAmount = parseFloat(document.getElementById('mca-calc-funded-override-value').value) || 0;
+            const trueRevenue = getTrueRevenue();
+            const existingPayment = parseFloat(document.getElementById('mca-calc-existing-payment').value) || 0;
+            const factorRate = parseFloat(document.getElementById('mca-calc-factor-rate').value) || 1.30;
+            const termMonths = getTermInMonths();
+
+            // Use manual funded amount instead of calculated
+            const fundedAmount = manualFundedAmount;
+
+            // Check if withhold percentage is overridden
+            const withholdOverride = document.getElementById('mca-calc-withhold-override-toggle').checked;
+            let withholdPercent;
+            if (withholdOverride) {
+                withholdPercent = parseFloat(document.getElementById('mca-calc-withhold-override-value').value) || 20;
+            } else {
+                withholdPercent = parseFloat(document.getElementById('mca-calc-withhold-percent').value) || 20;
+            }
+
+            // Calculate cap amount
+            const capAmount = trueRevenue * (withholdPercent / 100);
+
+            // Calculate offer details based on manual funded amount
+            const totalPayback = fundedAmount * factorRate;
+            const monthlyPayment = termMonths > 0 ? totalPayback / termMonths : 0;
+            const weeklyPayment = monthlyPayment / 4.33;
+            const dailyPayment = monthlyPayment / 21.67;
+
+            // Calculate withhold utilization based on manual funded amount
+            const totalMonthlyPayment = existingPayment + monthlyPayment;
+            const withholdUtilization = capAmount > 0 ? (totalMonthlyPayment / capAmount) * 100 : 0;
+
+            // Calculate new payment available (reverse calculation)
+            const newPaymentAvailable = Math.max(0, capAmount - existingPayment);
+
+            // Update UI - keep calculated funded amount crossed out, show manual in results
+            document.getElementById('mca-calc-cap-amount').textContent = formatCurrency(capAmount);
+            document.getElementById('mca-calc-new-payment').textContent = formatCurrency(newPaymentAvailable);
+            // Don't update mca-calc-funded-amount as it should show the calculated value (crossed out)
+            document.getElementById('mca-calc-result-factor').textContent = factorRate.toFixed(2);
+            document.getElementById('mca-calc-result-payback').textContent = formatCurrency(totalPayback);
+            document.getElementById('mca-calc-result-monthly').textContent = formatCurrency(monthlyPayment);
+            document.getElementById('mca-calc-result-weekly').textContent = formatCurrency(weeklyPayment);
+            document.getElementById('mca-calc-result-daily').textContent = formatCurrency(dailyPayment);
+            document.getElementById('mca-calc-result-term').textContent = getTermDisplayText();
+
+            // Update utilization bar
+            const utilizationBar = document.getElementById('mca-calc-utilization-bar');
+            const utilizationText = document.getElementById('mca-calc-utilization-text');
+            utilizationText.textContent = Math.min(withholdUtilization, 100).toFixed(1) + '%';
+            utilizationBar.style.width = Math.min(withholdUtilization, 100) + '%';
+
+            // Update utilization bar color
+            if (withholdUtilization <= 50) {
+                utilizationBar.className = 'h-full bg-green-500 rounded-full transition-all duration-300';
+                utilizationText.className = 'font-semibold text-green-600 dark:text-green-400';
+            } else if (withholdUtilization <= 80) {
+                utilizationBar.className = 'h-full bg-yellow-500 rounded-full transition-all duration-300';
+                utilizationText.className = 'font-semibold text-yellow-600 dark:text-yellow-400';
+            } else if (withholdUtilization <= 100) {
+                utilizationBar.className = 'h-full bg-orange-500 rounded-full transition-all duration-300';
+                utilizationText.className = 'font-semibold text-orange-600 dark:text-orange-400';
+            } else {
+                utilizationBar.className = 'h-full bg-red-500 rounded-full transition-all duration-300';
+                utilizationText.className = 'font-semibold text-red-600 dark:text-red-400';
+            }
+
+            // Show/hide warning
+            const warningDiv = document.getElementById('mca-calc-warning');
+            const warningText = document.getElementById('mca-calc-warning-text');
+
+            if (withholdUtilization > 100) {
+                warningDiv.classList.remove('hidden');
+                warningText.textContent = `Total withhold utilization (${withholdUtilization.toFixed(1)}%) exceeds 100%. This offer may not be viable.`;
+            } else if (fundedAmount <= 0) {
+                warningDiv.classList.remove('hidden');
+                warningText.textContent = `Please enter a valid funded amount greater than $0.`;
+            } else {
+                warningDiv.classList.add('hidden');
+            }
+        }
+
+        // Toggle Withhold Percentage Override
+        function toggleWithholdOverride() {
+            const toggle = document.getElementById('mca-calc-withhold-override-toggle');
+            const input = document.getElementById('mca-calc-withhold-override-input');
+            const sliderContainer = document.getElementById('withhold-slider-container');
+
+            if (toggle.checked) {
+                input.classList.remove('hidden');
+                sliderContainer.classList.add('opacity-50', 'pointer-events-none');
+            } else {
+                input.classList.add('hidden');
+                sliderContainer.classList.remove('opacity-50', 'pointer-events-none');
+                document.getElementById('mca-calc-withhold-override-value').value = '';
+
+                // Check if funded amount is overridden
+                const fundedOverride = document.getElementById('mca-calc-funded-override-toggle').checked;
+                if (fundedOverride) {
+                    recalculateWithFundedOverride();
+                } else {
+                    recalculateOffer();
+                }
+            }
+        }
+
+        // Recalculate with Withhold Percentage Override
+        function recalculateWithWithholdOverride() {
+            const withholdOverride = document.getElementById('mca-calc-withhold-override-toggle').checked;
+            const fundedOverride = document.getElementById('mca-calc-funded-override-toggle').checked;
+
+            if (!withholdOverride) {
+                // If withhold override is disabled, use normal calculation
+                if (fundedOverride) {
+                    recalculateWithFundedOverride();
+                } else {
+                    recalculateOffer();
+                }
+                return;
+            }
+
+            // Get custom withhold percentage
+            const customWithhold = parseFloat(document.getElementById('mca-calc-withhold-override-value').value) || 0;
+
+            if (customWithhold < 0 || customWithhold > 100) {
+                showToast('Withhold percentage must be between 0% and 100%', 'error');
+                return;
+            }
+
+            // Get other values
+            const trueRevenue = getTrueRevenue();
+            const existingPayment = parseFloat(document.getElementById('mca-calc-existing-payment').value) || 0;
+            const factorRate = parseFloat(document.getElementById('mca-calc-factor-rate').value) || 1.30;
+            const termMonths = getTermInMonths();
+
+            // Calculate cap amount with custom withhold
+            const capAmount = trueRevenue * (customWithhold / 100);
+            const newPaymentAvailable = Math.max(0, capAmount - existingPayment);
+
+            let fundedAmount, monthlyPayment, totalPayback, withholdUtilization;
+
+            if (fundedOverride) {
+                // If funded amount is also overridden, use manual funded amount
+                fundedAmount = parseFloat(document.getElementById('mca-calc-funded-override-value').value) || 0;
+                totalPayback = fundedAmount * factorRate;
+                monthlyPayment = termMonths > 0 ? totalPayback / termMonths : 0;
+            } else {
+                // Calculate funded amount based on custom withhold constraint
+                fundedAmount = (newPaymentAvailable * termMonths) / factorRate;
+                totalPayback = fundedAmount * factorRate;
+                monthlyPayment = termMonths > 0 ? totalPayback / termMonths : 0;
+            }
+
+            const weeklyPayment = monthlyPayment / 4.33;
+            const dailyPayment = monthlyPayment / 21.67;
+
+            // Calculate withhold utilization with custom percentage
+            const totalMonthlyPayment = existingPayment + monthlyPayment;
+            withholdUtilization = capAmount > 0 ? (totalMonthlyPayment / capAmount) * 100 : 0;
+
+            // Update UI
+            document.getElementById('mca-calc-cap-amount').textContent = formatCurrency(capAmount);
+            document.getElementById('mca-calc-new-payment').textContent = formatCurrency(newPaymentAvailable);
+
+            if (!fundedOverride) {
+                document.getElementById('mca-calc-funded-amount').textContent = formatCurrency(fundedAmount);
+            }
+
+            document.getElementById('mca-calc-result-factor').textContent = factorRate.toFixed(2);
+            document.getElementById('mca-calc-result-payback').textContent = formatCurrency(totalPayback);
+            document.getElementById('mca-calc-result-monthly').textContent = formatCurrency(monthlyPayment);
+            document.getElementById('mca-calc-result-weekly').textContent = formatCurrency(weeklyPayment);
+            document.getElementById('mca-calc-result-daily').textContent = formatCurrency(dailyPayment);
+            document.getElementById('mca-calc-result-term').textContent = getTermDisplayText();
+
+            // Update utilization bar
+            const utilizationBar = document.getElementById('mca-calc-utilization-bar');
+            const utilizationText = document.getElementById('mca-calc-utilization-text');
+            utilizationText.textContent = Math.min(withholdUtilization, 100).toFixed(1) + '%';
+            utilizationBar.style.width = Math.min(withholdUtilization, 100) + '%';
+
+            // Update utilization bar color
+            if (withholdUtilization <= 50) {
+                utilizationBar.className = 'h-full bg-green-500 rounded-full transition-all duration-300';
+                utilizationText.className = 'font-semibold text-green-600 dark:text-green-400';
+            } else if (withholdUtilization <= 80) {
+                utilizationBar.className = 'h-full bg-yellow-500 rounded-full transition-all duration-300';
+                utilizationText.className = 'font-semibold text-yellow-600 dark:text-yellow-400';
+            } else if (withholdUtilization <= 100) {
+                utilizationBar.className = 'h-full bg-orange-500 rounded-full transition-all duration-300';
+                utilizationText.className = 'font-semibold text-orange-600 dark:text-orange-400';
+            } else {
+                utilizationBar.className = 'h-full bg-red-500 rounded-full transition-all duration-300';
+                utilizationText.className = 'font-semibold text-red-600 dark:text-red-400';
+            }
+
+            // Show/hide warning
+            const warningDiv = document.getElementById('mca-calc-warning');
+            const warningText = document.getElementById('mca-calc-warning-text');
+
+            if (withholdUtilization > 100) {
+                warningDiv.classList.remove('hidden');
+                warningText.textContent = `Total withhold utilization (${withholdUtilization.toFixed(1)}%) exceeds 100%. This offer may not be viable.`;
+            } else if (fundedAmount <= 0 && trueRevenue > 0) {
+                warningDiv.classList.remove('hidden');
+                warningText.textContent = `No funding capacity available. Existing MCA payments consume the full withhold capacity.`;
+            } else if (customWithhold > 30) {
+                warningDiv.classList.remove('hidden');
+                warningText.textContent = `Warning: Withhold percentage of ${customWithhold.toFixed(1)}% is unusually high. Standard range is 5-25%.`;
+            } else {
+                warningDiv.classList.add('hidden');
+            }
         }
 
         async function saveCurrentOffer() {
             const trueRevenue = getTrueRevenue();
             const existingPayment = parseFloat(document.getElementById('mca-calc-existing-payment').value) || 0;
-            const withholdPercent = parseFloat(document.getElementById('mca-calc-withhold-percent').value) || 20;
             const factorRate = parseFloat(document.getElementById('mca-calc-factor-rate').value) || 1.30;
-            const termMonths = parseInt(document.getElementById('mca-calc-term-months').value) || 9;
+            const termMonths = getTermInMonths();
 
-            // Calculate funded amount based on withhold constraint
-            const capAmount = trueRevenue * (withholdPercent / 100);
-            const newPaymentAvailable = Math.max(0, capAmount - existingPayment);
-            const fundedAmount = (newPaymentAvailable * termMonths) / factorRate;
+            // Check if withhold percentage is manually overridden
+            const withholdOverrideToggle = document.getElementById('mca-calc-withhold-override-toggle');
+            let withholdPercent;
+            if (withholdOverrideToggle.checked) {
+                withholdPercent = parseFloat(document.getElementById('mca-calc-withhold-override-value').value) || 20;
+            } else {
+                withholdPercent = parseFloat(document.getElementById('mca-calc-withhold-percent').value) || 20;
+            }
+
+            // Check if funded amount is manually overridden
+            const fundedOverrideToggle = document.getElementById('mca-calc-funded-override-toggle');
+            let fundedAmount;
+
+            if (fundedOverrideToggle.checked) {
+                // Use manual funded amount
+                fundedAmount = parseFloat(document.getElementById('mca-calc-funded-override-value').value) || 0;
+            } else {
+                // Calculate funded amount based on withhold constraint
+                const capAmount = trueRevenue * (withholdPercent / 100);
+                const newPaymentAvailable = Math.max(0, capAmount - existingPayment);
+                fundedAmount = (newPaymentAvailable * termMonths) / factorRate;
+            }
 
             if (fundedAmount <= 0) {
                 showToast('No funding capacity available to save', 'error');
@@ -3057,6 +3551,26 @@
             }
 
             const overrideToggle = document.getElementById('mca-calc-override-toggle');
+            const termType = document.querySelector('input[name="term-type"]:checked').value;
+
+            // Get the actual term value based on type
+            let termValue;
+            switch(termType) {
+                case 'daily':
+                    termValue = parseInt(document.getElementById('mca-calc-term-daily').value) || 180;
+                    break;
+                case 'weekly':
+                    termValue = parseInt(document.getElementById('mca-calc-term-weekly').value) || 36;
+                    break;
+                case 'biweekly':
+                    termValue = parseInt(document.getElementById('mca-calc-term-biweekly').value) || 18;
+                    break;
+                case 'monthly':
+                default:
+                    termValue = parseInt(document.getElementById('mca-calc-term-monthly').value) || 9;
+                    break;
+            }
+
             const offerData = {
                 session_uuid: mcaCalcPrimarySessionUuid,
                 true_revenue_monthly: trueRevenue,
@@ -3064,9 +3578,13 @@
                 override_revenue: overrideToggle.checked ? trueRevenue : null,
                 existing_mca_payment: existingPayment,
                 withhold_percent: withholdPercent,
+                withhold_override: withholdOverrideToggle.checked,
                 factor_rate: factorRate,
                 term_months: termMonths,
+                term_type: termType,
+                term_value: termValue,
                 advance_amount: fundedAmount,
+                funded_amount_override: fundedOverrideToggle.checked,
                 offer_name: null,
                 notes: null
             };
@@ -3225,6 +3743,84 @@
             } catch (error) {
                 console.error('Delete offer error:', error);
                 showToast('Error deleting offer', 'error');
+            }
+        }
+
+        // Toggle Dashboard View between Credit and Debit focus
+        function toggleDashboardView(viewMode) {
+            const creditBtn = document.getElementById('credit-view-btn');
+            const debitBtn = document.getElementById('debit-view-btn');
+            const metricCards = document.querySelectorAll('.metric-card');
+
+            // Update button states
+            if (viewMode === 'credit') {
+                // Credit button active
+                creditBtn.className = 'px-4 py-2 text-sm font-medium rounded-md transition-all duration-200 bg-white dark:bg-gray-800 text-green-600 dark:text-green-400 shadow-sm';
+                debitBtn.className = 'px-4 py-2 text-sm font-medium rounded-md transition-all duration-200 text-gray-600 dark:text-gray-400 hover:bg-gray-200 dark:hover:bg-gray-600';
+
+                // Highlight credit metrics, de-emphasize debit metrics
+                metricCards.forEach(card => {
+                    const metricType = card.getAttribute('data-metric-type');
+
+                    if (metricType === 'credit') {
+                        // Emphasize credit metrics
+                        card.classList.remove('opacity-60', 'scale-95');
+                        card.classList.add('scale-105', 'shadow-lg', 'ring-2', 'ring-green-500', 'ring-opacity-50');
+
+                        const value = card.querySelector('.metric-value');
+                        const subtext = card.querySelector('.metric-subtext');
+                        if (value) value.classList.add('text-3xl');
+                        if (subtext) subtext.classList.remove('text-xs');
+                        if (subtext) subtext.classList.add('text-sm', 'font-medium');
+                    } else if (metricType === 'debit') {
+                        // De-emphasize debit metrics
+                        card.classList.add('opacity-60', 'scale-95');
+                        card.classList.remove('scale-105', 'shadow-lg', 'ring-2', 'ring-red-500', 'ring-opacity-50');
+
+                        const value = card.querySelector('.metric-value');
+                        const subtext = card.querySelector('.metric-subtext');
+                        if (value) value.classList.remove('text-3xl');
+                        if (subtext) subtext.classList.remove('text-sm', 'font-medium');
+                        if (subtext) subtext.classList.add('text-xs');
+                    } else {
+                        // Neutral metrics - normal state
+                        card.classList.remove('opacity-60', 'scale-95', 'scale-105', 'shadow-lg', 'ring-2', 'ring-green-500', 'ring-red-500', 'ring-opacity-50');
+                    }
+                });
+            } else if (viewMode === 'debit') {
+                // Debit button active
+                debitBtn.className = 'px-4 py-2 text-sm font-medium rounded-md transition-all duration-200 bg-white dark:bg-gray-800 text-red-600 dark:text-red-400 shadow-sm';
+                creditBtn.className = 'px-4 py-2 text-sm font-medium rounded-md transition-all duration-200 text-gray-600 dark:text-gray-400 hover:bg-gray-200 dark:hover:bg-gray-600';
+
+                // Highlight debit metrics, de-emphasize credit metrics
+                metricCards.forEach(card => {
+                    const metricType = card.getAttribute('data-metric-type');
+
+                    if (metricType === 'debit') {
+                        // Emphasize debit metrics
+                        card.classList.remove('opacity-60', 'scale-95');
+                        card.classList.add('scale-105', 'shadow-lg', 'ring-2', 'ring-red-500', 'ring-opacity-50');
+
+                        const value = card.querySelector('.metric-value');
+                        const subtext = card.querySelector('.metric-subtext');
+                        if (value) value.classList.add('text-3xl');
+                        if (subtext) subtext.classList.remove('text-xs');
+                        if (subtext) subtext.classList.add('text-sm', 'font-medium');
+                    } else if (metricType === 'credit') {
+                        // De-emphasize credit metrics
+                        card.classList.add('opacity-60', 'scale-95');
+                        card.classList.remove('scale-105', 'shadow-lg', 'ring-2', 'ring-green-500', 'ring-opacity-50');
+
+                        const value = card.querySelector('.metric-value');
+                        const subtext = card.querySelector('.metric-subtext');
+                        if (value) value.classList.remove('text-3xl');
+                        if (subtext) subtext.classList.remove('text-sm', 'font-medium');
+                        if (subtext) subtext.classList.add('text-xs');
+                    } else {
+                        // Neutral metrics - normal state
+                        card.classList.remove('opacity-60', 'scale-95', 'scale-105', 'shadow-lg', 'ring-2', 'ring-green-500', 'ring-red-500', 'ring-opacity-50');
+                    }
+                });
             }
         }
     </script>
