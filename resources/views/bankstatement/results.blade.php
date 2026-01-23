@@ -3312,26 +3312,38 @@
             // Use manual funded amount instead of calculated
             const fundedAmount = manualFundedAmount;
 
-            // Check if withhold percentage is overridden
-            const withholdOverride = document.getElementById('mca-calc-withhold-override-toggle').checked;
-            let withholdPercent;
-            if (withholdOverride) {
-                withholdPercent = parseFloat(document.getElementById('mca-calc-withhold-override-value').value) || 20;
-            } else {
-                withholdPercent = parseFloat(document.getElementById('mca-calc-withhold-percent').value) || 20;
-            }
-
-            // Calculate cap amount
-            const capAmount = trueRevenue * (withholdPercent / 100);
-
             // Calculate offer details based on manual funded amount
             const totalPayback = fundedAmount * factorRate;
             const monthlyPayment = termMonths > 0 ? totalPayback / termMonths : 0;
+
+            // Calculate required withhold percentage to support this funded amount
+            const totalMonthlyPayment = existingPayment + monthlyPayment;
+            const requiredWithholdPercent = trueRevenue > 0 ? (totalMonthlyPayment / trueRevenue) * 100 : 0;
+
+            // Check if withhold percentage is manually overridden
+            const withholdOverride = document.getElementById('mca-calc-withhold-override-toggle').checked;
+            let withholdPercent;
+
+            if (withholdOverride) {
+                // If withhold is manually overridden, use the custom value
+                withholdPercent = parseFloat(document.getElementById('mca-calc-withhold-override-value').value) || 20;
+            } else {
+                // Auto-update withhold slider to match the required percentage
+                withholdPercent = requiredWithholdPercent;
+
+                // Update the slider and input to show the calculated withhold percentage
+                // Clamp between 5-25 for slider, but allow higher values in the input
+                const sliderValue = Math.min(Math.max(requiredWithholdPercent, 5), 25);
+                document.getElementById('mca-calc-withhold-slider').value = sliderValue.toFixed(0);
+                document.getElementById('mca-calc-withhold-percent').value = requiredWithholdPercent.toFixed(1);
+            }
+
+            // Calculate cap amount based on the withhold percentage
+            const capAmount = trueRevenue * (withholdPercent / 100);
             const weeklyPayment = monthlyPayment / 4.33;
             const dailyPayment = monthlyPayment / 21.67;
 
-            // Calculate withhold utilization based on manual funded amount
-            const totalMonthlyPayment = existingPayment + monthlyPayment;
+            // Calculate withhold utilization (totalMonthlyPayment already calculated above)
             const withholdUtilization = capAmount > 0 ? (totalMonthlyPayment / capAmount) * 100 : 0;
 
             // Calculate new payment available (reverse calculation)
