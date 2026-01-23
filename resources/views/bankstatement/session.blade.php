@@ -162,10 +162,56 @@
                                         @endif
                                     </td>
                                     <td class="px-4 py-3 text-center" id="category-cell-{{ $txn->id }}">
+                                        @php
+                                            // Extract account number from description
+                                            $accountNumber = null;
+                                            $description = $txn->description;
+
+                                            // Match patterns like: ACCT ****1234, ACCT XXXX1234, Account ending in 1234, etc.
+                                            if (preg_match('/(?:ACCT|ACCOUNT|A\/C)[\s#:]*([X*]+)?(\d{4,})/i', $description, $matches)) {
+                                                $accountNumber = $matches[2];
+                                            } elseif (preg_match('/(?:ending in|ending|ends in)[\s:]*(\d{4,})/i', $description, $matches)) {
+                                                $accountNumber = $matches[1];
+                                            } elseif (preg_match('/[X*]{4,}(\d{4,})/', $description, $matches)) {
+                                                $accountNumber = $matches[1];
+                                            }
+
+                                            // Determine if this is a transfer category
+                                            $isTransfer = in_array($txn->category, ['internal_transfer', 'wire_transfer', 'ach_transfer']);
+                                            $transferDirection = null;
+                                            if ($isTransfer) {
+                                                if (preg_match('/(?:FROM|IN|INCOMING|RECEIVED|DEPOSIT)/i', $description)) {
+                                                    $transferDirection = 'in';
+                                                } elseif (preg_match('/(?:TO|OUT|OUTGOING|SENT|PAYMENT)/i', $description)) {
+                                                    $transferDirection = 'out';
+                                                }
+                                            }
+                                        @endphp
                                         @if($txn->category)
-                                            <span class="inline-flex items-center px-2 py-0.5 rounded text-xs font-medium category-badge" data-category="{{ $txn->category }}">
-                                                {{ ucwords(str_replace('_', ' ', $txn->category)) }}
-                                            </span>
+                                            <div class="flex flex-col items-center gap-1">
+                                                <span class="inline-flex items-center px-2 py-0.5 rounded text-xs font-medium category-badge {{ $isTransfer ? 'ring-2 ring-offset-1 ring-blue-400 dark:ring-blue-500' : '' }}" data-category="{{ $txn->category }}">
+                                                    @if($isTransfer && $transferDirection)
+                                                        @if($transferDirection === 'in')
+                                                            <svg class="w-3 h-3 mr-1 text-green-600 dark:text-green-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M7 11l5-5m0 0l5 5m-5-5v12"></path>
+                                                            </svg>
+                                                        @else
+                                                            <svg class="w-3 h-3 mr-1 text-red-600 dark:text-red-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M17 13l-5 5m0 0l-5-5m5 5V6"></path>
+                                                            </svg>
+                                                        @endif
+                                                    @endif
+                                                    {{ ucwords(str_replace('_', ' ', $txn->category)) }}
+                                                </span>
+                                                @if($accountNumber)
+                                                    <span class="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-mono bg-blue-50 text-blue-700 dark:bg-blue-900 dark:text-blue-300 border border-blue-200 dark:border-blue-700">
+                                                        <svg class="w-3 h-3 mr-1" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3 10h18M7 15h1m4 0h1m-7 4h12a3 3 0 003-3V8a3 3 0 00-3-3H6a3 3 0 00-3 3v8a3 3 0 003 3z"></path>
+                                                        </svg>
+                                                        ****{{ $accountNumber }}
+                                                    </span>
+                                                @endif
+                                            </div>
                                         @else
                                             <button onclick="openCategoryModal({{ $txn->id }}, '{{ addslashes($txn->description) }}', {{ $txn->amount }}, '{{ $txn->type }}')"
                                                     class="inline-flex items-center px-2 py-1 text-xs text-gray-500 dark:text-gray-400 hover:text-blue-600 dark:hover:text-blue-400 transition">
@@ -326,6 +372,28 @@
             currentTransactionType = null;
         }
 
+        function extractAccountNumber(description) {
+            // Match patterns like: ACCT ****1234, ACCT XXXX1234, Account ending in 1234, etc.
+            let match;
+            if (match = description.match(/(?:ACCT|ACCOUNT|A\/C)[\s#:]*([X*]+)?(\d{4,})/i)) {
+                return match[2];
+            } else if (match = description.match(/(?:ending in|ending|ends in)[\s:]*(\d{4,})/i)) {
+                return match[1];
+            } else if (match = description.match(/[X*]{4,}(\d{4,})/)) {
+                return match[1];
+            }
+            return null;
+        }
+
+        function getTransferDirection(description) {
+            if (/(?:FROM|IN|INCOMING|RECEIVED|DEPOSIT)/i.test(description)) {
+                return 'in';
+            } else if (/(?:TO|OUT|OUTGOING|SENT|PAYMENT)/i.test(description)) {
+                return 'out';
+            }
+            return null;
+        }
+
         function selectCategory(categoryKey) {
             if (!currentTransactionId) return;
 
@@ -354,12 +422,45 @@
                     // Update the category cell
                     const categoryCell = document.getElementById('category-cell-' + currentTransactionId);
                     const categoryInfo = categoriesData[categoryKey];
-                    categoryCell.innerHTML = `
-                        <span class="inline-flex items-center px-2 py-0.5 rounded text-xs font-medium category-badge bg-${categoryInfo.color}-100 text-${categoryInfo.color}-800 dark:bg-${categoryInfo.color}-900 dark:text-${categoryInfo.color}-200"
-                              data-category="${categoryKey}">
-                            ${categoryInfo.label}
-                        </span>
-                    `;
+
+                    // Check if this is a transfer category
+                    const isTransfer = ['internal_transfer', 'wire_transfer', 'ach_transfer'].includes(categoryKey);
+                    const accountNumber = extractAccountNumber(description);
+                    const transferDirection = isTransfer ? getTransferDirection(description) : null;
+
+                    // Build the category display
+                    let categoryHTML = '<div class="flex flex-col items-center gap-1">';
+
+                    // Category badge with optional transfer ring
+                    categoryHTML += `<span class="inline-flex items-center px-2 py-0.5 rounded text-xs font-medium category-badge bg-${categoryInfo.color}-100 text-${categoryInfo.color}-800 dark:bg-${categoryInfo.color}-900 dark:text-${categoryInfo.color}-200 ${isTransfer ? 'ring-2 ring-offset-1 ring-blue-400 dark:ring-blue-500' : ''}" data-category="${categoryKey}">`;
+
+                    // Transfer direction icon
+                    if (isTransfer && transferDirection) {
+                        if (transferDirection === 'in') {
+                            categoryHTML += `<svg class="w-3 h-3 mr-1 text-green-600 dark:text-green-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M7 11l5-5m0 0l5 5m-5-5v12"></path>
+                            </svg>`;
+                        } else {
+                            categoryHTML += `<svg class="w-3 h-3 mr-1 text-red-600 dark:text-red-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M17 13l-5 5m0 0l-5-5m5 5V6"></path>
+                            </svg>`;
+                        }
+                    }
+
+                    categoryHTML += `${categoryInfo.label}</span>`;
+
+                    // Account number badge if present
+                    if (accountNumber) {
+                        categoryHTML += `<span class="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-mono bg-blue-50 text-blue-700 dark:bg-blue-900 dark:text-blue-300 border border-blue-200 dark:border-blue-700">
+                            <svg class="w-3 h-3 mr-1" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3 10h18M7 15h1m4 0h1m-7 4h12a3 3 0 003-3V8a3 3 0 00-3-3H6a3 3 0 00-3 3v8a3 3 0 003 3z"></path>
+                            </svg>
+                            ****${accountNumber}
+                        </span>`;
+                    }
+
+                    categoryHTML += '</div>';
+                    categoryCell.innerHTML = categoryHTML;
 
                     closeCategoryModal();
 
