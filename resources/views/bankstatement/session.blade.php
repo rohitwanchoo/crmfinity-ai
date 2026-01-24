@@ -337,6 +337,7 @@
         }
 
         function openCategoryModal(transactionId, description, amount, type) {
+            console.log('openCategoryModal called:', { transactionId, description, amount, type });
             currentTransactionId = transactionId;
             currentTransactionType = type;
 
@@ -395,11 +396,31 @@
         }
 
         function selectCategory(categoryKey) {
-            if (!currentTransactionId) return;
+            console.log('selectCategory called with:', categoryKey);
+            console.log('currentTransactionId:', currentTransactionId);
+
+            if (!currentTransactionId) {
+                console.error('No transaction ID set');
+                return;
+            }
 
             const description = document.getElementById('modal-description').textContent;
             const row = document.querySelector(`tr[data-transaction-id="${currentTransactionId}"]`);
+
+            if (!row) {
+                console.error('Could not find transaction row');
+                return;
+            }
+
             const amount = parseFloat(row.querySelector('[id^="amount-"]').textContent.replace(/[$,]/g, ''));
+
+            console.log('Sending category request:', {
+                transaction_id: currentTransactionId,
+                description: description,
+                amount: amount,
+                type: currentTransactionType,
+                category: categoryKey
+            });
 
             fetch('{{ route("bankstatement.toggle-category") }}', {
                 method: 'POST',
@@ -417,9 +438,14 @@
                     subcategory: null
                 })
             })
-            .then(response => response.json())
+            .then(response => {
+                console.log('Response status:', response.status);
+                return response.json();
+            })
             .then(data => {
+                console.log('Response data:', data);
                 if (data.success) {
+                    console.log('Category saved successfully');
                     // Update the category cell
                     const categoryCell = document.getElementById('category-cell-' + currentTransactionId);
                     const categoryInfo = categoriesData[categoryKey];

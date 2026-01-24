@@ -266,7 +266,6 @@ class BankStatementController extends Controller
                         'is_mca_payment' => $txn->is_mca_payment ?? false,
                         'mca_lender' => $txn->mca_lender ?? null,
                         'category' => $txn->category ?? null,
-                        'subcategory' => $txn->subcategory ?? null,
                     ];
                 })
                 ->toArray();
@@ -837,9 +836,13 @@ class BankStatementController extends Controller
             if ($transaction) {
                 $transaction->update([
                     'category' => $category,
-                    'subcategory' => $subcategory,
                 ]);
+                Log::info("Transaction {$transaction->id} updated with category: {$category}");
+            } else {
+                Log::warning("Transaction ID {$request->transaction_id} not found");
             }
+        } else {
+            Log::info("No transaction_id provided, only saving to learning table");
         }
 
         // Save to transaction_categories table for AI learning
