@@ -1356,7 +1356,7 @@
                                                             @endif
                                                         </div>
                                                     @else
-                                                        <button onclick="openCategoryModalResults('{{ $uniqueId }}', '{{ addslashes($txn['description']) }}', {{ $txn['amount'] }}, '{{ $txn['type'] }}')"
+                                                        <button onclick="openCategoryModalResults('{{ $uniqueId }}', '{{ addslashes($txn['description']) }}', {{ $txn['amount'] }}, '{{ $txn['type'] }}', {{ $txn['id'] ?? 'null' }})"
                                                                 class="inline-flex items-center px-2 py-0.5 text-xs text-gray-500 dark:text-gray-400 hover:text-blue-600 dark:hover:text-blue-400 transition">
                                                             <svg class="w-3 h-3 mr-1" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                                                                 <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M7 7h.01M7 3h5c.512 0 1.024.195 1.414.586l7 7a2 2 0 010 2.828l-7 7a2 2 0 01-2.828 0l-7-7A1.994 1.994 0 013 12V7a4 4 0 014-4z"></path>
@@ -4046,7 +4046,8 @@
     </div>
 
     <script>
-        let currentTransactionIdResults = null;
+        let currentTransactionIdResults = null; // uniqueId for DOM lookups
+        let currentTransactionDbIdResults = null; // database ID for API calls
         let currentTransactionTypeResults = null;
         let categoriesDataResults = null;
 
@@ -4067,9 +4068,12 @@
                 });
         }
 
-        function openCategoryModalResults(transactionId, description, amount, type) {
-            currentTransactionIdResults = transactionId;
+        function openCategoryModalResults(transactionId, description, amount, type, dbId) {
+            currentTransactionIdResults = transactionId; // uniqueId for finding DOM elements
+            currentTransactionDbIdResults = dbId; // database ID for API call
             currentTransactionTypeResults = type;
+
+            console.log('openCategoryModalResults:', { transactionId, dbId, description, amount, type });
 
             document.getElementById('modal-description-results').textContent = description;
 
@@ -4100,6 +4104,7 @@
         function closeCategoryModalResults() {
             document.getElementById('category-modal-results').classList.add('hidden');
             currentTransactionIdResults = null;
+            currentTransactionDbIdResults = null;
             currentTransactionTypeResults = null;
         }
 
@@ -4126,15 +4131,25 @@
         }
 
         function selectCategoryResults(categoryKey) {
+            console.log('selectCategoryResults called:', categoryKey);
+            console.log('currentTransactionIdResults:', currentTransactionIdResults);
+            console.log('currentTransactionDbIdResults:', currentTransactionDbIdResults);
+
             if (!currentTransactionIdResults) return;
 
             const description = document.getElementById('modal-description-results').textContent;
-            const row = document.querySelector(`tr[data-transaction-id="${currentTransactionIdResults}"]`);
+
+            // Find row by class name (txn-row-{uniqueId})
+            const row = document.querySelector(`.txn-row-${currentTransactionIdResults}`);
+
+            if (!row) {
+                console.error('Could not find transaction row with class:', `txn-row-${currentTransactionIdResults}`);
+                showNotificationResults('Error: Could not find transaction row', 'error');
+                return;
+            }
+
             const amountText = row.querySelector('td:nth-child(4)').textContent.trim();
             const amount = parseFloat(amountText.replace(/[$,]/g, ''));
-
-            // Check if the transaction ID is numeric (actual database ID) or a composite ID
-            const transactionId = !isNaN(currentTransactionIdResults) ? parseInt(currentTransactionIdResults) : null;
 
             const requestBody = {
                 description: description,
@@ -4144,10 +4159,12 @@
                 subcategory: null
             };
 
-            // Only include transaction_id if it's a valid database ID
-            if (transactionId) {
-                requestBody.transaction_id = transactionId;
+            // Include transaction_id if we have a valid database ID
+            if (currentTransactionDbIdResults) {
+                requestBody.transaction_id = currentTransactionDbIdResults;
             }
+
+            console.log('Request body:', requestBody);
 
             fetch('{{ route("bankstatement.toggle-category") }}', {
                 method: 'POST',
@@ -4158,9 +4175,14 @@
                 },
                 body: JSON.stringify(requestBody)
             })
-            .then(response => response.json())
+            .then(response => {
+                console.log('Response status:', response.status);
+                return response.json();
+            })
             .then(data => {
+                console.log('Response data:', data);
                 if (data.success) {
+                    console.log('Category saved successfully');
                     // Update the category cell
                     const categoryCell = document.getElementById('category-cell-' + currentTransactionIdResults);
                     const categoryInfo = categoriesDataResults[categoryKey];
