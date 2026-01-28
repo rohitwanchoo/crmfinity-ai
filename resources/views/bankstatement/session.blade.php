@@ -115,7 +115,7 @@
                         <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"></path>
                     </svg>
                     <p class="text-sm text-blue-700 dark:text-blue-300">
-                        Click the <strong>Toggle</strong> button to change a transaction from Credit to Debit or vice versa. Your corrections will train the AI for future analyses.
+                        Click the <strong>Toggle</strong> button to change a transaction from Credit to Debit or vice versa. Click on any <strong>category badge</strong> to reclassify a transaction. Your corrections will train the AI for future analyses.
                     </p>
                 </div>
             </div>
@@ -189,7 +189,8 @@
                                         @endphp
                                         @if($txn->category)
                                             <div class="flex flex-col items-center gap-1">
-                                                <span class="inline-flex items-center px-2 py-0.5 rounded text-xs font-medium category-badge {{ $isTransfer ? 'ring-2 ring-offset-1 ring-blue-400 dark:ring-blue-500' : '' }}" data-category="{{ $txn->category }}">
+                                                <button onclick="openCategoryModal({{ $txn->id }}, '{{ addslashes($txn->description) }}', {{ $txn->amount }}, '{{ $txn->type }}')"
+                                                        class="inline-flex items-center px-2 py-0.5 rounded text-xs font-medium category-badge {{ $isTransfer ? 'ring-2 ring-offset-1 ring-blue-400 dark:ring-blue-500' : '' }} hover:opacity-80 transition cursor-pointer" data-category="{{ $txn->category }}" title="Click to change category">
                                                     @if($isTransfer && $transferDirection)
                                                         @if($transferDirection === 'in')
                                                             <svg class="w-3 h-3 mr-1 text-green-600 dark:text-green-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -202,7 +203,10 @@
                                                         @endif
                                                     @endif
                                                     {{ ucwords(str_replace('_', ' ', $txn->category)) }}
-                                                </span>
+                                                    <svg class="w-3 h-3 ml-1 opacity-60" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15.232 5.232l3.536 3.536m-2.036-5.036a2.5 2.5 0 113.536 3.536L6.5 21.036H3v-3.572L16.732 3.732z"></path>
+                                                    </svg>
+                                                </button>
                                                 @if($accountNumber)
                                                     <span class="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-mono bg-blue-50 text-blue-700 dark:bg-blue-900 dark:text-blue-300 border border-blue-200 dark:border-blue-700">
                                                         <svg class="w-3 h-3 mr-1" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -348,6 +352,11 @@
                 return;
             }
 
+            // Get the current category if it exists
+            const categoryCell = document.getElementById('category-cell-' + transactionId);
+            const currentCategoryBadge = categoryCell ? categoryCell.querySelector('.category-badge') : null;
+            const currentCategory = currentCategoryBadge ? currentCategoryBadge.dataset.category : null;
+
             // Filter categories based on transaction type
             const filteredCategories = Object.entries(categoriesData).filter(([key, cat]) =>
                 cat.type === 'both' || cat.type === type
@@ -355,14 +364,25 @@
 
             // Build category grid
             const grid = document.getElementById('category-grid');
-            grid.innerHTML = filteredCategories.map(([key, cat]) => `
-                <button onclick="selectCategory('${key}')"
-                        class="flex items-center gap-2 px-3 py-2 text-left text-sm border rounded-lg hover:bg-gray-50 dark:hover:bg-gray-700 transition category-option"
-                        data-category="${key}">
-                    <span class="w-3 h-3 rounded-full category-color-${cat.color}"></span>
-                    <span class="text-gray-900 dark:text-white">${cat.label}</span>
-                </button>
-            `).join('');
+            grid.innerHTML = filteredCategories.map(([key, cat]) => {
+                const isSelected = key === currentCategory;
+                const selectedClasses = isSelected
+                    ? 'border-2 border-blue-500 bg-blue-50 dark:bg-blue-900/30'
+                    : 'border';
+                const checkIcon = isSelected
+                    ? '<svg class="w-4 h-4 text-blue-600 dark:text-blue-400 ml-auto" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7"></path></svg>'
+                    : '';
+
+                return `
+                    <button onclick="selectCategory('${key}')"
+                            class="flex items-center gap-2 px-3 py-2 text-left text-sm ${selectedClasses} rounded-lg hover:bg-gray-50 dark:hover:bg-gray-700 transition category-option"
+                            data-category="${key}">
+                        <span class="w-3 h-3 rounded-full category-color-${cat.color}"></span>
+                        <span class="text-gray-900 dark:text-white">${cat.label}</span>
+                        ${checkIcon}
+                    </button>
+                `;
+            }).join('');
 
             document.getElementById('category-modal').classList.remove('hidden');
         }

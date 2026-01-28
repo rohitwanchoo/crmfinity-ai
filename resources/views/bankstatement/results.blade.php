@@ -1182,16 +1182,95 @@
                     </div>
                     @endif
 
+                    <!-- Validation Warnings -->
+                    @if(isset($result['validation']) && $result['validation']['has_warnings'])
+                    <div class="mb-6 border border-orange-300 dark:border-orange-700 rounded-lg overflow-hidden">
+                        <div class="bg-orange-50 dark:bg-orange-900/30 px-4 py-3 border-b border-orange-200 dark:border-orange-800">
+                            <div class="flex items-center">
+                                <svg class="w-5 h-5 text-orange-600 dark:text-orange-400 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z"></path>
+                                </svg>
+                                <h4 class="font-semibold text-orange-900 dark:text-orange-200">Validation Warnings</h4>
+                                <span class="ml-auto text-xs text-orange-700 dark:text-orange-300">
+                                    {{ count($result['validation']['warnings']) }} {{ Str::plural('issue', count($result['validation']['warnings'])) }} detected
+                                </span>
+                            </div>
+                        </div>
+                        <div class="bg-white dark:bg-gray-800 p-4 space-y-3">
+                            @foreach($result['validation']['warnings'] as $warning)
+                            <div class="flex items-start gap-3 p-3 rounded-lg {{ $warning['severity'] === 'error' ? 'bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800' : 'bg-orange-50 dark:bg-orange-900/20 border border-orange-200 dark:border-orange-800' }}">
+                                <div class="flex-shrink-0 mt-0.5">
+                                    @if($warning['severity'] === 'error')
+                                    <svg class="w-5 h-5 text-red-600 dark:text-red-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10 14l2-2m0 0l2-2m-2 2l-2-2m2 2l2 2m7-2a9 9 0 11-18 0 9 9 0 0118 0z"></path>
+                                    </svg>
+                                    @else
+                                    <svg class="w-5 h-5 text-orange-600 dark:text-orange-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z"></path>
+                                    </svg>
+                                    @endif
+                                </div>
+                                <div class="flex-1">
+                                    <p class="text-sm font-medium {{ $warning['severity'] === 'error' ? 'text-red-900 dark:text-red-200' : 'text-orange-900 dark:text-orange-200' }}">
+                                        {{ $warning['message'] }}
+                                    </p>
+                                    <div class="mt-2 grid grid-cols-3 gap-3 text-xs">
+                                        <div>
+                                            <span class="text-gray-500 dark:text-gray-400">Expected:</span>
+                                            <span class="ml-1 font-semibold {{ $warning['severity'] === 'error' ? 'text-red-700 dark:text-red-300' : 'text-orange-700 dark:text-orange-300' }}">
+                                                ${{ number_format($warning['expected'], 2) }}
+                                            </span>
+                                        </div>
+                                        <div>
+                                            <span class="text-gray-500 dark:text-gray-400">Extracted:</span>
+                                            <span class="ml-1 font-semibold {{ $warning['severity'] === 'error' ? 'text-red-700 dark:text-red-300' : 'text-orange-700 dark:text-orange-300' }}">
+                                                ${{ number_format($warning['extracted'], 2) }}
+                                            </span>
+                                        </div>
+                                        <div>
+                                            <span class="text-gray-500 dark:text-gray-400">Difference:</span>
+                                            <span class="ml-1 font-semibold {{ $warning['severity'] === 'error' ? 'text-red-700 dark:text-red-300' : 'text-orange-700 dark:text-orange-300' }}">
+                                                ${{ number_format($warning['difference'], 2) }}
+                                            </span>
+                                        </div>
+                                    </div>
+                                    <p class="mt-2 text-xs {{ $warning['severity'] === 'error' ? 'text-red-700 dark:text-red-300' : 'text-orange-700 dark:text-orange-300' }}">
+                                        💡 {{ $warning['suggestion'] }}
+                                    </p>
+                                </div>
+                            </div>
+                            @endforeach
+                        </div>
+                    </div>
+                    @endif
+
                     <!-- Summary Stats -->
                     <div class="grid grid-cols-2 md:grid-cols-5 gap-4 mb-6">
                         <div class="bg-gray-50 dark:bg-gray-700 p-4 rounded-lg">
                             <p class="text-sm text-gray-500 dark:text-gray-400">Total Transactions</p>
                             <p class="text-2xl font-bold text-gray-900 dark:text-gray-100">{{ $result['summary']['total_transactions'] }}</p>
                         </div>
-                        <div class="bg-gray-50 dark:bg-gray-700 p-4 rounded-lg">
+                        <div class="bg-gray-50 dark:bg-gray-700 p-4 rounded-lg {{ isset($result['validation']['warnings']) && collect($result['validation']['warnings'])->contains('type', 'credit_mismatch') ? 'ring-2 ring-orange-400 dark:ring-orange-600' : '' }}">
                             <p class="text-sm text-gray-500 dark:text-gray-400">Total Deposits</p>
                             <p class="text-2xl font-bold text-green-600 dark:text-green-400">${{ number_format($result['summary']['credit_total'], 2) }}</p>
                             <p class="text-xs text-gray-500">{{ $result['summary']['credit_count'] }} transactions</p>
+                            @if(isset($result['validation']['expected_credits']) && $result['validation']['expected_credits'])
+                                @php
+                                    $creditDiff = abs($result['validation']['expected_credits'] - $result['summary']['credit_total']);
+                                @endphp
+                                @if($creditDiff > 1.00)
+                                <p class="text-xs text-orange-600 dark:text-orange-400 mt-1">
+                                    Expected: ${{ number_format($result['validation']['expected_credits'], 2) }}
+                                </p>
+                                @else
+                                <p class="text-xs text-green-600 dark:text-green-400 mt-1 flex items-center">
+                                    <svg class="w-3 h-3 mr-1" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7"></path>
+                                    </svg>
+                                    Validated
+                                </p>
+                                @endif
+                            @endif
                         </div>
                         <div class="bg-green-50 dark:bg-green-900/30 p-4 rounded-lg border-2 border-green-200 dark:border-green-800">
                             <p class="text-sm text-green-700 dark:text-green-300 font-medium">True Revenue</p>
@@ -1204,10 +1283,27 @@
                                 @endif
                             </p>
                         </div>
-                        <div class="bg-gray-50 dark:bg-gray-700 p-4 rounded-lg">
+                        <div class="bg-gray-50 dark:bg-gray-700 p-4 rounded-lg {{ isset($result['validation']['warnings']) && collect($result['validation']['warnings'])->contains('type', 'debit_mismatch') ? 'ring-2 ring-orange-400 dark:ring-orange-600' : '' }}">
                             <p class="text-sm text-gray-500 dark:text-gray-400">Total Debits</p>
                             <p class="text-2xl font-bold text-red-600 dark:text-red-400">${{ number_format($result['summary']['debit_total'], 2) }}</p>
                             <p class="text-xs text-gray-500">{{ $result['summary']['debit_count'] }} transactions</p>
+                            @if(isset($result['validation']['expected_debits']) && $result['validation']['expected_debits'])
+                                @php
+                                    $debitDiff = abs($result['validation']['expected_debits'] - $result['summary']['debit_total']);
+                                @endphp
+                                @if($debitDiff > 1.00)
+                                <p class="text-xs text-orange-600 dark:text-orange-400 mt-1">
+                                    Expected: ${{ number_format($result['validation']['expected_debits'], 2) }}
+                                </p>
+                                @else
+                                <p class="text-xs text-green-600 dark:text-green-400 mt-1 flex items-center">
+                                    <svg class="w-3 h-3 mr-1" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7"></path>
+                                    </svg>
+                                    Validated
+                                </p>
+                                @endif
+                            @endif
                         </div>
                         <div class="bg-gray-50 dark:bg-gray-700 p-4 rounded-lg">
                             <p class="text-sm text-gray-500 dark:text-gray-400">API Cost</p>
@@ -1275,6 +1371,123 @@
                                     </div>
                                 </div>
 
+                                @php
+                                    // Group transactions by account number
+                                    $accountGroups = ['unknown' => []];
+                                    $accountSummaries = ['unknown' => ['credits' => 0, 'debits' => 0, 'credit_count' => 0, 'debit_count' => 0, 'true_revenue' => 0, 'adjustments' => 0]];
+
+                                    foreach($month['transactions'] as $idx => $t) {
+                                        $description = $t['description'];
+                                        $acctNum = null;
+
+                                        // Extract account number from description
+                                        if (preg_match('/(?:ACCT|ACCOUNT|A\/C)[\s#:]*([X*]+)?(\d{4,})/i', $description, $m)) {
+                                            $acctNum = $m[2];
+                                        } elseif (preg_match('/(?:ending in|ending|ends in)[\s:]*(\d{4,})/i', $description, $m)) {
+                                            $acctNum = $m[1];
+                                        } elseif (preg_match('/[X*]{4,}(\d{4,})/', $description, $m)) {
+                                            $acctNum = $m[1];
+                                        }
+
+                                        $key = $acctNum ?? 'unknown';
+
+                                        if (!isset($accountGroups[$key])) {
+                                            $accountGroups[$key] = [];
+                                            $accountSummaries[$key] = ['credits' => 0, 'debits' => 0, 'credit_count' => 0, 'debit_count' => 0, 'true_revenue' => 0, 'adjustments' => 0];
+                                        }
+
+                                        $accountGroups[$key][] = $t;
+
+                                        // Calculate summaries
+                                        $amount = $t['amount'];
+                                        if ($t['type'] === 'credit') {
+                                            $accountSummaries[$key]['credits'] += $amount;
+                                            $accountSummaries[$key]['credit_count']++;
+                                            if (!($t['is_adjustment'] ?? false)) {
+                                                $accountSummaries[$key]['true_revenue'] += $amount;
+                                            } else {
+                                                $accountSummaries[$key]['adjustments'] += $amount;
+                                            }
+                                        } else {
+                                            $accountSummaries[$key]['debits'] += $amount;
+                                            $accountSummaries[$key]['debit_count']++;
+                                        }
+                                    }
+
+                                    $hasMultipleAccounts = count($accountGroups) > 1;
+                                @endphp
+
+                                <!-- Account Filter (if multiple accounts detected) -->
+                                @if($hasMultipleAccounts)
+                                <div class="px-4 py-3 bg-blue-50 dark:bg-blue-900/20 border-t border-b border-blue-200 dark:border-blue-800">
+                                    <div class="flex items-center justify-between mb-3">
+                                        <div class="flex items-center gap-2">
+                                            <svg class="w-5 h-5 text-blue-600 dark:text-blue-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 11H5m14 0a2 2 0 012 2v6a2 2 0 01-2 2H5a2 2 0 01-2-2v-6a2 2 0 012-2m14 0V9a2 2 0 00-2-2M5 11V9a2 2 0 012-2m0 0V5a2 2 0 012-2h6a2 2 0 012 2v2M7 7h10"></path>
+                                            </svg>
+                                            <span class="text-sm font-medium text-blue-900 dark:text-blue-200">Multiple Accounts Detected ({{ count($accountGroups) }})</span>
+                                        </div>
+                                    </div>
+                                    <div class="flex flex-wrap gap-2">
+                                        <button onclick="filterAccount_{{ $result['session_id'] }}_{{ $month['month_key'] }}('all')"
+                                                class="account-filter-btn-{{ $result['session_id'] }}-{{ $month['month_key'] }} px-3 py-1.5 rounded-md text-sm font-medium transition bg-blue-600 text-white"
+                                                data-account="all">
+                                            All Accounts ({{ count($month['transactions']) }})
+                                        </button>
+                                        @foreach(array_keys($accountGroups) as $acct)
+                                        @php
+                                            $summary = $accountSummaries[$acct];
+                                        @endphp
+                                        <button onclick="filterAccount_{{ $result['session_id'] }}_{{ $month['month_key'] }}('{{ $acct }}')"
+                                                class="account-filter-btn-{{ $result['session_id'] }}-{{ $month['month_key'] }} px-3 py-1.5 rounded-md text-sm font-medium transition bg-white dark:bg-gray-700 text-gray-700 dark:text-gray-300 border border-blue-300 dark:border-blue-700 hover:bg-blue-50 dark:hover:bg-blue-900/30"
+                                                data-account="{{ $acct }}">
+                                            @if($acct === 'unknown')
+                                                <span>No Account # ({{ count($accountGroups[$acct]) }})</span>
+                                            @else
+                                                <span class="font-mono">****{{ $acct }}</span>
+                                                <span class="ml-1 text-xs opacity-75">({{ count($accountGroups[$acct]) }})</span>
+                                            @endif
+                                        </button>
+                                        @endforeach
+                                    </div>
+
+                                    <!-- Per-Account Summaries -->
+                                    <div class="mt-3 space-y-2">
+                                        @foreach(array_keys($accountGroups) as $acct)
+                                        @if($acct !== 'unknown')
+                                        @php
+                                            $summary = $accountSummaries[$acct];
+                                        @endphp
+                                        <div class="account-summary-{{ $result['session_id'] }}-{{ $month['month_key'] }}-{{ $acct }} hidden bg-white dark:bg-gray-800 rounded-lg p-3 border border-blue-200 dark:border-blue-700">
+                                            <div class="flex items-center justify-between mb-2">
+                                                <span class="text-xs font-semibold text-blue-900 dark:text-blue-200">Account ****{{ $acct }}</span>
+                                                <span class="text-xs text-gray-500 dark:text-gray-400">{{ $summary['credit_count'] + $summary['debit_count'] }} transactions</span>
+                                            </div>
+                                            <div class="grid grid-cols-4 gap-3 text-xs">
+                                                <div>
+                                                    <span class="text-gray-500 dark:text-gray-400">Credits:</span>
+                                                    <p class="font-semibold text-green-600 dark:text-green-400">${{ number_format($summary['credits'], 2) }}</p>
+                                                </div>
+                                                <div>
+                                                    <span class="text-gray-500 dark:text-gray-400">Debits:</span>
+                                                    <p class="font-semibold text-red-600 dark:text-red-400">${{ number_format($summary['debits'], 2) }}</p>
+                                                </div>
+                                                <div>
+                                                    <span class="text-gray-500 dark:text-gray-400">True Revenue:</span>
+                                                    <p class="font-semibold text-green-600 dark:text-green-400">${{ number_format($summary['true_revenue'], 2) }}</p>
+                                                </div>
+                                                <div>
+                                                    <span class="text-gray-500 dark:text-gray-400">Net:</span>
+                                                    <p class="font-semibold {{ ($summary['credits'] - $summary['debits']) >= 0 ? 'text-green-600 dark:text-green-400' : 'text-red-600 dark:text-red-400' }}">${{ number_format($summary['credits'] - $summary['debits'], 2) }}</p>
+                                                </div>
+                                            </div>
+                                        </div>
+                                        @endif
+                                        @endforeach
+                                    </div>
+                                </div>
+                                @endif
+
                                 <!-- Transaction List -->
                                 <div class="overflow-x-auto">
                                     <table class="min-w-full divide-y divide-gray-200 dark:divide-gray-700">
@@ -1291,6 +1504,19 @@
                                         <tbody class="bg-white dark:bg-gray-800 divide-y divide-gray-200 dark:divide-gray-700">
                                             @foreach($month['transactions'] as $txnIndex => $txn)
                                             @php
+                                                // Extract account number for filtering
+                                                $txnAccountNum = null;
+                                                $description = $txn['description'];
+                                                if (preg_match('/(?:ACCT|ACCOUNT|A\/C)[\s#:]*([X*]+)?(\d{4,})/i', $description, $m)) {
+                                                    $txnAccountNum = $m[2];
+                                                } elseif (preg_match('/(?:ending in|ending|ends in)[\s:]*(\d{4,})/i', $description, $m)) {
+                                                    $txnAccountNum = $m[1];
+                                                } elseif (preg_match('/[X*]{4,}(\d{4,})/', $description, $m)) {
+                                                    $txnAccountNum = $m[1];
+                                                }
+                                                $txnAccountKey = $txnAccountNum ?? 'unknown';
+                                            @endphp
+                                            @php
                                                 $isAdjustment = $txn['is_adjustment'] ?? false;
                                                 $isMcaPayment = $txn['is_mca'] ?? false;
                                                 $mcaLender = $txn['mca_lender'] ?? null;
@@ -1300,7 +1526,7 @@
                                                 $mcaFundingLenderName = $txn['mca_funding_lender_name'] ?? null;
                                                 $uniqueId = $result['session_id'] . '_' . $month['month_key'] . '_' . $txnIndex;
                                             @endphp
-                                            <tr class="hover:bg-gray-50 dark:hover:bg-gray-750 txn-row-{{ $uniqueId }}" data-month="{{ $month['month_key'] }}" data-session="{{ $result['session_id'] }}" data-transaction-id="{{ $txn['id'] ?? $uniqueId }}">
+                                            <tr class="hover:bg-gray-50 dark:hover:bg-gray-750 txn-row-{{ $uniqueId }} txn-account-{{ $result['session_id'] }}-{{ $month['month_key'] }}" data-month="{{ $month['month_key'] }}" data-session="{{ $result['session_id'] }}" data-transaction-id="{{ $txn['id'] ?? $uniqueId }}" data-account="{{ $txnAccountKey }}">
                                                 <td class="px-4 py-2 text-sm text-gray-900 dark:text-gray-100 whitespace-nowrap">{{ $txn['date'] }}</td>
                                                 <td class="px-4 py-2 text-sm text-gray-900 dark:text-gray-100 max-w-md">{{ $txn['description'] }}</td>
                                                 <td class="px-4 py-2 text-center" id="category-cell-{{ $uniqueId }}">
@@ -1332,7 +1558,8 @@
                                                     @endphp
                                                     @if(isset($txn['category']) && $txn['category'])
                                                         <div class="flex flex-col items-center gap-1">
-                                                            <span class="inline-flex items-center px-2 py-0.5 rounded text-xs font-medium category-badge {{ $isTransfer ? 'ring-2 ring-offset-1 ring-blue-400 dark:ring-blue-500' : '' }}" data-category="{{ $txn['category'] }}">
+                                                            <button onclick="openCategoryModalResults('{{ $uniqueId }}', '{{ addslashes($txn['description']) }}', {{ $txn['amount'] }}, '{{ $txn['type'] }}', {{ $txn['id'] ?? 'null' }})"
+                                                                    class="inline-flex items-center px-2 py-0.5 rounded text-xs font-medium category-badge {{ $isTransfer ? 'ring-2 ring-offset-1 ring-blue-400 dark:ring-blue-500' : '' }} hover:opacity-80 transition cursor-pointer" data-category="{{ $txn['category'] }}" title="Click to change category">
                                                                 @if($isTransfer && $transferDirection)
                                                                     @if($transferDirection === 'in')
                                                                         <svg class="w-3 h-3 mr-1 text-green-600 dark:text-green-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -1345,7 +1572,10 @@
                                                                     @endif
                                                                 @endif
                                                                 {{ ucwords(str_replace('_', ' ', $txn['category'])) }}
-                                                            </span>
+                                                                <svg class="w-3 h-3 ml-1 opacity-60" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                                                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15.232 5.232l3.536 3.536m-2.036-5.036a2.5 2.5 0 113.536 3.536L6.5 21.036H3v-3.572L16.732 3.732z"></path>
+                                                                </svg>
+                                                            </button>
                                                             @if($accountNumber)
                                                                 <span class="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-mono bg-blue-50 text-blue-700 dark:bg-blue-900 dark:text-blue-300 border border-blue-200 dark:border-blue-700">
                                                                     <svg class="w-3 h-3 mr-1" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -4082,6 +4312,11 @@
                 return;
             }
 
+            // Get the current category if it exists
+            const categoryCell = document.getElementById('category-cell-' + transactionId);
+            const currentCategoryBadge = categoryCell ? categoryCell.querySelector('.category-badge') : null;
+            const currentCategory = currentCategoryBadge ? currentCategoryBadge.dataset.category : null;
+
             // Filter categories based on transaction type
             const filteredCategories = Object.entries(categoriesDataResults).filter(([key, cat]) =>
                 cat.type === 'both' || cat.type === type
@@ -4089,14 +4324,25 @@
 
             // Build category grid
             const grid = document.getElementById('category-grid-results');
-            grid.innerHTML = filteredCategories.map(([key, cat]) => `
-                <button onclick="selectCategoryResults('${key}')"
-                        class="flex items-center gap-2 px-3 py-2 text-left text-sm border rounded-lg hover:bg-gray-50 dark:hover:bg-gray-700 transition category-option"
-                        data-category="${key}">
-                    <span class="w-3 h-3 rounded-full category-color-${cat.color}"></span>
-                    <span class="text-gray-900 dark:text-white">${cat.label}</span>
-                </button>
-            `).join('');
+            grid.innerHTML = filteredCategories.map(([key, cat]) => {
+                const isSelected = key === currentCategory;
+                const selectedClasses = isSelected
+                    ? 'border-2 border-blue-500 bg-blue-50 dark:bg-blue-900/30'
+                    : 'border';
+                const checkIcon = isSelected
+                    ? '<svg class="w-4 h-4 text-blue-600 dark:text-blue-400 ml-auto" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7"></path></svg>'
+                    : '';
+
+                return `
+                    <button onclick="selectCategoryResults('${key}')"
+                            class="flex items-center gap-2 px-3 py-2 text-left text-sm ${selectedClasses} rounded-lg hover:bg-gray-50 dark:hover:bg-gray-700 transition category-option"
+                            data-category="${key}">
+                        <span class="w-3 h-3 rounded-full category-color-${cat.color}"></span>
+                        <span class="text-gray-900 dark:text-white">${cat.label}</span>
+                        ${checkIcon}
+                    </button>
+                `;
+            }).join('');
 
             document.getElementById('category-modal-results').classList.remove('hidden');
         }
@@ -4129,6 +4375,51 @@
             }
             return null;
         }
+
+        // Account filtering functions - dynamically generated per session/month
+        @foreach($results as $result)
+            @if($result['success'] && isset($result['monthly_data']['months']))
+                @foreach($result['monthly_data']['months'] as $month)
+                    @php
+                        $sessionId = $result['session_id'];
+                        $monthKey = $month['month_key'];
+                    @endphp
+                    window.filterAccount_{{ $sessionId }}_{{ $monthKey }} = function(accountKey) {
+                        const sessionId = '{{ $sessionId }}';
+                        const monthKey = '{{ $monthKey }}';
+
+                        // Update button states
+                        const buttons = document.querySelectorAll('.account-filter-btn-' + sessionId + '-' + monthKey);
+                        buttons.forEach(btn => {
+                            if (btn.dataset.account === accountKey) {
+                                btn.classList.remove('bg-white', 'dark:bg-gray-700', 'text-gray-700', 'dark:text-gray-300', 'border', 'border-blue-300', 'dark:border-blue-700');
+                                btn.classList.add('bg-blue-600', 'text-white');
+                            } else {
+                                btn.classList.remove('bg-blue-600', 'text-white');
+                                btn.classList.add('bg-white', 'dark:bg-gray-700', 'text-gray-700', 'dark:text-gray-300', 'border', 'border-blue-300', 'dark:border-blue-700');
+                            }
+                        });
+
+                        // Filter transaction rows
+                        const rows = document.querySelectorAll('.txn-account-' + sessionId + '-' + monthKey);
+                        rows.forEach(row => {
+                            if (accountKey === 'all') {
+                                row.style.display = '';
+                            } else {
+                                row.style.display = row.dataset.account === accountKey ? '' : 'none';
+                            }
+                        });
+
+                        // Show/hide account summaries
+                        const summaries = document.querySelectorAll('.account-summary-' + sessionId + '-' + monthKey + '-' + accountKey);
+                        document.querySelectorAll('[class*="account-summary-' + sessionId + '-' + monthKey + '-"]').forEach(s => s.classList.add('hidden'));
+                        if (accountKey !== 'all' && accountKey !== 'unknown') {
+                            summaries.forEach(s => s.classList.remove('hidden'));
+                        }
+                    };
+                @endforeach
+            @endif
+        @endforeach
 
         function selectCategoryResults(categoryKey) {
             console.log('selectCategoryResults called:', categoryKey);
