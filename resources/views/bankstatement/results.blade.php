@@ -15,6 +15,16 @@
         .category-color-yellow { background-color: rgb(234, 179, 8); }
         .category-color-emerald { background-color: rgb(16, 185, 129); }
         .category-color-lime { background-color: rgb(132, 204, 22); }
+
+        /* Real-time update animation for transaction rows */
+        tr[class*="txn-row-"] {
+            transition: background-color 0.3s ease-in-out;
+        }
+
+        /* Smooth category badge updates */
+        .category-badge {
+            transition: all 0.2s ease-in-out;
+        }
     </style>
 
     <x-slot name="header">
@@ -59,6 +69,7 @@
                     'deposit_count' => 0,
                     'debit_count' => 0,
                     'nsf_count' => 0,
+                    'negative_days' => 0,
                     'transactions' => 0,
                     'api_cost' => 0,
                 ];
@@ -128,6 +139,205 @@
                 ksort($combinedMonths);
                 $monthCount = count($combinedMonths);
 
+                // Calculate negative days for each month
+                foreach ($combinedMonths as $monthKey => &$month) {
+                    $negativeDays = 0;
+                    $dailyBalances = [];
+
+                    // Group transactions by date and calculate daily net flow
+                    if (isset($month['transactions']) && is_array($month['transactions'])) {
+                        foreach ($month['transactions'] as $txn) {
+                            if (!is_array($txn)) continue;
+
+                            $date = $txn['date'] ?? null;
+                            if (!$date) continue;
+
+                            // Convert date to string if it's an object
+                            $dateStr = is_string($date) ? $date : (string) $date;
+                            if (!$dateStr) continue;
+
+                            if (!isset($dailyBalances[$dateStr])) {
+                                $dailyBalances[$dateStr] = 0;
+                            }
+
+                            $amount = (float) ($txn['amount'] ?? 0);
+                            $type = $txn['type'] ?? 'debit';
+
+                            // Add credits, subtract debits
+                            if ($type === 'credit') {
+                                $dailyBalances[$dateStr] += $amount;
+                            } else {
+                                $dailyBalances[$dateStr] -= $amount;
+                            }
+                        }
+
+                        // Sort dates chronologically
+                        ksort($dailyBalances);
+
+                        // Calculate running balance and count negative days
+                        $runningBalance = 0;
+                        foreach ($dailyBalances as $date => $netFlow) {
+                            $runningBalance += $netFlow;
+                            if ($runningBalance < 0) {
+                                $negativeDays++;
+                            }
+                        }
+                    }
+
+                    $month['negative_days'] = $negativeDays;
+                    $combinedTotals['negative_days'] += $negativeDays;
+                }
+                unset($month); // Unset reference
+
+                // Detect other accounts from transfer transactions
+                $otherAccounts = [];
+                $transferPatterns = [
+                    'transfer from', 'xfer from', 'tfr from', 'trnsfr from',
+                    'transfer to', 'xfer to', 'tfr to', 'trnsfr to',
+                    'online transfer', 'wire transfer', 'ach transfer',
+                    'internal transfer', 'account transfer', 'funds transfer'
+                ];
+
+                $accountTypePatterns = [
+                    'checking' => ['checking', 'chequing', 'chk', 'check acct'],
+                    'savings' => ['savings', 'save', 'sav', 'svgs'],
+                    'loan' => ['loan', 'lending', 'credit', 'line of credit', 'loc'],
+                    'money_market' => ['money market', 'mm', 'mma'],
+                    'credit_card' => ['credit card', 'cc', 'card'],
+                ];
+
+                foreach ($combinedMonths as $monthKey => $month) {
+                    if (!isset($month['transactions']) || !is_array($month['transactions'])) continue;
+
+                    foreach ($month['transactions'] as $txn) {
+                        if (!is_array($txn)) continue;
+
+                        $description = strtolower($txn['description'] ?? '');
+                        $isTransfer = false;
+
+                        // Check if this is a transfer transaction
+                        foreach ($transferPatterns as $pattern) {
+                            if (stripos($description, $pattern) !== false) {
+                                $isTransfer = true;
+                                break;
+                            }
+                        }
+
+                        if (!$isTransfer) continue;
+
+                        // Extract account number
+                        $accountNumber = null;
+                        $originalDesc = $txn['description'] ?? '';
+
+                        // Pattern 1: TRANSFER FROM/TO 1234567
+                        if (preg_match('/(?:FROM\/TO|TO\/FROM)\s+(\d{4,})/i', $originalDesc, $matches)) {
+                            $accountNumber = $matches[1];
+                        }
+                        // Pattern 2: ACCT ****1234, ACCOUNT XXXX1234
+                        elseif (preg_match('/(?:ACCT|ACCOUNT|A\/C)[\s#:]*([X*]+)?(\d{4,})/i', $originalDesc, $matches)) {
+                            $accountNumber = $matches[2];
+                        }
+                        // Pattern 3: ending in 1234
+                        elseif (preg_match('/(?:ending in|ending|ends in)[\s:]*(\d{4,})/i', $originalDesc, $matches)) {
+                            $accountNumber = $matches[1];
+                        }
+                        // Pattern 4: ****1234 or XXXX1234
+                        elseif (preg_match('/[X*]{4,}(\d{4,})/', $originalDesc, $matches)) {
+                            $accountNumber = $matches[1];
+                        }
+
+                        if (!$accountNumber) continue;
+
+                        // Detect account type
+                        $accountType = 'unknown';
+                        // Special case: LOAN PAYMENT prefix
+                        if (stripos($originalDesc, 'LOAN PAYMENT') !== false || stripos($originalDesc, 'LOAN PMT') !== false) {
+                            $accountType = 'loan';
+                        } else {
+                            foreach ($accountTypePatterns as $type => $patterns) {
+                                foreach ($patterns as $pattern) {
+                                    if (stripos($description, $pattern) !== false) {
+                                        $accountType = $type;
+                                        break 2;
+                                    }
+                                }
+                            }
+                        }
+
+                        // Determine transfer direction
+                        // For FROM/TO format: if it's a debit, money is going TO the other account
+                        // if it's a credit, money is coming FROM the other account
+                        $direction = 'unknown';
+                        $txnType = $txn['type'] ?? 'debit';
+
+                        if (stripos($originalDesc, 'FROM/TO') !== false || stripos($originalDesc, 'TO/FROM') !== false) {
+                            // Bi-directional transfer notation
+                            // If debit: money going TO other account
+                            // If credit: money coming FROM other account
+                            $direction = ($txnType === 'debit') ? 'to' : 'from';
+                        } elseif (preg_match('/\bFROM\b/i', $originalDesc) && !preg_match('/\bTO\b/i', $originalDesc)) {
+                            $direction = 'from';
+                        } elseif (preg_match('/\bTO\b/i', $originalDesc) && !preg_match('/\bFROM\b/i', $originalDesc)) {
+                            $direction = 'to';
+                        } else {
+                            // Fallback: use transaction type
+                            $direction = ($txnType === 'debit') ? 'to' : 'from';
+                        }
+
+                        // Group by account number
+                        if (!isset($otherAccounts[$accountNumber])) {
+                            $otherAccounts[$accountNumber] = [
+                                'account_number' => $accountNumber,
+                                'account_type' => $accountType,
+                                'transfer_count' => 0,
+                                'total_from' => 0,
+                                'total_to' => 0,
+                                'count_from' => 0,
+                                'count_to' => 0,
+                                'first_seen' => $txn['date'] ?? null,
+                                'last_seen' => $txn['date'] ?? null,
+                                'sample_descriptions' => [],
+                            ];
+                        }
+
+                        $account = &$otherAccounts[$accountNumber];
+                        $account['transfer_count']++;
+
+                        $amount = (float) ($txn['amount'] ?? 0);
+
+                        if ($direction === 'from') {
+                            $account['total_from'] += $amount;
+                            $account['count_from']++;
+                        } elseif ($direction === 'to') {
+                            $account['total_to'] += $amount;
+                            $account['count_to']++;
+                        }
+
+                        // Update date range
+                        $txnDate = $txn['date'] ?? null;
+                        if ($txnDate) {
+                            if (!$account['first_seen'] || $txnDate < $account['first_seen']) {
+                                $account['first_seen'] = $txnDate;
+                            }
+                            if (!$account['last_seen'] || $txnDate > $account['last_seen']) {
+                                $account['last_seen'] = $txnDate;
+                            }
+                        }
+
+                        // Keep sample descriptions (max 3)
+                        if (count($account['sample_descriptions']) < 3) {
+                            $account['sample_descriptions'][] = $txn['description'] ?? '';
+                        }
+
+                        unset($account);
+                    }
+                }
+
+                // Sort accounts by transfer count (most active first)
+                usort($otherAccounts, function($a, $b) {
+                    return $b['transfer_count'] - $a['transfer_count'];
+                });
+
                 // Calculate averages
                 $combinedAverages = [
                     'deposits' => $monthCount > 0 ? $combinedTotals['deposits'] / $monthCount : 0,
@@ -135,6 +345,7 @@
                     'true_revenue' => $monthCount > 0 ? $combinedTotals['true_revenue'] / $monthCount : 0,
                     'debits' => $monthCount > 0 ? $combinedTotals['debits'] / $monthCount : 0,
                     'deposit_count' => $monthCount > 0 ? $combinedTotals['deposit_count'] / $monthCount : 0,
+                    'negative_days' => $monthCount > 0 ? $combinedTotals['negative_days'] / $monthCount : 0,
                     'average_daily' => $monthCount > 0 ? $combinedTotals['true_revenue'] / ($monthCount * 30) : 0,
                 ];
 
@@ -194,21 +405,21 @@
                         </div>
                         <div class="metric-card bg-gray-50 dark:bg-gray-700 p-4 rounded-lg transition-all duration-300" data-metric-type="credit">
                             <p class="text-sm text-gray-500 dark:text-gray-400">Total Deposits</p>
-                            <p class="metric-value text-2xl font-bold text-green-600 dark:text-green-400">${{ number_format($combinedTotals['deposits'], 2) }}</p>
+                            <p class="metric-value combined-metric-deposits text-2xl font-bold text-green-600 dark:text-green-400">${{ number_format($combinedTotals['deposits'], 2) }}</p>
                             <p class="metric-subtext text-xs text-gray-500">{{ $combinedTotals['deposit_count'] }} transactions</p>
                         </div>
                         <div class="metric-card bg-gray-50 dark:bg-gray-700 p-4 rounded-lg transition-all duration-300" data-metric-type="neutral">
                             <p class="text-sm text-gray-500 dark:text-gray-400">Adjustments</p>
-                            <p class="text-2xl font-bold text-orange-600 dark:text-orange-400">${{ number_format($combinedTotals['adjustments'], 2) }}</p>
+                            <p class="text-2xl font-bold text-orange-600 dark:text-orange-400 combined-metric-adj">${{ number_format($combinedTotals['adjustments'], 2) }}</p>
                         </div>
                         <div class="metric-card bg-green-50 dark:bg-green-900/30 p-4 rounded-lg border-2 border-green-300 dark:border-green-700 transition-all duration-300" data-metric-type="credit">
                             <p class="text-sm text-green-700 dark:text-green-300 font-medium">True Revenue</p>
-                            <p class="metric-value text-2xl font-bold text-green-600 dark:text-green-400">${{ number_format($combinedTotals['true_revenue'], 2) }}</p>
+                            <p class="metric-value combined-metric-rev text-2xl font-bold text-green-600 dark:text-green-400">${{ number_format($combinedTotals['true_revenue'], 2) }}</p>
                             <p class="metric-subtext text-xs text-green-600">Avg: ${{ number_format($combinedAverages['true_revenue'], 2) }}/mo</p>
                         </div>
                         <div class="metric-card bg-gray-50 dark:bg-gray-700 p-4 rounded-lg transition-all duration-300" data-metric-type="debit">
                             <p class="text-sm text-gray-500 dark:text-gray-400">Total Debits</p>
-                            <p class="metric-value text-2xl font-bold text-red-600 dark:text-red-400">${{ number_format($combinedTotals['debits'], 2) }}</p>
+                            <p class="metric-value combined-metric-debits text-2xl font-bold text-red-600 dark:text-red-400">${{ number_format($combinedTotals['debits'], 2) }}</p>
                             <p class="metric-subtext text-xs text-gray-500">{{ $combinedTotals['debit_count'] }} transactions</p>
                         </div>
                         <div class="metric-card bg-gray-50 dark:bg-gray-700 p-4 rounded-lg transition-all duration-300" data-metric-type="debit">
@@ -239,6 +450,7 @@
                                         <th class="px-4 py-3 text-right text-xs font-semibold text-gray-600 dark:text-gray-300 uppercase">Avg Daily</th>
                                         <th class="px-4 py-3 text-center text-xs font-semibold text-gray-600 dark:text-gray-300 uppercase">NSF</th>
                                         <th class="px-4 py-3 text-center text-xs font-semibold text-gray-600 dark:text-gray-300 uppercase"># Deposits</th>
+                                        <th class="px-4 py-3 text-center text-xs font-semibold text-red-600 dark:text-red-400 uppercase">Negative Days</th>
                                         <th class="px-4 py-3 text-right text-xs font-semibold text-gray-600 dark:text-gray-300 uppercase">Total Debits</th>
                                     </tr>
                                 </thead>
@@ -252,6 +464,7 @@
                                         <td class="px-4 py-3 text-sm text-right text-gray-700 dark:text-gray-300">${{ number_format($month['average_daily'] ?? ($month['true_revenue'] / 30), 2) }}</td>
                                         <td class="px-4 py-3 text-sm text-center {{ $month['nsf_count'] > 0 ? 'text-red-600 dark:text-red-400 font-semibold' : 'text-gray-500 dark:text-gray-400' }}">{{ $month['nsf_count'] }}</td>
                                         <td class="px-4 py-3 text-sm text-center text-gray-700 dark:text-gray-300">{{ $month['deposit_count'] }}</td>
+                                        <td class="px-4 py-3 text-sm text-center {{ ($month['negative_days'] ?? 0) > 0 ? 'text-red-600 dark:text-red-400 font-semibold' : 'text-gray-500 dark:text-gray-400' }}">{{ $month['negative_days'] ?? 0 }}</td>
                                         <td class="px-4 py-3 text-sm text-right text-red-600 dark:text-red-400">${{ number_format($month['debits'], 2) }}</td>
                                     </tr>
                                     @endforeach
@@ -265,6 +478,7 @@
                                         <td class="px-4 py-3 text-sm text-right text-gray-900 dark:text-gray-100">${{ number_format($combinedAverages['average_daily'], 2) }}</td>
                                         <td class="px-4 py-3 text-sm text-center {{ $combinedTotals['nsf_count'] > 0 ? 'text-red-600 dark:text-red-400' : 'text-gray-500 dark:text-gray-400' }}">{{ $combinedTotals['nsf_count'] }}</td>
                                         <td class="px-4 py-3 text-sm text-center text-gray-900 dark:text-gray-100">{{ $combinedTotals['deposit_count'] }}</td>
+                                        <td class="px-4 py-3 text-sm text-center {{ $combinedTotals['negative_days'] > 0 ? 'text-red-600 dark:text-red-400' : 'text-gray-500 dark:text-gray-400' }}">{{ $combinedTotals['negative_days'] }}</td>
                                         <td class="px-4 py-3 text-sm text-right text-red-600 dark:text-red-400">${{ number_format($combinedTotals['debits'], 2) }}</td>
                                     </tr>
                                     <tr class="text-gray-600 dark:text-gray-400">
@@ -275,10 +489,131 @@
                                         <td class="px-4 py-3 text-sm text-right">${{ number_format($combinedAverages['average_daily'], 2) }}</td>
                                         <td class="px-4 py-3 text-sm text-center">-</td>
                                         <td class="px-4 py-3 text-sm text-center">{{ number_format($combinedAverages['deposit_count'], 1) }}</td>
+                                        <td class="px-4 py-3 text-sm text-center">{{ number_format($combinedAverages['negative_days'], 1) }}</td>
                                         <td class="px-4 py-3 text-sm text-right">${{ number_format($combinedAverages['debits'], 2) }}</td>
                                     </tr>
                                 </tfoot>
                             </table>
+                        </div>
+                    </div>
+                    @endif
+
+                    <!-- Other Accounts Detected Section -->
+                    @if(count($otherAccounts) > 0)
+                    <div class="mb-6 border dark:border-gray-700 rounded-lg overflow-hidden">
+                        <div class="bg-blue-600 px-4 py-3">
+                            <h4 class="font-semibold text-white flex items-center">
+                                <svg class="w-5 h-5 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3 10h18M7 15h1m4 0h1m-7 4h12a3 3 0 003-3V8a3 3 0 00-3-3H6a3 3 0 00-3 3v8a3 3 0 003 3z"></path>
+                                </svg>
+                                Other Accounts Detected from Transfers
+                                <span class="ml-2 px-2 py-0.5 bg-white/20 rounded text-sm">{{ count($otherAccounts) }} {{ Str::plural('Account', count($otherAccounts)) }}</span>
+                            </h4>
+                        </div>
+
+                        <div class="p-4 bg-blue-50 dark:bg-blue-900/20 border-b dark:border-gray-700">
+                            <div class="flex items-start gap-2 text-sm text-blue-800 dark:text-blue-200">
+                                <svg class="w-5 h-5 flex-shrink-0 mt-0.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"></path>
+                                </svg>
+                                <p>The following accounts were detected from transfer transactions. This helps identify other banking relationships and account types.</p>
+                            </div>
+                        </div>
+
+                        <div class="overflow-x-auto">
+                            <table class="min-w-full divide-y divide-gray-200 dark:divide-gray-700">
+                                <thead class="bg-gray-100 dark:bg-gray-700">
+                                    <tr>
+                                        <th class="px-4 py-3 text-left text-xs font-semibold text-gray-600 dark:text-gray-300 uppercase">Account</th>
+                                        <th class="px-4 py-3 text-left text-xs font-semibold text-gray-600 dark:text-gray-300 uppercase">Type</th>
+                                        <th class="px-4 py-3 text-center text-xs font-semibold text-gray-600 dark:text-gray-300 uppercase">Transfers</th>
+                                        <th class="px-4 py-3 text-right text-xs font-semibold text-green-600 dark:text-green-400 uppercase">From Account</th>
+                                        <th class="px-4 py-3 text-right text-xs font-semibold text-red-600 dark:text-red-400 uppercase">To Account</th>
+                                        <th class="px-4 py-3 text-center text-xs font-semibold text-gray-600 dark:text-gray-300 uppercase">First Seen</th>
+                                        <th class="px-4 py-3 text-center text-xs font-semibold text-gray-600 dark:text-gray-300 uppercase">Last Seen</th>
+                                        <th class="px-4 py-3 text-left text-xs font-semibold text-gray-600 dark:text-gray-300 uppercase">Sample Description</th>
+                                    </tr>
+                                </thead>
+                                <tbody class="bg-white dark:bg-gray-800 divide-y divide-gray-200 dark:divide-gray-700">
+                                    @foreach($otherAccounts as $account)
+                                    <tr class="hover:bg-gray-50 dark:hover:bg-gray-700">
+                                        <td class="px-4 py-3 text-sm">
+                                            <span class="inline-flex items-center px-2.5 py-1 rounded-full text-xs font-mono bg-blue-100 text-blue-800 dark:bg-blue-900 dark:text-blue-200 border border-blue-300 dark:border-blue-700">
+                                                <svg class="w-3 h-3 mr-1.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3 10h18M7 15h1m4 0h1m-7 4h12a3 3 0 003-3V8a3 3 0 00-3-3H6a3 3 0 00-3 3v8a3 3 0 003 3z"></path>
+                                                </svg>
+                                                ****{{ $account['account_number'] }}
+                                            </span>
+                                        </td>
+                                        <td class="px-4 py-3 text-sm">
+                                            @php
+                                                $typeLabels = [
+                                                    'checking' => ['label' => 'Checking', 'color' => 'blue'],
+                                                    'savings' => ['label' => 'Savings', 'color' => 'green'],
+                                                    'loan' => ['label' => 'Loan', 'color' => 'red'],
+                                                    'money_market' => ['label' => 'Money Market', 'color' => 'purple'],
+                                                    'credit_card' => ['label' => 'Credit Card', 'color' => 'orange'],
+                                                    'unknown' => ['label' => 'Unknown', 'color' => 'gray'],
+                                                ];
+                                                $typeInfo = $typeLabels[$account['account_type']] ?? $typeLabels['unknown'];
+                                            @endphp
+                                            <span class="inline-flex items-center px-2 py-1 rounded text-xs font-medium bg-{{ $typeInfo['color'] }}-100 text-{{ $typeInfo['color'] }}-800 dark:bg-{{ $typeInfo['color'] }}-900 dark:text-{{ $typeInfo['color'] }}-200">
+                                                {{ $typeInfo['label'] }}
+                                            </span>
+                                        </td>
+                                        <td class="px-4 py-3 text-sm text-center font-semibold text-gray-900 dark:text-gray-100">
+                                            {{ $account['transfer_count'] }}
+                                        </td>
+                                        <td class="px-4 py-3 text-sm text-right">
+                                            @if($account['count_from'] > 0)
+                                                <div class="text-green-600 dark:text-green-400 font-semibold">
+                                                    ${{ number_format($account['total_from'], 2) }}
+                                                </div>
+                                                <div class="text-xs text-gray-500 dark:text-gray-400">
+                                                    {{ $account['count_from'] }} {{ Str::plural('transfer', $account['count_from']) }}
+                                                </div>
+                                            @else
+                                                <span class="text-gray-400 dark:text-gray-600">-</span>
+                                            @endif
+                                        </td>
+                                        <td class="px-4 py-3 text-sm text-right">
+                                            @if($account['count_to'] > 0)
+                                                <div class="text-red-600 dark:text-red-400 font-semibold">
+                                                    ${{ number_format($account['total_to'], 2) }}
+                                                </div>
+                                                <div class="text-xs text-gray-500 dark:text-gray-400">
+                                                    {{ $account['count_to'] }} {{ Str::plural('transfer', $account['count_to']) }}
+                                                </div>
+                                            @else
+                                                <span class="text-gray-400 dark:text-gray-600">-</span>
+                                            @endif
+                                        </td>
+                                        <td class="px-4 py-3 text-sm text-center text-gray-700 dark:text-gray-300">
+                                            {{ is_string($account['first_seen']) ? date('M d, Y', strtotime($account['first_seen'])) : ($account['first_seen'] ? $account['first_seen']->format('M d, Y') : '-') }}
+                                        </td>
+                                        <td class="px-4 py-3 text-sm text-center text-gray-700 dark:text-gray-300">
+                                            {{ is_string($account['last_seen']) ? date('M d, Y', strtotime($account['last_seen'])) : ($account['last_seen'] ? $account['last_seen']->format('M d, Y') : '-') }}
+                                        </td>
+                                        <td class="px-4 py-3 text-sm text-gray-600 dark:text-gray-400 max-w-xs">
+                                            <div class="truncate" title="{{ $account['sample_descriptions'][0] ?? '' }}">
+                                                {{ $account['sample_descriptions'][0] ?? '-' }}
+                                            </div>
+                                        </td>
+                                    </tr>
+                                    @endforeach
+                                </tbody>
+                            </table>
+                        </div>
+
+                        <div class="p-4 bg-gray-50 dark:bg-gray-800 border-t dark:border-gray-700">
+                            <div class="text-sm text-gray-600 dark:text-gray-400">
+                                <p class="font-semibold mb-2">Understanding This Data:</p>
+                                <ul class="list-disc list-inside space-y-1 ml-2">
+                                    <li><strong>From Account:</strong> Money transferred FROM this account INTO the analyzed account (inbound transfers)</li>
+                                    <li><strong>To Account:</strong> Money transferred TO this account FROM the analyzed account (outbound transfers)</li>
+                                    <li><strong>Account Type:</strong> Detected from transaction descriptions (checking, savings, loan, etc.)</li>
+                                </ul>
+                            </div>
                         </div>
                     </div>
                     @endif
@@ -1555,11 +1890,37 @@
                                                                 $transferDirection = 'out';
                                                             }
                                                         }
+
+                                                        // Get category color classes
+                                                        $categoryColorClass = 'bg-gray-100 text-gray-800 dark:bg-gray-900 dark:text-gray-200';
+                                                        if ($txnCategory) {
+                                                            $categories = \App\Models\TransactionCategory::getStandardCategories();
+                                                            if (isset($categories[$txnCategory])) {
+                                                                $color = $categories[$txnCategory]['color'];
+                                                                $colorMap = [
+                                                                    'gray' => 'bg-gray-100 text-gray-800 dark:bg-gray-900 dark:text-gray-200',
+                                                                    'red' => 'bg-red-100 text-red-800 dark:bg-red-900 dark:text-red-200',
+                                                                    'orange' => 'bg-orange-100 text-orange-800 dark:bg-orange-900 dark:text-orange-200',
+                                                                    'amber' => 'bg-amber-100 text-amber-800 dark:bg-amber-900 dark:text-amber-200',
+                                                                    'yellow' => 'bg-yellow-100 text-yellow-800 dark:bg-yellow-900 dark:text-yellow-200',
+                                                                    'lime' => 'bg-lime-100 text-lime-800 dark:bg-lime-900 dark:text-lime-200',
+                                                                    'green' => 'bg-green-100 text-green-800 dark:bg-green-900 dark:text-green-200',
+                                                                    'emerald' => 'bg-emerald-100 text-emerald-800 dark:bg-emerald-900 dark:text-emerald-200',
+                                                                    'teal' => 'bg-teal-100 text-teal-800 dark:bg-teal-900 dark:text-teal-200',
+                                                                    'cyan' => 'bg-cyan-100 text-cyan-800 dark:bg-cyan-900 dark:text-cyan-200',
+                                                                    'blue' => 'bg-blue-100 text-blue-800 dark:bg-blue-900 dark:text-blue-200',
+                                                                    'indigo' => 'bg-indigo-100 text-indigo-800 dark:bg-indigo-900 dark:text-indigo-200',
+                                                                    'purple' => 'bg-purple-100 text-purple-800 dark:bg-purple-900 dark:text-purple-200',
+                                                                    'pink' => 'bg-pink-100 text-pink-800 dark:bg-pink-900 dark:text-pink-200'
+                                                                ];
+                                                                $categoryColorClass = $colorMap[$color] ?? $colorMap['gray'];
+                                                            }
+                                                        }
                                                     @endphp
                                                     @if(isset($txn['category']) && $txn['category'])
                                                         <div class="flex flex-col items-center gap-1">
                                                             <button onclick="openCategoryModalResults('{{ $uniqueId }}', '{{ addslashes($txn['description']) }}', {{ $txn['amount'] }}, '{{ $txn['type'] }}', {{ $txn['id'] ?? 'null' }})"
-                                                                    class="inline-flex items-center px-2 py-0.5 rounded text-xs font-medium category-badge {{ $isTransfer ? 'ring-2 ring-offset-1 ring-blue-400 dark:ring-blue-500' : '' }} hover:opacity-80 transition cursor-pointer" data-category="{{ $txn['category'] }}" title="Click to change category">
+                                                                    class="inline-flex items-center px-2 py-0.5 rounded text-xs font-medium category-badge {{ $categoryColorClass }} {{ $isTransfer ? 'ring-2 ring-offset-1 ring-blue-400 dark:ring-blue-500' : '' }} hover:opacity-80 transition cursor-pointer" data-category="{{ $txn['category'] }}" title="Click to change category">
                                                                 @if($isTransfer && $transferDirection)
                                                                     @if($transferDirection === 'in')
                                                                         <svg class="w-3 h-3 mr-1 text-green-600 dark:text-green-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -1599,9 +1960,16 @@
                                                     ${{ number_format($txn['amount'], 2) }}
                                                 </td>
                                                 <td class="px-4 py-2 text-center">
-                                                    <span class="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium {{ $txn['type'] === 'credit' ? 'bg-green-100 text-green-800 dark:bg-green-900 dark:text-green-200' : 'bg-red-100 text-red-800 dark:bg-red-900 dark:text-red-200' }}">
-                                                        {{ ucfirst($txn['type']) }}
-                                                    </span>
+                                                    <button
+                                                        onclick="toggleTransactionType('{{ $uniqueId }}', {{ $txn['id'] ?? 'null' }}, '{{ $txn['type'] }}', '{{ addslashes($txn['description']) }}', {{ $txn['amount'] }}, '{{ $month['month_key'] }}', '{{ $result['session_id'] }}')"
+                                                        class="type-toggle-btn-{{ $uniqueId }} inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium transition-all cursor-pointer hover:opacity-80 {{ $txn['type'] === 'credit' ? 'bg-green-100 text-green-800 dark:bg-green-900 dark:text-green-200' : 'bg-red-100 text-red-800 dark:bg-red-900 dark:text-red-200' }}"
+                                                        title="Click to toggle between Credit/Debit"
+                                                    >
+                                                        <span class="type-text">{{ ucfirst($txn['type']) }}</span>
+                                                        <svg class="w-3 h-3 ml-1" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 9l4-4 4 4m0 6l-4 4-4-4"></path>
+                                                        </svg>
+                                                    </button>
                                                 </td>
                                                 <td class="px-4 py-2 text-center">
                                                     @if($txn['type'] === 'credit')
@@ -1970,7 +2338,7 @@
                     <div class="grid grid-cols-2 md:grid-cols-4 gap-4">
                         <div class="bg-gray-50 dark:bg-gray-700 p-4 rounded-lg">
                             <p class="text-sm text-gray-500 dark:text-gray-400">Total Deposits</p>
-                            <p class="text-2xl font-bold text-gray-900 dark:text-gray-100">${{ number_format($combinedTotals['deposits'], 2) }}</p>
+                            <p class="text-2xl font-bold text-gray-900 dark:text-gray-100 combined-card-deposits">${{ number_format($combinedTotals['deposits'], 2) }}</p>
                         </div>
                         <div class="bg-orange-50 dark:bg-orange-900/30 p-4 rounded-lg">
                             <p class="text-sm text-orange-600 dark:text-orange-400">Total Adjustments</p>
@@ -1982,7 +2350,7 @@
                         </div>
                         <div class="bg-red-50 dark:bg-red-900/30 p-4 rounded-lg">
                             <p class="text-sm text-red-600 dark:text-red-400">Total Debits</p>
-                            <p class="text-2xl font-bold text-red-600 dark:text-red-400">${{ number_format($combinedTotals['debits'], 2) }}</p>
+                            <p class="text-2xl font-bold text-red-600 dark:text-red-400 combined-card-debits">${{ number_format($combinedTotals['debits'], 2) }}</p>
                         </div>
                     </div>
                 </div>
@@ -2662,6 +3030,159 @@
             btn.style.opacity = '1';
         }
 
+        async function toggleTransactionType(uniqueId, transactionId, currentType, description, amount, monthKey, sessionId) {
+            const btn = document.querySelector('.type-toggle-btn-' + uniqueId);
+            const textSpan = btn.querySelector('.type-text');
+            const amountCell = btn.closest('tr').querySelector('td:nth-child(4)');
+
+            // Check if transactionId is valid
+            if (!transactionId || transactionId === 'null' || transactionId === null) {
+                showToast('Transaction ID not found. Please refresh the page and try again.', 'error');
+                return;
+            }
+
+            // Disable button during request
+            btn.disabled = true;
+            btn.style.opacity = '0.5';
+
+            try {
+                const response = await fetch('{{ route("bankstatement.toggle-type") }}', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                        'X-CSRF-TOKEN': '{{ csrf_token() }}',
+                        'Accept': 'application/json'
+                    },
+                    body: JSON.stringify({
+                        transaction_id: transactionId
+                    })
+                });
+
+                const data = await response.json();
+                console.log('Toggle type response:', data);
+
+                if (data.success) {
+                    const newType = data.new_type;
+                    const isCredit = newType === 'credit';
+
+                    // Update button text
+                    textSpan.textContent = newType.charAt(0).toUpperCase() + newType.slice(1);
+
+                    // Update button classes
+                    btn.classList.remove('bg-green-100', 'text-green-800', 'dark:bg-green-900', 'dark:text-green-200');
+                    btn.classList.remove('bg-red-100', 'text-red-800', 'dark:bg-red-900', 'dark:text-red-200');
+
+                    if (isCredit) {
+                        btn.classList.add('bg-green-100', 'text-green-800', 'dark:bg-green-900', 'dark:text-green-200');
+                        amountCell.classList.remove('text-red-600', 'dark:text-red-400');
+                        amountCell.classList.add('text-green-600', 'dark:text-green-400');
+                    } else {
+                        btn.classList.add('bg-red-100', 'text-red-800', 'dark:bg-red-900', 'dark:text-red-200');
+                        amountCell.classList.remove('text-green-600', 'dark:text-green-400');
+                        amountCell.classList.add('text-red-600', 'dark:text-red-400');
+                    }
+
+                    // Update onclick to reflect new state
+                    btn.setAttribute('onclick', `toggleTransactionType('${uniqueId}', ${transactionId}, '${newType}', '${description.replace(/'/g, "\\'")}', ${amount}, '${monthKey}', '${sessionId}')`);
+
+                    // Update monthly summary totals
+                    updateMonthlySummaryAfterTypeToggle(sessionId, monthKey, amount, currentType, newType);
+
+                    // Update session totals if available
+                    if (data.session_totals) {
+                        updateSessionTotals(sessionId, data.session_totals);
+                    }
+
+                    // Show success feedback
+                    showToast(data.message, 'success');
+                } else {
+                    const errorMsg = data.message || data.error || 'Failed to update transaction type';
+                    showToast(errorMsg, 'error');
+                    console.error('Server error:', data);
+                }
+            } catch (error) {
+                console.error('Error:', error);
+                const errorMsg = error.message || 'Error updating transaction type';
+                showToast(errorMsg, 'error');
+            }
+
+            // Re-enable button
+            btn.disabled = false;
+            btn.style.opacity = '1';
+        }
+
+        function updateMonthlySummaryAfterTypeToggle(sessionId, monthKey, amount, oldType, newType) {
+            // Update the monthly summary in the month card
+            const monthCard = document.querySelector(`[data-month="${monthKey}"][data-session="${sessionId}"]`);
+            if (!monthCard) return;
+
+            // Find the month summary section
+            const summarySection = monthCard.closest('.bg-white, .dark\\:bg-gray-800')?.querySelector('.grid');
+            if (!summarySection) return;
+
+            // Get all the metric values
+            const metrics = summarySection.querySelectorAll('.metric-value');
+            if (metrics.length < 2) return;
+
+            const creditsElement = metrics[0]; // First metric is credits
+            const debitsElement = metrics[1];  // Second metric is debits
+
+            // Parse current values
+            let currentCredits = parseFloat(creditsElement.textContent.replace(/[$,]/g, '')) || 0;
+            let currentDebits = parseFloat(debitsElement.textContent.replace(/[$,]/g, '')) || 0;
+
+            // Update values based on the toggle
+            if (oldType === 'credit' && newType === 'debit') {
+                currentCredits -= amount;
+                currentDebits += amount;
+            } else if (oldType === 'debit' && newType === 'credit') {
+                currentDebits -= amount;
+                currentCredits += amount;
+            }
+
+            // Update the display
+            creditsElement.textContent = '$' + currentCredits.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+            debitsElement.textContent = '$' + currentDebits.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+
+            // Update true revenue if present
+            const trueRevenueElements = summarySection.querySelectorAll('.metric-value');
+            if (trueRevenueElements.length >= 3) {
+                const trueRevenueElement = trueRevenueElements[2];
+                const adjustments = parseFloat(summarySection.querySelector('.metric-value:nth-child(2)')?.textContent.replace(/[$,]/g, '')) || 0;
+                const trueRevenue = currentCredits - adjustments;
+                trueRevenueElement.textContent = '$' + trueRevenue.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+            }
+
+            // Update the monthlyData object to keep data in sync
+            const sessionData = monthlyData[sessionId];
+            if (sessionData && sessionData.totals) {
+                if (oldType === 'credit' && newType === 'debit') {
+                    sessionData.totals.deposits -= amount;
+                    sessionData.totals.debits += amount;
+                } else if (oldType === 'debit' && newType === 'credit') {
+                    sessionData.totals.debits -= amount;
+                    sessionData.totals.deposits += amount;
+                }
+            }
+
+            // Update the Combined Analysis Summary dashboard
+            updateCombinedSummary();
+        }
+
+        function updateSessionTotals(sessionId, totals) {
+            // Update the session totals in the summary section if visible
+            const sessionSection = document.querySelector(`[data-session-id="${sessionId}"]`);
+            if (!sessionSection) return;
+
+            const creditTotal = sessionSection.querySelector('[data-total="credits"]');
+            const debitTotal = sessionSection.querySelector('[data-total="debits"]');
+            const netFlow = sessionSection.querySelector('[data-total="net_flow"]');
+
+            if (creditTotal) creditTotal.textContent = '$' + totals.total_credits;
+            if (debitTotal) debitTotal.textContent = '$' + totals.total_debits;
+            if (netFlow) netFlow.textContent = '$' + totals.net_flow;
+        }
+
         function updateAdjustmentsList(sessionId, monthKey, description, amount, oldClass, newClass) {
             const container = document.getElementById(`adjustments-container-${sessionId}-${monthKey}`);
             const list = document.getElementById(`adjustments-list-${sessionId}-${monthKey}`);
@@ -2807,6 +3328,8 @@
         function updateCombinedSummary() {
             // Recalculate combined totals from all session data
             let combinedTotals = {
+                deposits: 0,
+                debits: 0,
                 adjustments: 0,
                 true_revenue: 0
             };
@@ -2815,8 +3338,10 @@
             Object.keys(monthlyData).forEach(sessionId => {
                 const data = monthlyData[sessionId];
                 if (data && data.totals) {
-                    combinedTotals.adjustments += data.totals.adjustments;
-                    combinedTotals.true_revenue += data.totals.true_revenue;
+                    combinedTotals.deposits += data.totals.deposits || 0;
+                    combinedTotals.debits += data.totals.debits || 0;
+                    combinedTotals.adjustments += data.totals.adjustments || 0;
+                    combinedTotals.true_revenue += data.totals.true_revenue || 0;
                 }
             });
 
@@ -2830,7 +3355,26 @@
             const combinedTotalRev = document.querySelector('.combined-total-rev .rev-value');
             if (combinedTotalRev) combinedTotalRev.textContent = formatNumber(combinedTotals.true_revenue);
 
+            // Update combined summary metrics
+            const combinedMetricDeposits = document.querySelector('.combined-metric-deposits');
+            if (combinedMetricDeposits) combinedMetricDeposits.textContent = '$' + formatNumber(combinedTotals.deposits);
+
+            const combinedMetricDebits = document.querySelector('.combined-metric-debits');
+            if (combinedMetricDebits) combinedMetricDebits.textContent = '$' + formatNumber(combinedTotals.debits);
+
+            const combinedMetricAdj = document.querySelector('.combined-metric-adj');
+            if (combinedMetricAdj) combinedMetricAdj.textContent = '$' + formatNumber(combinedTotals.adjustments);
+
+            const combinedMetricRev = document.querySelector('.combined-metric-rev');
+            if (combinedMetricRev) combinedMetricRev.textContent = '$' + formatNumber(combinedTotals.true_revenue);
+
             // Update combined summary cards
+            const combinedCardDeposits = document.querySelector('.combined-card-deposits');
+            if (combinedCardDeposits) combinedCardDeposits.textContent = '$' + formatNumber(combinedTotals.deposits);
+
+            const combinedCardDebits = document.querySelector('.combined-card-debits');
+            if (combinedCardDebits) combinedCardDebits.textContent = '$' + formatNumber(combinedTotals.debits);
+
             const combinedCardAdj = document.querySelector('.combined-card-adj');
             if (combinedCardAdj) combinedCardAdj.textContent = '$' + formatNumber(combinedTotals.adjustments);
 
@@ -4288,29 +4832,52 @@
         });
 
         function loadCategoriesResults() {
+            console.log('Loading categories from API...');
             fetch('{{ route("bankstatement.categories") }}')
-                .then(response => response.json())
+                .then(response => {
+                    console.log('Categories API response status:', response.status);
+                    if (!response.ok) {
+                        throw new Error('Failed to load categories: ' + response.status);
+                    }
+                    return response.json();
+                })
                 .then(data => {
+                    console.log('Categories loaded successfully:', data);
                     categoriesDataResults = data.categories;
+                    console.log('Total categories:', Object.keys(categoriesDataResults).length);
                 })
                 .catch(error => {
                     console.error('Error loading categories:', error);
+                    alert('Failed to load categories. Please refresh the page.');
                 });
         }
 
-        function openCategoryModalResults(transactionId, description, amount, type, dbId) {
+        window.openCategoryModalResults = function(transactionId, description, amount, type, dbId) {
+            console.log('=== openCategoryModalResults called ===');
+            console.log('transactionId:', transactionId);
+            console.log('description:', description);
+            console.log('amount:', amount);
+            console.log('type:', type);
+            console.log('dbId:', dbId);
+
             currentTransactionIdResults = transactionId; // uniqueId for finding DOM elements
             currentTransactionDbIdResults = dbId; // database ID for API call
             currentTransactionTypeResults = type;
 
-            console.log('openCategoryModalResults:', { transactionId, dbId, description, amount, type });
-
-            document.getElementById('modal-description-results').textContent = description;
+            const modalDesc = document.getElementById('modal-description-results');
+            if (!modalDesc) {
+                console.error('modal-description-results element not found!');
+                alert('Error: Modal not properly initialized');
+                return;
+            }
+            modalDesc.textContent = description;
 
             if (!categoriesDataResults) {
+                console.warn('Categories not loaded yet');
                 alert('Categories are still loading. Please try again in a moment.');
                 return;
             }
+            console.log('Categories loaded:', Object.keys(categoriesDataResults).length);
 
             // Get the current category if it exists
             const categoryCell = document.getElementById('category-cell-' + transactionId);
@@ -4324,7 +4891,23 @@
 
             // Build category grid
             const grid = document.getElementById('category-grid-results');
-            grid.innerHTML = filteredCategories.map(([key, cat]) => {
+            let gridHTML = '';
+
+            // Add "Clear Category" option if a category is currently set
+            if (currentCategory) {
+                gridHTML += `
+                    <button onclick="clearCategoryResults()"
+                            class="flex items-center gap-2 px-3 py-2 text-left text-sm border border-red-300 dark:border-red-700 rounded-lg hover:bg-red-50 dark:hover:bg-red-900/30 transition category-option">
+                        <svg class="w-4 h-4 text-red-600 dark:text-red-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"></path>
+                        </svg>
+                        <span class="text-red-600 dark:text-red-400 font-medium">Clear Category</span>
+                    </button>
+                `;
+            }
+
+            // Add all other categories
+            gridHTML += filteredCategories.map(([key, cat]) => {
                 const isSelected = key === currentCategory;
                 const selectedClasses = isSelected
                     ? 'border-2 border-blue-500 bg-blue-50 dark:bg-blue-900/30'
@@ -4344,14 +4927,147 @@
                 `;
             }).join('');
 
+            grid.innerHTML = gridHTML;
+
             document.getElementById('category-modal-results').classList.remove('hidden');
         }
 
-        function closeCategoryModalResults() {
+        window.closeCategoryModalResults = function() {
             document.getElementById('category-modal-results').classList.add('hidden');
             currentTransactionIdResults = null;
             currentTransactionDbIdResults = null;
             currentTransactionTypeResults = null;
+        }
+
+        window.clearCategoryResults = function() {
+            console.log('clearCategoryResults called');
+            if (!currentTransactionIdResults) return;
+
+            const description = document.getElementById('modal-description-results').textContent;
+
+            // Find row by class name (txn-row-{uniqueId})
+            const row = document.querySelector(`.txn-row-${currentTransactionIdResults}`);
+            if (!row) {
+                console.error('Could not find transaction row');
+                showNotificationResults('Error: Could not find transaction row', 'error');
+                return;
+            }
+
+            const amountText = row.querySelector('td:nth-child(4)').textContent.trim();
+            const amount = parseFloat(amountText.replace(/[$,]/g, ''));
+
+            const requestBody = {
+                description: description,
+                amount: amount,
+                type: currentTransactionTypeResults,
+                category: null, // Set to null to clear
+                subcategory: null
+            };
+
+            // Include transaction_id if we have a valid database ID
+            if (currentTransactionDbIdResults) {
+                requestBody.transaction_id = currentTransactionDbIdResults;
+            }
+
+            console.log('Clear category request:', requestBody);
+
+            fetch('{{ route("bankstatement.toggle-category") }}', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                    'X-CSRF-TOKEN': '{{ csrf_token() }}',
+                    'Accept': 'application/json'
+                },
+                body: JSON.stringify(requestBody)
+            })
+            .then(response => response.json())
+            .then(data => {
+                console.log('Clear response:', data);
+                if (data.success) {
+                    const escapedDescription = description.replace(/'/g, "\\'");
+
+                    // If multiple transactions were cleared, find and update all matching rows across ALL sessions
+                    if (data.updated_count > 1) {
+                        console.log(`Clearing category for ${data.updated_count} transactions with matching description across all visible sessions`);
+
+                        // Find all transaction rows with matching description (case-insensitive)
+                        const normalizedDescription = description.trim().toLowerCase();
+                        let clearedRowsCount = 0;
+
+                        document.querySelectorAll('tr[class*="txn-row-"]').forEach(txnRow => {
+                            // Description is in the 2nd column (td:nth-child(2))
+                            const descCell = txnRow.querySelector('td:nth-child(2)');
+                            if (descCell && descCell.textContent.trim().toLowerCase() === normalizedDescription) {
+                                console.log('Found matching row to clear:', descCell.textContent.trim());
+
+                                // Get the unique ID from the row class
+                                const rowClasses = txnRow.className.split(' ');
+                                const txnRowClass = rowClasses.find(c => c.startsWith('txn-row-'));
+                                if (txnRowClass) {
+                                    const txnId = txnRowClass.replace('txn-row-', '');
+                                    const categoryCell = document.getElementById('category-cell-' + txnId);
+
+                                    if (categoryCell) {
+                                        // Get amount from the row (4th column)
+                                        const amountCell = txnRow.querySelector('td:nth-child(4)');
+                                        const rowAmount = amountCell ? parseFloat(amountCell.textContent.trim().replace(/[$,]/g, '')) : amount;
+
+                                        // Get transaction database ID from data attribute
+                                        const txnDbId = txnRow.getAttribute('data-transaction-id');
+
+                                        const escapedDesc = description.replace(/'/g, "\\'");
+                                        categoryCell.innerHTML = `
+                                            <button onclick="openCategoryModalResults('${txnId}', '${escapedDesc}', ${rowAmount}, '${currentTransactionTypeResults}', ${txnDbId || 'null'})"
+                                                    class="inline-flex items-center px-2 py-0.5 text-xs text-gray-500 dark:text-gray-400 hover:text-blue-600 dark:hover:text-blue-400 transition">
+                                                <svg class="w-3 h-3 mr-1" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M7 7h.01M7 3h5c.512 0 1.024.195 1.414.586l7 7a2 2 0 010 2.828l-7 7a2 2 0 01-2.828 0l-7-7A1.994 1.994 0 013 12V7a4 4 0 014-4z"></path>
+                                                </svg>
+                                                Classify
+                                            </button>
+                                        `;
+                                        clearedRowsCount++;
+
+                                        // Add a subtle highlight animation to show the update
+                                        txnRow.classList.add('bg-orange-50', 'dark:bg-orange-900/20');
+                                        setTimeout(() => {
+                                            txnRow.classList.remove('bg-orange-50', 'dark:bg-orange-900/20');
+                                        }, 2000);
+                                    }
+                                }
+                            }
+                        });
+
+                        console.log(`Successfully cleared ${clearedRowsCount} visible transaction categories in the UI`);
+
+                        // Update category statistics
+                        updateCategoryStatistics();
+                    } else {
+                        // Update only the current transaction
+                        const categoryCell = document.getElementById('category-cell-' + currentTransactionIdResults);
+                        categoryCell.innerHTML = `
+                            <button onclick="openCategoryModalResults('${currentTransactionIdResults}', '${escapedDescription}', ${amount}, '${currentTransactionTypeResults}', ${currentTransactionDbIdResults})"
+                                    class="inline-flex items-center px-2 py-0.5 text-xs text-gray-500 dark:text-gray-400 hover:text-blue-600 dark:hover:text-blue-400 transition">
+                                <svg class="w-3 h-3 mr-1" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M7 7h.01M7 3h5c.512 0 1.024.195 1.414.586l7 7a2 2 0 010 2.828l-7 7a2 2 0 01-2.828 0l-7-7A1.994 1.994 0 013 12V7a4 4 0 014-4z"></path>
+                                </svg>
+                                Classify
+                            </button>
+                        `;
+
+                        // Update category statistics
+                        updateCategoryStatistics();
+                    }
+
+                    closeCategoryModalResults();
+                    showNotificationResults(data.message || 'Category cleared successfully', 'success');
+                } else {
+                    showNotificationResults(data.message || 'Failed to clear category', 'error');
+                }
+            })
+            .catch(error => {
+                console.error('Error:', error);
+                showNotificationResults('An error occurred while clearing the category', 'error');
+            });
         }
 
         function extractAccountNumberResults(description) {
@@ -4421,7 +5137,7 @@
             @endif
         @endforeach
 
-        function selectCategoryResults(categoryKey) {
+        window.selectCategoryResults = function(categoryKey) {
             console.log('selectCategoryResults called:', categoryKey);
             console.log('currentTransactionIdResults:', currentTransactionIdResults);
             console.log('currentTransactionDbIdResults:', currentTransactionDbIdResults);
@@ -4474,53 +5190,84 @@
                 console.log('Response data:', data);
                 if (data.success) {
                     console.log('Category saved successfully');
-                    // Update the category cell
-                    const categoryCell = document.getElementById('category-cell-' + currentTransactionIdResults);
-                    const categoryInfo = categoriesDataResults[categoryKey];
 
-                    // Check if this is a transfer category
-                    const isTransfer = ['internal_transfer', 'wire_transfer', 'ach_transfer'].includes(categoryKey);
-                    const accountNumber = extractAccountNumberResults(description);
-                    const transferDirection = isTransfer ? getTransferDirectionResults(description) : null;
+                    // If multiple transactions were updated, find and update all matching rows across ALL sessions
+                    if (data.updated_count > 1) {
+                        console.log(`Updating ${data.updated_count} transactions with matching description across all visible sessions`);
 
-                    // Build the category display
-                    let categoryHTML = '<div class="flex flex-col items-center gap-1">';
+                        // Find all transaction rows with matching description (case-insensitive)
+                        const normalizedDescription = description.trim().toLowerCase();
+                        let updatedRowsCount = 0;
 
-                    // Category badge with optional transfer ring
-                    categoryHTML += `<span class="inline-flex items-center px-2 py-0.5 rounded text-xs font-medium category-badge bg-${categoryInfo.color}-100 text-${categoryInfo.color}-800 dark:bg-${categoryInfo.color}-900 dark:text-${categoryInfo.color}-200 ${isTransfer ? 'ring-2 ring-offset-1 ring-blue-400 dark:ring-blue-500' : ''}" data-category="${categoryKey}">`;
+                        document.querySelectorAll('tr[class*="txn-row-"]').forEach(txnRow => {
+                            // Description is in the 2nd column (td:nth-child(2))
+                            const descCell = txnRow.querySelector('td:nth-child(2)');
+                            if (descCell && descCell.textContent.trim().toLowerCase() === normalizedDescription) {
+                                console.log('Found matching row:', descCell.textContent.trim());
 
-                    // Transfer direction icon
-                    if (isTransfer && transferDirection) {
-                        if (transferDirection === 'in') {
-                            categoryHTML += `<svg class="w-3 h-3 mr-1 text-green-600 dark:text-green-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M7 11l5-5m0 0l5 5m-5-5v12"></path>
-                            </svg>`;
-                        } else {
-                            categoryHTML += `<svg class="w-3 h-3 mr-1 text-red-600 dark:text-red-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M17 13l-5 5m0 0l-5-5m5 5V6"></path>
-                            </svg>`;
+                                // Get the unique ID from the row class
+                                const rowClasses = txnRow.className.split(' ');
+                                const txnRowClass = rowClasses.find(c => c.startsWith('txn-row-'));
+                                if (txnRowClass) {
+                                    const txnId = txnRowClass.replace('txn-row-', '');
+                                    console.log('Transaction ID:', txnId);
+
+                                    const categoryCell = document.getElementById('category-cell-' + txnId);
+                                    console.log('Category cell found:', categoryCell ? 'yes' : 'no');
+
+                                    if (categoryCell) {
+                                        // Get amount from the row for this specific transaction (4th column)
+                                        const amountCell = txnRow.querySelector('td:nth-child(4)');
+                                        const rowAmount = amountCell ? parseFloat(amountCell.textContent.trim().replace(/[$,]/g, '')) : amount;
+
+                                        // Get transaction database ID from data attribute
+                                        const txnDbId = txnRow.getAttribute('data-transaction-id');
+
+                                        // Determine transaction type from amount cell color (green=credit, red=debit)
+                                        const rowType = amountCell && (amountCell.classList.contains('text-green-600') || amountCell.classList.contains('text-green-400')) ? 'credit' : 'debit';
+
+                                        updateCategoryCellHTML(categoryCell, txnId, categoryKey, description, rowAmount, rowType, txnDbId);
+                                        updatedRowsCount++;
+
+                                        // Add a subtle highlight animation to show the update
+                                        txnRow.classList.add('bg-blue-50', 'dark:bg-blue-900/20');
+                                        setTimeout(() => {
+                                            txnRow.classList.remove('bg-blue-50', 'dark:bg-blue-900/20');
+                                        }, 2000);
+                                    }
+                                }
+                            }
+                        });
+
+                        console.log(`Successfully updated ${updatedRowsCount} visible transaction rows in the UI`);
+                        console.log(`Database reported ${data.updated_count} total updates`);
+
+                        if (updatedRowsCount !== data.updated_count) {
+                            console.warn(`Mismatch: Updated ${updatedRowsCount} visible rows but database updated ${data.updated_count} rows. Some transactions may be in collapsed sections.`);
                         }
+
+                        // Update category statistics if they exist
+                        updateCategoryStatistics();
+                    } else {
+                        // Update only the current transaction
+                        const categoryCell = document.getElementById('category-cell-' + currentTransactionIdResults);
+                        if (categoryCell) {
+                            updateCategoryCellHTML(categoryCell, currentTransactionIdResults, categoryKey, description, amount, currentTransactionTypeResults, currentTransactionDbIdResults);
+                        }
+
+                        // Update category statistics
+                        updateCategoryStatistics();
                     }
-
-                    categoryHTML += `${categoryInfo.label}</span>`;
-
-                    // Account number badge if present
-                    if (accountNumber) {
-                        categoryHTML += `<span class="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-mono bg-blue-50 text-blue-700 dark:bg-blue-900 dark:text-blue-300 border border-blue-200 dark:border-blue-700">
-                            <svg class="w-3 h-3 mr-1" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3 10h18M7 15h1m4 0h1m-7 4h12a3 3 0 003-3V8a3 3 0 00-3-3H6a3 3 0 00-3 3v8a3 3 0 003 3z"></path>
-                            </svg>
-                            ****${accountNumber}
-                        </span>`;
-                    }
-
-                    categoryHTML += '</div>';
-                    categoryCell.innerHTML = categoryHTML;
 
                     closeCategoryModalResults();
 
-                    // Show success message
-                    showNotificationResults(data.message, 'success');
+                    // Show enhanced success message
+                    const categoryInfo = categoriesDataResults[categoryKey];
+                    const categoryLabel = categoryInfo ? categoryInfo.label : categoryKey;
+                    const updateMessage = data.updated_count > 1
+                        ? `✓ Updated ${data.updated_count} transaction${data.updated_count !== 1 ? 's' : ''} to "${categoryLabel}"`
+                        : data.message;
+                    showNotificationResults(updateMessage, 'success');
                 } else {
                     showNotificationResults(data.message || 'Failed to classify transaction', 'error');
                 }
@@ -4532,14 +5279,127 @@
         }
 
         function applyCategoryColorsResults() {
+            const colorClasses = {
+                'gray': 'bg-gray-100 text-gray-800 dark:bg-gray-900 dark:text-gray-200',
+                'red': 'bg-red-100 text-red-800 dark:bg-red-900 dark:text-red-200',
+                'orange': 'bg-orange-100 text-orange-800 dark:bg-orange-900 dark:text-orange-200',
+                'amber': 'bg-amber-100 text-amber-800 dark:bg-amber-900 dark:text-amber-200',
+                'yellow': 'bg-yellow-100 text-yellow-800 dark:bg-yellow-900 dark:text-yellow-200',
+                'lime': 'bg-lime-100 text-lime-800 dark:bg-lime-900 dark:text-lime-200',
+                'green': 'bg-green-100 text-green-800 dark:bg-green-900 dark:text-green-200',
+                'emerald': 'bg-emerald-100 text-emerald-800 dark:bg-emerald-900 dark:text-emerald-200',
+                'teal': 'bg-teal-100 text-teal-800 dark:bg-teal-900 dark:text-teal-200',
+                'cyan': 'bg-cyan-100 text-cyan-800 dark:bg-cyan-900 dark:text-cyan-200',
+                'blue': 'bg-blue-100 text-blue-800 dark:bg-blue-900 dark:text-blue-200',
+                'indigo': 'bg-indigo-100 text-indigo-800 dark:bg-indigo-900 dark:text-indigo-200',
+                'purple': 'bg-purple-100 text-purple-800 dark:bg-purple-900 dark:text-purple-200',
+                'pink': 'bg-pink-100 text-pink-800 dark:bg-pink-900 dark:text-pink-200'
+            };
+
             document.querySelectorAll('.category-badge').forEach(badge => {
                 const category = badge.dataset.category;
                 if (categoriesDataResults && categoriesDataResults[category]) {
                     const color = categoriesDataResults[category].color;
-                    badge.classList.add(`bg-${color}-100`, `text-${color}-800`);
-                    badge.classList.add(`dark:bg-${color}-900`, `dark:text-${color}-200`);
+                    const classes = colorClasses[color] || colorClasses['gray'];
+                    // Add all classes from the string
+                    badge.className = badge.className.replace(/bg-\w+-\d+|text-\w+-\d+|dark:bg-\w+-\d+|dark:text-\w+-\d+/g, '');
+                    badge.className += ' ' + classes;
                 }
             });
+        }
+
+        // Helper function to update category statistics across the dashboard
+        function updateCategoryStatistics() {
+            // Count transactions by category for each visible session
+            const categoryStats = {};
+
+            document.querySelectorAll('.category-badge').forEach(badge => {
+                const category = badge.dataset.category;
+                if (category) {
+                    if (!categoryStats[category]) {
+                        categoryStats[category] = 0;
+                    }
+                    categoryStats[category]++;
+                }
+            });
+
+            console.log('Updated category statistics:', categoryStats);
+
+            // You can add code here to display these statistics in a summary panel
+            // For now, this provides the data structure for future enhancements
+        }
+
+        // Helper function to update category cell HTML
+        function updateCategoryCellHTML(categoryCell, txnId, categoryKey, description, amount, txnType, txnDbId) {
+            const categoryInfo = categoriesDataResults[categoryKey];
+
+            // Check if this is a transfer category
+            const isTransfer = ['internal_transfer', 'wire_transfer', 'ach_transfer'].includes(categoryKey);
+            const accountNumber = extractAccountNumberResults(description);
+            const transferDirection = isTransfer ? getTransferDirectionResults(description) : null;
+
+            // Escape description for onclick handler
+            const escapedDescription = description.replace(/'/g, "\\'");
+
+            // Build the category display with clickable button
+            let categoryHTML = '<div class="flex flex-col items-center gap-1">';
+
+            // Get color classes based on category color
+            const colorClasses = {
+                'gray': 'bg-gray-100 text-gray-800 dark:bg-gray-900 dark:text-gray-200',
+                'red': 'bg-red-100 text-red-800 dark:bg-red-900 dark:text-red-200',
+                'orange': 'bg-orange-100 text-orange-800 dark:bg-orange-900 dark:text-orange-200',
+                'amber': 'bg-amber-100 text-amber-800 dark:bg-amber-900 dark:text-amber-200',
+                'yellow': 'bg-yellow-100 text-yellow-800 dark:bg-yellow-900 dark:text-yellow-200',
+                'lime': 'bg-lime-100 text-lime-800 dark:bg-lime-900 dark:text-lime-200',
+                'green': 'bg-green-100 text-green-800 dark:bg-green-900 dark:text-green-200',
+                'emerald': 'bg-emerald-100 text-emerald-800 dark:bg-emerald-900 dark:text-emerald-200',
+                'teal': 'bg-teal-100 text-teal-800 dark:bg-teal-900 dark:text-teal-200',
+                'cyan': 'bg-cyan-100 text-cyan-800 dark:bg-cyan-900 dark:text-cyan-200',
+                'blue': 'bg-blue-100 text-blue-800 dark:bg-blue-900 dark:text-blue-200',
+                'indigo': 'bg-indigo-100 text-indigo-800 dark:bg-indigo-900 dark:text-indigo-200',
+                'purple': 'bg-purple-100 text-purple-800 dark:bg-purple-900 dark:text-purple-200',
+                'pink': 'bg-pink-100 text-pink-800 dark:bg-pink-900 dark:text-pink-200'
+            };
+            const categoryColorClass = colorClasses[categoryInfo.color] || colorClasses['gray'];
+
+            // Clickable category badge with optional transfer ring
+            categoryHTML += `<button onclick="openCategoryModalResults('${txnId}', '${escapedDescription}', ${amount}, '${txnType}', ${txnDbId})" class="inline-flex items-center px-2 py-0.5 rounded text-xs font-medium category-badge ${isTransfer ? 'ring-2 ring-offset-1 ring-blue-400 dark:ring-blue-500' : ''} hover:opacity-80 transition cursor-pointer ${categoryColorClass}" data-category="${categoryKey}" title="Click to change category">`;
+
+            // Transfer direction icon
+            if (isTransfer && transferDirection) {
+                if (transferDirection === 'in') {
+                    categoryHTML += `<svg class="w-3 h-3 mr-1 text-green-600 dark:text-green-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M7 11l5-5m0 0l5 5m-5-5v12"></path>
+                    </svg>`;
+                } else {
+                    categoryHTML += `<svg class="w-3 h-3 mr-1 text-red-600 dark:text-red-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M17 13l-5 5m0 0l-5-5m5 5V6"></path>
+                    </svg>`;
+                }
+            }
+
+            categoryHTML += `${categoryInfo.label}`;
+
+            // Add edit icon
+            categoryHTML += `<svg class="w-3 h-3 ml-1 opacity-60" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15.232 5.232l3.536 3.536m-2.036-5.036a2.5 2.5 0 113.536 3.536L6.5 21.036H3v-3.572L16.732 3.732z"></path>
+            </svg>`;
+
+            categoryHTML += `</button>`;
+
+            // Account number badge if present
+            if (accountNumber) {
+                categoryHTML += `<span class="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-mono bg-blue-50 text-blue-700 dark:bg-blue-900 dark:text-blue-300 border border-blue-200 dark:border-blue-700">
+                    <svg class="w-3 h-3 mr-1" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3 10h18M7 15h1m4 0h1m-7 4h12a3 3 0 003-3V8a3 3 0 00-3-3H6a3 3 0 00-3 3v8a3 3 0 003 3z"></path>
+                    </svg>
+                    ****${accountNumber}
+                </span>`;
+            }
+
+            categoryHTML += '</div>';
+            categoryCell.innerHTML = categoryHTML;
         }
 
         function showNotificationResults(message, type) {
