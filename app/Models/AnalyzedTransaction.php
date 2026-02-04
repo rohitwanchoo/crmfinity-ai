@@ -15,6 +15,8 @@ class AnalyzedTransaction extends Model
         'description',
         'description_normalized',
         'amount',
+        'beginning_balance',
+        'ending_balance',
         'type',
         'original_type',
         'was_corrected',
@@ -29,6 +31,8 @@ class AnalyzedTransaction extends Model
     protected $casts = [
         'transaction_date' => 'date',
         'amount' => 'decimal:2',
+        'beginning_balance' => 'decimal:2',
+        'ending_balance' => 'decimal:2',
         'confidence' => 'decimal:4',
         'was_corrected' => 'boolean',
         'exclude_from_revenue' => 'boolean',
