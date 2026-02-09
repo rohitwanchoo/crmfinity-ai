@@ -270,7 +270,8 @@ class BankStatementController extends Controller
                     ->toArray();
 
                 // Group transactions by month and calculate true revenue
-                $monthlyData = $this->groupTransactionsByMonth($transactionsWithIds);
+                // Pass session object to enable accurate negative days calculation using beginning_balance
+                $monthlyData = $this->groupTransactionsByMonth($transactionsWithIds, $session);
 
                 // Recalculate summary from actual saved transactions (not Python output)
                 $actualCredits = $session->transactions()->where('type', 'credit')->get();

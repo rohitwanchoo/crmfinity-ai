@@ -122,14 +122,29 @@ class NsfAndNegativeDaysCalculator
         ];
 
         // Keywords for returned/declined items (non-fee)
+        // More specific keywords to avoid false positives
         $returnedItemKeywords = [
-            'nsf return', 'nsf declined',
+            'nsf return', 'nsf returned', 'nsf declined',
             'returned item', 'returned check', 'returned ach', 'returned payment', 'returned debit',
-            'return', 'returned', 'reject', 'rejected',
-            'declined', 'reversal', 'reverse',
+            'item returned', 'check returned', 'ach returned', 'payment returned', 'debit returned',
+            'returned deposit', 'deposit returned',
             'non-sufficient funds', 'insufficient funds',
-            // ACH return codes
-            'r01', 'r02', 'r09', 'r10', 'r29'
+            'nsf reject', 'nsf reversal',
+            // ACH return codes (specific indicators)
+            'ach r01', 'ach r02', 'ach r09', 'ach r10', 'ach r29',
+            'return code r01', 'return code r02', 'return code r09', 'return code r10', 'return code r29'
+        ];
+
+        // Patterns to exclude (false positives)
+        $excludePatterns = [
+            '/\.com\s+return/i',           // "xxx.com Return" (merchant names)
+            '/\sreturn\s+[a-z]+\s+property/i', // "Return xxx Property" (merchant names)
+            '/\sreturn\s+[a-z]+\s+management/i', // "Return xxx Management"
+            '/return\s+to\s+sender/i',     // Mail returns
+            '/product\s+return/i',         // Product returns
+            '/merchandise\s+return/i',     // Merchandise returns
+            '/refund.*return/i',           // Refund returns
+            '/credit.*return/i',           // Credit returns
         ];
 
         $nsfFees = [];
@@ -146,6 +161,19 @@ class NsfAndNegativeDaysCalculator
 
             $dateStr = is_string($date) ? $date : date('Y-m-d', strtotime($date));
             $timestamp = strtotime($dateStr);
+
+            // Check for exclusion patterns first (avoid false positives)
+            $shouldExclude = false;
+            foreach ($excludePatterns as $pattern) {
+                if (preg_match($pattern, $description)) {
+                    $shouldExclude = true;
+                    break;
+                }
+            }
+
+            if ($shouldExclude) {
+                continue; // Skip this transaction
+            }
 
             // Check for NSF fees (typically small amounts like $35, $36, etc.)
             $isFee = false;
