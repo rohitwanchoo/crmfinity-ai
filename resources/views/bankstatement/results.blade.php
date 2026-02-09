@@ -25,6 +25,32 @@
         .category-badge {
             transition: all 0.2s ease-in-out;
         }
+
+        /* MCA filter indicator animation */
+        @keyframes slide-in-right {
+            from {
+                transform: translateX(100%);
+                opacity: 0;
+            }
+            to {
+                transform: translateX(0);
+                opacity: 1;
+            }
+        }
+
+        .animate-slide-in-right {
+            animation: slide-in-right 0.3s ease-out;
+        }
+
+        /* Smooth transitions for MCA transaction filtering */
+        tr[data-transaction-id] {
+            transition: opacity 0.3s ease-in-out, background-color 0.3s ease-in-out;
+        }
+
+        /* MCA view button hover effects */
+        .mca-view-btn {
+            transition: all 0.2s ease-in-out;
+        }
     </style>
 
     <x-slot name="header">
@@ -33,8 +59,8 @@
         </h2>
     </x-slot>
 
-    <div class="py-12">
-        <div class="w-full sm:px-6 lg:px-8">
+    <div class="py-4">
+        <div class="w-full px-2">
             <div class="mb-6">
                 <a href="{{ route('bankstatement.index') }}" class="inline-flex items-center text-sm text-green-600 dark:text-green-400 hover:underline">
                     <svg class="w-4 h-4 mr-1" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -102,8 +128,9 @@
                     $combinedTotals['adjustments'] += $res['monthly_data']['totals']['adjustments'] ?? 0;
                     $combinedTotals['true_revenue'] += $res['monthly_data']['totals']['true_revenue'] ?? 0;
                     $combinedTotals['debits'] += $res['monthly_data']['totals']['debits'] ?? 0;
-                    $combinedTotals['deposit_count'] += $res['monthly_data']['totals']['deposit_count'] ?? 0;
-                    $combinedTotals['debit_count'] += $res['monthly_data']['totals']['debit_count'] ?? 0;
+                    // Use summary counts for consistency with individual session display
+                    $combinedTotals['deposit_count'] += $res['summary']['credit_count'] ?? 0;
+                    $combinedTotals['debit_count'] += $res['summary']['debit_count'] ?? 0;
                     $combinedTotals['nsf_count'] += $res['monthly_data']['totals']['nsf_count'] ?? 0;
                     $combinedTotals['transactions'] += $res['summary']['total_transactions'] ?? 0;
                     $combinedTotals['api_cost'] += $res['api_cost']['total_cost'] ?? 0;
@@ -143,43 +170,82 @@
                 foreach ($combinedMonths as $monthKey => &$month) {
                     $negativeDays = 0;
                     $dailyBalances = [];
+                    $hasActualBalances = false;
 
-                    // Group transactions by date and calculate daily net flow
+                    // Group transactions by date
                     if (isset($month['transactions']) && is_array($month['transactions'])) {
+                        // First check if we have actual balance data
                         foreach ($month['transactions'] as $txn) {
-                            if (!is_array($txn)) continue;
-
-                            $date = $txn['date'] ?? null;
-                            if (!$date) continue;
-
-                            // Convert date to string if it's an object
-                            $dateStr = is_string($date) ? $date : (string) $date;
-                            if (!$dateStr) continue;
-
-                            if (!isset($dailyBalances[$dateStr])) {
-                                $dailyBalances[$dateStr] = 0;
-                            }
-
-                            $amount = (float) ($txn['amount'] ?? 0);
-                            $type = $txn['type'] ?? 'debit';
-
-                            // Add credits, subtract debits
-                            if ($type === 'credit') {
-                                $dailyBalances[$dateStr] += $amount;
-                            } else {
-                                $dailyBalances[$dateStr] -= $amount;
+                            if (isset($txn['ending_balance']) && $txn['ending_balance'] !== null) {
+                                $hasActualBalances = true;
+                                break;
                             }
                         }
 
-                        // Sort dates chronologically
-                        ksort($dailyBalances);
+                        if ($hasActualBalances) {
+                            // Use actual ending balances from bank statement
+                            foreach ($month['transactions'] as $txn) {
+                                if (!is_array($txn)) continue;
 
-                        // Calculate running balance and count negative days
-                        $runningBalance = 0;
-                        foreach ($dailyBalances as $date => $netFlow) {
-                            $runningBalance += $netFlow;
-                            if ($runningBalance < 0) {
-                                $negativeDays++;
+                                $date = $txn['date'] ?? null;
+                                if (!$date) continue;
+
+                                // Convert date to string if it's an object
+                                $dateStr = is_string($date) ? $date : (string) $date;
+                                if (!$dateStr) continue;
+
+                                $endingBalance = $txn['ending_balance'] ?? null;
+                                if ($endingBalance === null) continue;
+
+                                // Store the ending balance for this date (use last transaction if multiple on same day)
+                                $dailyBalances[$dateStr] = (float) $endingBalance;
+                            }
+
+                            // Sort dates chronologically and count negative days
+                            ksort($dailyBalances);
+                            foreach ($dailyBalances as $date => $balance) {
+                                if ($balance < 0) {
+                                    $negativeDays++;
+                                }
+                            }
+                        } else {
+                            // Fallback: Calculate running balance from transactions
+                            foreach ($month['transactions'] as $txn) {
+                                if (!is_array($txn)) continue;
+
+                                $date = $txn['date'] ?? null;
+                                if (!$date) continue;
+
+                                // Convert date to string if it's an object
+                                $dateStr = is_string($date) ? $date : (string) $date;
+                                if (!$dateStr) continue;
+
+                                if (!isset($dailyBalances[$dateStr])) {
+                                    $dailyBalances[$dateStr] = 0;
+                                }
+
+                                $amount = (float) ($txn['amount'] ?? 0);
+                                $type = $txn['type'] ?? 'debit';
+
+                                // Add credits, subtract debits
+                                if ($type === 'credit') {
+                                    $dailyBalances[$dateStr] += $amount;
+                                } else {
+                                    $dailyBalances[$dateStr] -= $amount;
+                                }
+                            }
+
+                            // Sort dates chronologically
+                            ksort($dailyBalances);
+
+                            // Calculate running balance and count negative days
+                            // Use beginning_balance from this month's statement if available
+                            $runningBalance = isset($month['beginning_balance']) ? (float) $month['beginning_balance'] : 0;
+                            foreach ($dailyBalances as $date => $netFlow) {
+                                $runningBalance += $netFlow;
+                                if ($runningBalance < 0) {
+                                    $negativeDays++;
+                                }
                             }
                         }
                     }
@@ -363,8 +429,8 @@
             @if(count($allSuccessfulResults) > 0)
             <!-- Combined Analysis Section -->
             <div class="mb-8 bg-white dark:bg-gray-800 overflow-hidden shadow-sm sm:rounded-lg border-2 border-green-500">
-                <div class="p-6">
-                    <div class="flex items-center justify-between mb-6">
+                <div class="p-2">
+                    <div class="flex items-center justify-between mb-4">
                         <div class="flex items-center">
                             <div class="p-2 bg-green-100 dark:bg-green-900 rounded-lg mr-3">
                                 <svg class="w-6 h-6 text-green-600 dark:text-green-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -552,7 +618,7 @@
                                                     'savings' => ['label' => 'Savings', 'color' => 'green'],
                                                     'loan' => ['label' => 'Loan', 'color' => 'red'],
                                                     'money_market' => ['label' => 'Money Market', 'color' => 'purple'],
-                                                    'credit_card' => ['label' => 'Credit Card', 'color' => 'orange'],
+                                                    'credit_card' => ['label' => 'Credit', 'color' => 'orange'],
                                                     'unknown' => ['label' => 'Unknown', 'color' => 'gray'],
                                                 ];
                                                 $typeInfo = $typeLabels[$account['account_type']] ?? $typeLabels['unknown'];
@@ -852,6 +918,7 @@
                                         <th class="px-4 py-3 text-center text-xs font-semibold text-gray-600 dark:text-gray-300 uppercase"># Payments</th>
                                         <th class="px-4 py-3 text-right text-xs font-semibold text-gray-600 dark:text-gray-300 uppercase">Avg Payment</th>
                                         <th class="px-4 py-3 text-right text-xs font-semibold text-red-600 dark:text-red-400 uppercase">Total Paid</th>
+                                        <th class="px-4 py-3 text-center text-xs font-semibold text-gray-600 dark:text-gray-300 uppercase">Actions</th>
                                     </tr>
                                 </thead>
                                 <tbody id="combined-mca-lenders-tbody" class="bg-white dark:bg-gray-800 divide-y divide-gray-200 dark:divide-gray-700">
@@ -896,6 +963,18 @@
                                         <td class="px-4 py-3 text-center text-sm font-medium text-gray-900 dark:text-gray-100 lender-payment-count">{{ $lender['payment_count'] ?? 0 }}</td>
                                         <td class="px-4 py-3 text-right text-sm text-gray-700 dark:text-gray-300 lender-avg-payment">${{ number_format(($lender['payment_count'] ?? 0) > 0 ? ($lender['total_amount'] ?? 0) / $lender['payment_count'] : 0, 2) }}</td>
                                         <td class="px-4 py-3 text-right text-sm font-semibold text-red-600 dark:text-red-400 lender-total-amount">${{ number_format($lender['total_amount'] ?? 0, 2) }}</td>
+                                        <td class="px-4 py-3 text-center">
+                                            <button
+                                                onclick="toggleMcaTransactions('{{ $lender['lender_id'] }}', '{{ addslashes($lender['lender_name']) }}')"
+                                                class="mca-view-btn inline-flex items-center justify-center p-2 rounded-lg text-blue-600 hover:bg-blue-50 dark:text-blue-400 dark:hover:bg-blue-900/30 transition-colors"
+                                                title="View transactions for {{ $lender['lender_name'] }}"
+                                                data-lender-id="{{ $lender['lender_id'] }}">
+                                                <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z"></path>
+                                                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z"></path>
+                                                </svg>
+                                            </button>
+                                        </td>
                                     </tr>
                                     @endforeach
                                 </tbody>
@@ -907,6 +986,7 @@
                                         <td id="combined-mca-footer-payments" class="px-4 py-3 text-center text-sm text-gray-900 dark:text-gray-100">{{ $combinedMca['total_mca_payments'] }}</td>
                                         <td class="px-4 py-3"></td>
                                         <td id="combined-mca-footer-amount" class="px-4 py-3 text-right text-sm text-red-600 dark:text-red-400">${{ number_format($combinedMca['total_mca_amount'], 2) }}</td>
+                                        <td class="px-4 py-3"></td>
                                     </tr>
                                 </tfoot>
                             </table>
@@ -942,8 +1022,8 @@
 
             <!-- MCA Offer Calculator Section -->
             <div class="mb-8 bg-white dark:bg-gray-800 overflow-hidden shadow-sm sm:rounded-lg border-2 border-blue-500">
-                <div class="p-6">
-                    <div class="flex items-center justify-between mb-6">
+                <div class="p-2">
+                    <div class="flex items-center justify-between mb-4">
                         <div class="flex items-center">
                             <div class="p-2 bg-blue-100 dark:bg-blue-900 rounded-lg mr-3">
                                 <svg class="w-6 h-6 text-blue-600 dark:text-blue-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -1246,6 +1326,74 @@
                 </div>
             </div>
 
+            <!-- Category Distribution Chart Section -->
+            <div class="mb-8 bg-white dark:bg-gray-800 overflow-hidden shadow-sm sm:rounded-lg border-2 border-purple-500">
+                <div class="p-2">
+                    <div class="flex items-center justify-between mb-4">
+                        <div class="flex items-center">
+                            <div class="p-2 bg-purple-100 dark:bg-purple-900 rounded-lg mr-3">
+                                <svg class="w-6 h-6 text-purple-600 dark:text-purple-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M11 3.055A9.001 9.001 0 1020.945 13H11V3.055z"></path>
+                                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M20.488 9H15V3.512A9.025 9.025 0 0120.488 9z"></path>
+                                </svg>
+                            </div>
+                            <div>
+                                <h3 class="text-xl font-bold text-gray-900 dark:text-gray-100">Category Distribution</h3>
+                                <p class="text-sm text-gray-500 dark:text-gray-400">Breakdown of transactions by category across all statements</p>
+                            </div>
+                        </div>
+                        <!-- View Mode Toggle -->
+                        <div class="flex items-center gap-2 bg-gray-100 dark:bg-gray-700 rounded-lg p-1">
+                            <button onclick="toggleCategoryView('all')" id="category-all-btn" class="px-4 py-2 text-sm font-medium rounded-md transition-all duration-200 bg-white dark:bg-gray-800 text-purple-600 dark:text-purple-400 shadow-sm">
+                                All
+                            </button>
+                            <button onclick="toggleCategoryView('credit')" id="category-credit-btn" class="px-4 py-2 text-sm font-medium rounded-md transition-all duration-200 text-gray-600 dark:text-gray-400 hover:bg-gray-200 dark:hover:bg-gray-600">
+                                <div class="flex items-center gap-2">
+                                    <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M7 11l5-5m0 0l5 5m-5-5v12"></path>
+                                    </svg>
+                                    Credits
+                                </div>
+                            </button>
+                            <button onclick="toggleCategoryView('debit')" id="category-debit-btn" class="px-4 py-2 text-sm font-medium rounded-md transition-all duration-200 text-gray-600 dark:text-gray-400 hover:bg-gray-200 dark:hover:bg-gray-600">
+                                <div class="flex items-center gap-2">
+                                    <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M17 13l-5 5m0 0l-5-5m5 5V6"></path>
+                                    </svg>
+                                    Debits
+                                </div>
+                            </button>
+                        </div>
+                    </div>
+
+                    <div class="grid grid-cols-1 lg:grid-cols-2 gap-6">
+                        <!-- Pie Chart -->
+                        <div class="flex items-center justify-center">
+                            <div class="w-full max-w-md">
+                                <canvas id="categoryPieChart"></canvas>
+                            </div>
+                        </div>
+
+                        <!-- Category Stats Table -->
+                        <div class="overflow-auto">
+                            <table class="min-w-full divide-y divide-gray-200 dark:divide-gray-700">
+                                <thead class="bg-gray-50 dark:bg-gray-700">
+                                    <tr>
+                                        <th class="px-4 py-3 text-left text-xs font-semibold text-gray-600 dark:text-gray-300 uppercase">Category</th>
+                                        <th class="px-4 py-3 text-center text-xs font-semibold text-gray-600 dark:text-gray-300 uppercase">Count</th>
+                                        <th class="px-4 py-3 text-right text-xs font-semibold text-gray-600 dark:text-gray-300 uppercase">Amount</th>
+                                        <th class="px-4 py-3 text-center text-xs font-semibold text-gray-600 dark:text-gray-300 uppercase">%</th>
+                                    </tr>
+                                </thead>
+                                <tbody id="categoryStatsTable" class="bg-white dark:bg-gray-800 divide-y divide-gray-200 dark:divide-gray-700">
+                                    <!-- Stats will be populated by JavaScript -->
+                                </tbody>
+                            </table>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
             <!-- Individual Files Section Header -->
             <div class="mb-4 mt-8">
                 <h3 class="text-lg font-semibold text-gray-700 dark:text-gray-300 flex items-center">
@@ -1260,8 +1408,8 @@
 
             @foreach($results as $result)
             <div class="mb-8 bg-white dark:bg-gray-800 overflow-hidden shadow-sm sm:rounded-lg">
-                <div class="p-6">
-                    <div class="flex items-center justify-between mb-6">
+                <div class="p-2">
+                    <div class="flex items-center justify-between mb-4">
                         <div class="flex items-center">
                             @if($result['success'])
                             <div class="p-2 bg-green-100 dark:bg-green-900 rounded-lg mr-3">
@@ -1320,6 +1468,7 @@
                                         <th class="px-4 py-3 text-right text-xs font-semibold text-green-600 dark:text-green-400 uppercase">True Revenue</th>
                                         <th class="px-4 py-3 text-right text-xs font-semibold text-gray-600 dark:text-gray-300 uppercase">Avg Daily</th>
                                         <th class="px-4 py-3 text-center text-xs font-semibold text-gray-600 dark:text-gray-300 uppercase">NSF</th>
+                                        <th class="px-4 py-3 text-center text-xs font-semibold text-gray-600 dark:text-gray-300 uppercase">Negative Days</th>
                                         <th class="px-4 py-3 text-center text-xs font-semibold text-gray-600 dark:text-gray-300 uppercase"># Deposits</th>
                                         <th class="px-4 py-3 text-right text-xs font-semibold text-gray-600 dark:text-gray-300 uppercase">Total Debits</th>
                                     </tr>
@@ -1339,6 +1488,7 @@
                                             $<span class="avg-value">{{ number_format($month['average_daily'], 2) }}</span>
                                         </td>
                                         <td class="px-4 py-3 text-sm text-center {{ $month['nsf_count'] > 0 ? 'text-red-600 dark:text-red-400 font-semibold' : 'text-gray-500 dark:text-gray-400' }}">{{ $month['nsf_count'] }}</td>
+                                        <td class="px-4 py-3 text-sm text-center {{ ($month['negative_days'] ?? 0) > 0 ? 'text-red-600 dark:text-red-400 font-semibold' : 'text-gray-500 dark:text-gray-400' }}">{{ $month['negative_days'] ?? 0 }}</td>
                                         <td class="px-4 py-3 text-sm text-center text-gray-700 dark:text-gray-300">{{ $month['deposit_count'] }}</td>
                                         <td class="px-4 py-3 text-sm text-right text-red-600 dark:text-red-400">${{ number_format($month['debits'], 2) }}</td>
                                     </tr>
@@ -1358,6 +1508,7 @@
                                             $<span class="avg-value">{{ number_format($result['monthly_data']['totals']['average_daily'], 2) }}</span>
                                         </td>
                                         <td class="px-4 py-3 text-sm text-center {{ $result['monthly_data']['totals']['nsf_count'] > 0 ? 'text-red-600 dark:text-red-400' : 'text-gray-500 dark:text-gray-400' }}">{{ $result['monthly_data']['totals']['nsf_count'] }}</td>
+                                        <td class="px-4 py-3 text-sm text-center {{ ($result['monthly_data']['totals']['negative_days'] ?? 0) > 0 ? 'text-red-600 dark:text-red-400' : 'text-gray-500 dark:text-gray-400' }}">{{ $result['monthly_data']['totals']['negative_days'] ?? 0 }}</td>
                                         <td class="px-4 py-3 text-sm text-center text-gray-900 dark:text-gray-100">{{ $result['monthly_data']['totals']['deposit_count'] }}</td>
                                         <td class="px-4 py-3 text-sm text-right text-red-600 dark:text-red-400">${{ number_format($result['monthly_data']['totals']['debits'], 2) }}</td>
                                     </tr>
@@ -1373,6 +1524,7 @@
                                         <td class="px-4 py-3 text-sm text-right avg-avg-{{ $result['session_id'] }}">
                                             $<span class="avg-value">{{ number_format($result['monthly_data']['averages']['average_daily'], 2) }}</span>
                                         </td>
+                                        <td class="px-4 py-3 text-sm text-center">-</td>
                                         <td class="px-4 py-3 text-sm text-center">-</td>
                                         <td class="px-4 py-3 text-sm text-center">{{ number_format($result['monthly_data']['averages']['deposit_count'], 1) }}</td>
                                         <td class="px-4 py-3 text-sm text-right">${{ number_format($result['monthly_data']['averages']['debits'], 2) }}</td>
@@ -1425,10 +1577,11 @@
                                         <th class="px-4 py-3 text-right text-xs font-semibold text-gray-600 dark:text-gray-300 uppercase">Avg Payment</th>
                                         <th class="px-4 py-3 text-right text-xs font-semibold text-gray-600 dark:text-gray-300 uppercase">Total Paid</th>
                                         <th class="px-4 py-3 text-center text-xs font-semibold text-gray-600 dark:text-gray-300 uppercase">Date Range</th>
+                                        <th class="px-4 py-3 text-center text-xs font-semibold text-gray-600 dark:text-gray-300 uppercase">View</th>
                                     </tr>
                                 </thead>
                                 <tbody class="bg-white dark:bg-gray-800 divide-y divide-gray-200 dark:divide-gray-700">
-                                    @foreach($result['mca_analysis']['lenders'] as $lender)
+                                    @foreach($result['mca_analysis']['lenders'] as $lenderIndex => $lender)
                                     <tr class="hover:bg-gray-50 dark:hover:bg-gray-700">
                                         <td class="px-4 py-3">
                                             <div class="flex items-center">
@@ -1477,7 +1630,41 @@
                                                 -
                                             @endif
                                         </td>
+                                        <td class="px-4 py-3 text-center">
+                                            <button onclick="toggleMcaPaymentRow('individual-{{ $result['session_id'] }}-{{ $lenderIndex }}')" class="text-blue-600 hover:text-blue-800 dark:text-blue-400 dark:hover:text-blue-300">
+                                                <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z"></path>
+                                                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z"></path>
+                                                </svg>
+                                            </button>
+                                        </td>
                                     </tr>
+                                    @if(isset($lender['payments']) && count($lender['payments']) > 0)
+                                    <tr id="individual-{{ $result['session_id'] }}-{{ $lenderIndex }}" class="hidden bg-gray-50 dark:bg-gray-900">
+                                        <td colspan="7" class="px-4 py-3">
+                                            <div class="max-h-96 overflow-y-auto">
+                                                <table class="min-w-full divide-y divide-gray-200 dark:divide-gray-700">
+                                                    <thead class="bg-gray-100 dark:bg-gray-800">
+                                                        <tr>
+                                                            <th class="px-3 py-2 text-left text-xs font-semibold text-gray-600 dark:text-gray-300">Date</th>
+                                                            <th class="px-3 py-2 text-left text-xs font-semibold text-gray-600 dark:text-gray-300">Description</th>
+                                                            <th class="px-3 py-2 text-right text-xs font-semibold text-gray-600 dark:text-gray-300">Amount</th>
+                                                        </tr>
+                                                    </thead>
+                                                    <tbody class="divide-y divide-gray-200 dark:divide-gray-700">
+                                                        @foreach($lender['payments'] as $payment)
+                                                        <tr>
+                                                            <td class="px-3 py-2 text-sm text-gray-700 dark:text-gray-300">{{ $payment['date'] }}</td>
+                                                            <td class="px-3 py-2 text-sm text-gray-700 dark:text-gray-300">{{ $payment['description'] }}</td>
+                                                            <td class="px-3 py-2 text-sm text-right text-red-600 dark:text-red-400">${{ number_format($payment['amount'], 2) }}</td>
+                                                        </tr>
+                                                        @endforeach
+                                                    </tbody>
+                                                </table>
+                                            </div>
+                                        </td>
+                                    </tr>
+                                    @endif
                                     @endforeach
                                 </tbody>
                                 <tfoot class="bg-gray-100 dark:bg-gray-700">
@@ -1487,6 +1674,7 @@
                                         <td class="px-4 py-3 text-center text-sm text-gray-900 dark:text-gray-100">{{ $result['mca_analysis']['total_mca_payments'] }}</td>
                                         <td class="px-4 py-3"></td>
                                         <td class="px-4 py-3 text-right text-sm text-red-600 dark:text-red-400">${{ number_format($result['mca_analysis']['total_mca_amount'], 2) }}</td>
+                                        <td class="px-4 py-3"></td>
                                         <td class="px-4 py-3"></td>
                                     </tr>
                                 </tfoot>
@@ -1580,14 +1768,14 @@
                     @endif
 
                     <!-- Summary Stats -->
-                    <div class="grid grid-cols-2 md:grid-cols-5 gap-4 mb-6">
+                    <div class="grid grid-cols-2 md:grid-cols-5 gap-4 mb-6" data-session-id="{{ $result['session_id'] }}">
                         <div class="bg-gray-50 dark:bg-gray-700 p-4 rounded-lg">
                             <p class="text-sm text-gray-500 dark:text-gray-400">Total Transactions</p>
                             <p class="text-2xl font-bold text-gray-900 dark:text-gray-100">{{ $result['summary']['total_transactions'] }}</p>
                         </div>
                         <div class="bg-gray-50 dark:bg-gray-700 p-4 rounded-lg {{ isset($result['validation']['warnings']) && collect($result['validation']['warnings'])->contains('type', 'credit_mismatch') ? 'ring-2 ring-orange-400 dark:ring-orange-600' : '' }}">
                             <p class="text-sm text-gray-500 dark:text-gray-400">Total Deposits</p>
-                            <p class="text-2xl font-bold text-green-600 dark:text-green-400">${{ number_format($result['summary']['credit_total'], 2) }}</p>
+                            <p class="text-2xl font-bold text-green-600 dark:text-green-400" data-total="credits">${{ number_format($result['summary']['credit_total'], 2) }}</p>
                             <p class="text-xs text-gray-500">{{ $result['summary']['credit_count'] }} transactions</p>
                             @if(isset($result['validation']['expected_credits']) && $result['validation']['expected_credits'])
                                 @php
@@ -1620,7 +1808,7 @@
                         </div>
                         <div class="bg-gray-50 dark:bg-gray-700 p-4 rounded-lg {{ isset($result['validation']['warnings']) && collect($result['validation']['warnings'])->contains('type', 'debit_mismatch') ? 'ring-2 ring-orange-400 dark:ring-orange-600' : '' }}">
                             <p class="text-sm text-gray-500 dark:text-gray-400">Total Debits</p>
-                            <p class="text-2xl font-bold text-red-600 dark:text-red-400">${{ number_format($result['summary']['debit_total'], 2) }}</p>
+                            <p class="text-2xl font-bold text-red-600 dark:text-red-400" data-total="debits">${{ number_format($result['summary']['debit_total'], 2) }}</p>
                             <p class="text-xs text-gray-500">{{ $result['summary']['debit_count'] }} transactions</p>
                             @if(isset($result['validation']['expected_debits']) && $result['validation']['expected_debits'])
                                 @php
@@ -2001,7 +2189,7 @@
                                                     {{-- MCA toggle for debits --}}
                                                     <div class="relative mca-toggle-container-{{ $uniqueId }}">
                                                         <button
-                                                            onclick="showMcaDropdown('{{ $uniqueId }}', '{{ addslashes($txn['description']) }}', {{ $txn['amount'] }}, {{ $isMcaPayment ? 'true' : 'false' }}, '{{ $mcaLender ?? '' }}', '{{ $mcaLenderId ?? '' }}', '{{ $month['month_key'] }}', '{{ $result['session_id'] }}')"
+                                                            onclick="showMcaDropdown('{{ $uniqueId }}', '{{ addslashes($txn['description']) }}', {{ $txn['amount'] }}, {{ $isMcaPayment ? 'true' : 'false' }}, '{{ $mcaLender ?? '' }}', '{{ $mcaLenderId ?? '' }}', '{{ $month['month_key'] }}', '{{ $result['session_id'] }}', {{ isset($txn['id']) ? $txn['id'] : 'null' }})"
                                                             class="mca-toggle-btn-{{ $uniqueId }} inline-flex items-center px-2 py-1 rounded text-xs font-medium transition-colors cursor-pointer {{ $isMcaPayment ? 'bg-red-100 text-red-800 dark:bg-red-900 dark:text-red-200 hover:bg-red-200' : 'bg-gray-100 text-gray-600 dark:bg-gray-700 dark:text-gray-400 hover:bg-gray-200' }}"
                                                             title="Click to mark as MCA payment"
                                                         >
@@ -2081,7 +2269,8 @@
                         $combinedTotals['adjustments'] += $result['monthly_data']['totals']['adjustments'];
                         $combinedTotals['true_revenue'] += $result['monthly_data']['totals']['true_revenue'];
                         $combinedTotals['debits'] += $result['monthly_data']['totals']['debits'];
-                        $combinedTotals['deposit_count'] += $result['monthly_data']['totals']['deposit_count'];
+                        // Use summary counts for consistency with individual session display
+                        $combinedTotals['deposit_count'] += $result['summary']['credit_count'] ?? 0;
                         $combinedTotals['nsf_count'] += $result['monthly_data']['totals']['nsf_count'];
                     }
 
@@ -2132,8 +2321,8 @@
             @endphp
 
             <div class="mb-8 bg-white dark:bg-gray-800 overflow-hidden shadow-sm sm:rounded-lg">
-                <div class="p-6">
-                    <div class="flex items-center mb-6">
+                <div class="p-2">
+                    <div class="flex items-center mb-4">
                         <div class="p-2 bg-blue-100 dark:bg-blue-900 rounded-lg mr-3">
                             <svg class="w-6 h-6 text-blue-600 dark:text-blue-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                                 <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 17v-2m3 2v-4m3 4v-6m2 10H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"></path>
@@ -2187,10 +2376,11 @@
                                         <th class="px-4 py-3 text-right text-xs font-semibold text-gray-600 dark:text-gray-300 uppercase">Avg Payment</th>
                                         <th class="px-4 py-3 text-right text-xs font-semibold text-gray-600 dark:text-gray-300 uppercase">Total Paid</th>
                                         <th class="px-4 py-3 text-center text-xs font-semibold text-gray-600 dark:text-gray-300 uppercase">Date Range</th>
+                                        <th class="px-4 py-3 text-center text-xs font-semibold text-gray-600 dark:text-gray-300 uppercase">View</th>
                                     </tr>
                                 </thead>
                                 <tbody class="bg-white dark:bg-gray-800 divide-y divide-gray-200 dark:divide-gray-700">
-                                    @foreach($combinedMca['lenders'] as $lender)
+                                    @foreach($combinedMca['lenders'] as $lenderIndex => $lender)
                                     <tr class="hover:bg-gray-50 dark:hover:bg-gray-700">
                                         <td class="px-4 py-3">
                                             <div class="flex items-center">
@@ -2236,7 +2426,41 @@
                                                 -
                                             @endif
                                         </td>
+                                        <td class="px-4 py-3 text-center">
+                                            <button onclick="toggleMcaPaymentRow('combined-{{ $lenderIndex }}')" class="text-blue-600 hover:text-blue-800 dark:text-blue-400 dark:hover:text-blue-300">
+                                                <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z"></path>
+                                                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z"></path>
+                                                </svg>
+                                            </button>
+                                        </td>
                                     </tr>
+                                    @if(isset($lender['payments']) && count($lender['payments']) > 0)
+                                    <tr id="combined-{{ $lenderIndex }}" class="hidden bg-gray-50 dark:bg-gray-900">
+                                        <td colspan="7" class="px-4 py-3">
+                                            <div class="max-h-96 overflow-y-auto">
+                                                <table class="min-w-full divide-y divide-gray-200 dark:divide-gray-700">
+                                                    <thead class="bg-gray-100 dark:bg-gray-800">
+                                                        <tr>
+                                                            <th class="px-3 py-2 text-left text-xs font-semibold text-gray-600 dark:text-gray-300">Date</th>
+                                                            <th class="px-3 py-2 text-left text-xs font-semibold text-gray-600 dark:text-gray-300">Description</th>
+                                                            <th class="px-3 py-2 text-right text-xs font-semibold text-gray-600 dark:text-gray-300">Amount</th>
+                                                        </tr>
+                                                    </thead>
+                                                    <tbody class="divide-y divide-gray-200 dark:divide-gray-700">
+                                                        @foreach($lender['payments'] as $payment)
+                                                        <tr>
+                                                            <td class="px-3 py-2 text-sm text-gray-700 dark:text-gray-300">{{ $payment['date'] }}</td>
+                                                            <td class="px-3 py-2 text-sm text-gray-700 dark:text-gray-300">{{ $payment['description'] }}</td>
+                                                            <td class="px-3 py-2 text-sm text-right text-red-600 dark:text-red-400">${{ number_format($payment['amount'], 2) }}</td>
+                                                        </tr>
+                                                        @endforeach
+                                                    </tbody>
+                                                </table>
+                                            </div>
+                                        </td>
+                                    </tr>
+                                    @endif
                                     @endforeach
                                 </tbody>
                                 <tfoot class="bg-gray-100 dark:bg-gray-700">
@@ -2246,6 +2470,7 @@
                                         <td class="px-4 py-3 text-center text-sm text-gray-900 dark:text-gray-100">{{ $combinedMca['total_mca_payments'] }}</td>
                                         <td class="px-4 py-3"></td>
                                         <td class="px-4 py-3 text-right text-sm text-red-600 dark:text-red-400">${{ number_format($combinedMca['total_mca_amount'], 2) }}</td>
+                                        <td class="px-4 py-3"></td>
                                         <td class="px-4 py-3"></td>
                                     </tr>
                                 </tfoot>
@@ -2377,34 +2602,1003 @@
         // Track adjustment context for popup
         let currentAdjustmentContext = null;
 
-        // Known MCA lenders for dropdown (defined at top so all functions can access)
-        const mcaLenders = {
-            'ondeck': 'OnDeck Capital',
-            'kabbage': 'Kabbage',
-            'fundbox': 'Fundbox',
-            'bluevine': 'BlueVine',
-            'credibly': 'Credibly',
-            'kapitus': 'Kapitus',
-            'rapid_finance': 'Rapid Finance',
-            'can_capital': 'CAN Capital',
-            'square_capital': 'Square Capital',
-            'paypal_working': 'PayPal Working Capital',
-            'amazon_lending': 'Amazon Lending',
-            'shopify_capital': 'Shopify Capital',
-            'stripe_capital': 'Stripe Capital',
-            'clearco': 'Clearco',
-            'libertas': 'Libertas Funding',
-            'forward_financing': 'Forward Financing',
-            'fora_financial': 'Fora Financial',
-            'national_funding': 'National Funding',
-            'bizfi': 'BizFi',
-            'merchant_market': 'Merchant Market',
-            'headway_capital': 'Headway Capital',
-            'fundkite': 'Fundkite',
-            'newco_capital': 'Newco Capital',
-            'greenbox_capital': 'Greenbox Capital',
-            'world_business': 'World Business Lenders',
+        // Known MCA lenders for dropdown (loaded from database + static list)
+        const mcaLenders = @json($mcaLenders ?? []);
+
+        // Category-related variables (hoisted here so openCategoryModalResults is defined before HTML uses it)
+        let currentTransactionIdResults = null;
+        let currentTransactionDbIdResults = null;
+        let currentTransactionTypeResults = null;
+        let categoriesDataResults = null;
+        let categoriesLoadingPromise = null;
+
+        // Load categories from API
+        function loadCategoriesResults() {
+            if (categoriesLoadingPromise) {
+                return categoriesLoadingPromise; // Return existing promise if already loading
+            }
+
+            console.log('Loading categories from API...');
+            categoriesLoadingPromise = fetch('{{ route("bankstatement.categories") }}')
+                .then(response => {
+                    console.log('Categories API response status:', response.status);
+                    if (!response.ok) {
+                        throw new Error('Failed to load categories: ' + response.status);
+                    }
+                    return response.json();
+                })
+                .then(data => {
+                    console.log('Categories loaded successfully:', data);
+                    categoriesDataResults = data.categories;
+                    console.log('Total categories:', Object.keys(categoriesDataResults).length);
+                    return categoriesDataResults;
+                })
+                .catch(error => {
+                    console.error('Error loading categories:', error);
+                    categoriesLoadingPromise = null; // Reset on error so it can be retried
+                    throw error;
+                });
+
+            return categoriesLoadingPromise;
+        }
+
+        // Load categories on page load
+        document.addEventListener('DOMContentLoaded', function() {
+            loadCategoriesResults();
+            if (typeof applyCategoryColorsResults === 'function') {
+                applyCategoryColorsResults();
+            }
+        });
+
+        // Full implementation (moved here to prevent initialization timing issues)
+        window.openCategoryModalResults = async function(transactionId, description, amount, type, dbId) {
+            console.log('=== openCategoryModalResults called ===');
+            console.log('transactionId:', transactionId);
+            console.log('description:', description);
+            console.log('amount:', amount);
+            console.log('type:', type);
+            console.log('dbId:', dbId);
+
+            currentTransactionIdResults = transactionId; // uniqueId for finding DOM elements
+            currentTransactionDbIdResults = dbId; // database ID for API call
+            currentTransactionTypeResults = type;
+
+            const modalDesc = document.getElementById('modal-description-results');
+            if (!modalDesc) {
+                console.error('modal-description-results element not found!');
+                alert('Error: Modal not properly initialized');
+                return;
+            }
+            modalDesc.textContent = description;
+
+            // If categories aren't loaded yet, load them now
+            if (!categoriesDataResults) {
+                console.warn('Categories not loaded yet, loading now...');
+                try {
+                    await loadCategoriesResults();
+                    console.log('Categories loaded successfully');
+                } catch (error) {
+                    console.error('Failed to load categories:', error);
+                    alert('Failed to load categories. Please refresh the page.');
+                    return;
+                }
+            }
+            console.log('Categories loaded:', Object.keys(categoriesDataResults).length);
+
+            // Get the current category if it exists
+            const categoryCell = document.getElementById('category-cell-' + transactionId);
+            const currentCategoryBadge = categoryCell ? categoryCell.querySelector('.category-badge') : null;
+            const currentCategory = currentCategoryBadge ? currentCategoryBadge.dataset.category : null;
+
+            // Filter categories based on transaction type
+            const filteredCategories = Object.entries(categoriesDataResults).filter(([key, cat]) =>
+                cat.type === 'both' || cat.type === type
+            );
+
+            // Build category grid
+            const grid = document.getElementById('category-grid-results');
+            let gridHTML = '';
+
+            // Add "Clear Category" option if a category is currently set
+            if (currentCategory) {
+                gridHTML += `
+                    <button onclick="clearCategoryResults()"
+                            class="flex items-center gap-2 px-3 py-2 text-left text-sm border border-red-300 dark:border-red-700 rounded-lg hover:bg-red-50 dark:hover:bg-red-900/30 transition category-option">
+                        <svg class="w-4 h-4 text-red-600 dark:text-red-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"></path>
+                        </svg>
+                        <span class="text-red-600 dark:text-red-400 font-medium">Clear Category</span>
+                    </button>
+                `;
+            }
+
+            // Add all other categories
+            gridHTML += filteredCategories.map(([key, cat]) => {
+                const isSelected = key === currentCategory;
+                const selectedClasses = isSelected
+                    ? 'border-2 border-blue-500 bg-blue-50 dark:bg-blue-900/30'
+                    : 'border';
+                const checkIcon = isSelected
+                    ? '<svg class="w-4 h-4 text-blue-600 dark:text-blue-400 ml-auto" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7"></path></svg>'
+                    : '';
+
+                return `
+                    <button onclick="selectCategoryResults('${key}')"
+                            class="flex items-center gap-2 px-3 py-2 text-left text-sm ${selectedClasses} rounded-lg hover:bg-gray-50 dark:hover:bg-gray-700 transition category-option"
+                            data-category="${key}">
+                        <span class="w-3 h-3 rounded-full category-color-${cat.color}"></span>
+                        <span class="text-gray-900 dark:text-white">${cat.label}</span>
+                        ${checkIcon}
+                    </button>
+                `;
+            }).join('');
+
+            grid.innerHTML = gridHTML;
+
+            document.getElementById('category-modal-results').classList.remove('hidden');
         };
+
+        // ============================================================================
+        // CATEGORY CLASSIFICATION FUNCTIONS - Main Implementations
+        // ============================================================================
+
+        // Close the category selection modal
+        window.closeCategoryModalResults = function() {
+            document.getElementById('category-modal-results').classList.add('hidden');
+            currentTransactionIdResults = null;
+            currentTransactionDbIdResults = null;
+            currentTransactionTypeResults = null;
+        }
+
+        // Clear category from a transaction
+        window.clearCategoryResults = function() {
+            console.log('clearCategoryResults called');
+            if (!currentTransactionIdResults) return;
+
+            const description = document.getElementById('modal-description-results').textContent;
+
+            // Find row by class name (txn-row-{uniqueId})
+            const row = document.querySelector(`.txn-row-${currentTransactionIdResults}`);
+            if (!row) {
+                console.error('Could not find transaction row');
+                showNotificationResults('Error: Could not find transaction row', 'error');
+                return;
+            }
+
+            const amountText = row.querySelector('td:nth-child(4)').textContent.trim();
+            const amount = parseFloat(amountText.replace(/[$,]/g, ''));
+
+            const requestBody = {
+                description: description,
+                amount: amount,
+                type: currentTransactionTypeResults,
+                category: null, // Set to null to clear
+                subcategory: null
+            };
+
+            // Include transaction_id if we have a valid database ID
+            if (currentTransactionDbIdResults) {
+                requestBody.transaction_id = currentTransactionDbIdResults;
+            }
+
+            console.log('Clear category request:', requestBody);
+
+            fetch('{{ route("bankstatement.toggle-category") }}', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                    'X-CSRF-TOKEN': '{{ csrf_token() }}',
+                    'Accept': 'application/json'
+                },
+                body: JSON.stringify(requestBody)
+            })
+            .then(response => response.json())
+            .then(data => {
+                console.log('Clear response:', data);
+                if (data.success) {
+                    const escapedDescription = description.replace(/'/g, "\\'");
+
+                    // If multiple transactions were cleared, find and update all matching rows across ALL sessions
+                    if (data.updated_count > 1) {
+                        console.log(`Clearing category for ${data.updated_count} transactions with matching description across all visible sessions`);
+
+                        // Find all transaction rows with matching description (case-insensitive)
+                        const normalizedDescription = description.trim().toLowerCase();
+                        let clearedRowsCount = 0;
+
+                        document.querySelectorAll('tr[class*="txn-row-"]').forEach(txnRow => {
+                            // Description is in the 2nd column (td:nth-child(2))
+                            const descCell = txnRow.querySelector('td:nth-child(2)');
+                            if (descCell && descCell.textContent.trim().toLowerCase() === normalizedDescription) {
+                                console.log('Found matching row to clear:', descCell.textContent.trim());
+
+                                // Get the unique ID from the row class
+                                const rowClasses = txnRow.className.split(' ');
+                                const txnRowClass = rowClasses.find(c => c.startsWith('txn-row-'));
+                                if (txnRowClass) {
+                                    const txnId = txnRowClass.replace('txn-row-', '');
+                                    const categoryCell = document.getElementById('category-cell-' + txnId);
+
+                                    if (categoryCell) {
+                                        // Get amount from the row (4th column)
+                                        const amountCell = txnRow.querySelector('td:nth-child(4)');
+                                        const rowAmount = amountCell ? parseFloat(amountCell.textContent.trim().replace(/[$,]/g, '')) : amount;
+
+                                        // Get transaction database ID from data attribute
+                                        const txnDbId = txnRow.getAttribute('data-transaction-id');
+
+                                        const escapedDesc = description.replace(/'/g, "\\'");
+                                        categoryCell.innerHTML = `
+                                            <button onclick="openCategoryModalResults('${txnId}', '${escapedDesc}', ${rowAmount}, '${currentTransactionTypeResults}', ${txnDbId || 'null'})"
+                                                    class="inline-flex items-center px-2 py-0.5 text-xs text-gray-500 dark:text-gray-400 hover:text-blue-600 dark:hover:text-blue-400 transition">
+                                                <svg class="w-3 h-3 mr-1" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M7 7h.01M7 3h5c.512 0 1.024.195 1.414.586l7 7a2 2 0 010 2.828l-7 7a2 2 0 01-2.828 0l-7-7A1.994 1.994 0 013 12V7a4 4 0 014-4z"></path>
+                                                </svg>
+                                                Classify
+                                            </button>
+                                        `;
+                                        clearedRowsCount++;
+
+                                        // Add a subtle highlight animation to show the update
+                                        txnRow.classList.add('bg-orange-50', 'dark:bg-orange-900/20');
+                                        setTimeout(() => {
+                                            txnRow.classList.remove('bg-orange-50', 'dark:bg-orange-900/20');
+                                        }, 2000);
+                                    }
+                                }
+                            }
+                        });
+
+                        console.log(`Successfully cleared ${clearedRowsCount} visible transaction categories in the UI`);
+
+                        // Update category statistics
+                        updateCategoryStatistics();
+                    } else {
+                        // Update only the current transaction
+                        const categoryCell = document.getElementById('category-cell-' + currentTransactionIdResults);
+                        categoryCell.innerHTML = `
+                            <button onclick="openCategoryModalResults('${currentTransactionIdResults}', '${escapedDescription}', ${amount}, '${currentTransactionTypeResults}', ${currentTransactionDbIdResults})"
+                                    class="inline-flex items-center px-2 py-0.5 text-xs text-gray-500 dark:text-gray-400 hover:text-blue-600 dark:hover:text-blue-400 transition">
+                                <svg class="w-3 h-3 mr-1" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M7 7h.01M7 3h5c.512 0 1.024.195 1.414.586l7 7a2 2 0 010 2.828l-7 7a2 2 0 01-2.828 0l-7-7A1.994 1.994 0 013 12V7a4 4 0 014-4z"></path>
+                                </svg>
+                                Classify
+                            </button>
+                        `;
+
+                        // Update category statistics
+                        updateCategoryStatistics();
+                    }
+
+                    closeCategoryModalResults();
+                    showNotificationResults(data.message || 'Category cleared successfully', 'success');
+                } else {
+                    showNotificationResults(data.message || 'Failed to clear category', 'error');
+                }
+            })
+            .catch(error => {
+                console.error('Error:', error);
+                showNotificationResults('An error occurred while clearing the category', 'error');
+            });
+        }
+
+        // Select and assign a category to a transaction
+        window.selectCategoryResults = async function(categoryKey) {
+            console.log('selectCategoryResults called:', categoryKey);
+            console.log('currentTransactionIdResults:', currentTransactionIdResults);
+            console.log('currentTransactionDbIdResults:', currentTransactionDbIdResults);
+
+            if (!currentTransactionIdResults) return;
+
+            const description = document.getElementById('modal-description-results').textContent;
+
+            // Find row by class name (txn-row-{uniqueId})
+            const row = document.querySelector(`.txn-row-${currentTransactionIdResults}`);
+
+            if (!row) {
+                console.error('Could not find transaction row with class:', `txn-row-${currentTransactionIdResults}`);
+                showNotificationResults('Error: Could not find transaction row', 'error');
+                return;
+            }
+
+            const amountText = row.querySelector('td:nth-child(4)').textContent.trim();
+            const amount = parseFloat(amountText.replace(/[$,]/g, ''));
+
+            const requestBody = {
+                description: description,
+                amount: amount,
+                type: currentTransactionTypeResults,
+                category: categoryKey,
+                subcategory: null
+            };
+
+            // Include transaction_id if we have a valid database ID
+            if (currentTransactionDbIdResults) {
+                requestBody.transaction_id = currentTransactionDbIdResults;
+            }
+
+            // Always check for similar transactions using normalized pattern matching (API)
+            // This finds transactions with similar descriptions ignoring numbers/dates
+            closeCategoryModalResults();
+
+            // Get current session IDs from URL
+            const urlParams = new URLSearchParams(window.location.search);
+            const sessionIds = urlParams.getAll('sessions[]');
+
+            try {
+                // Call API to find similar transactions with normalized pattern matching
+                const response = await fetch('{{ route("bankstatement.find-similar-transactions") }}', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                        'X-CSRF-TOKEN': '{{ csrf_token() }}',
+                        'Accept': 'application/json'
+                    },
+                    body: JSON.stringify({
+                        description: description,
+                        type: currentTransactionTypeResults,
+                        session_ids: sessionIds
+                    })
+                });
+
+                const data = await response.json();
+                console.log('Similar transactions API response:', data);
+
+                // Check if this is an MCA category that requires lender selection
+                const isMcaCategory = (categoryKey === 'mca_payment' && currentTransactionTypeResults === 'debit') ||
+                                     (categoryKey === 'mca_funding' && currentTransactionTypeResults === 'credit');
+
+                // If multiple similar transactions found, show modal for user to select which ones to update
+                if (data.success && data.count > 1) {
+                    console.log(`Found ${data.count} similar transactions, showing selection modal`);
+                    // Store MCA category info for later use
+                    window.pendingMcaCategorySelection = isMcaCategory ? {
+                        categoryKey: categoryKey,
+                        description: description,
+                        type: currentTransactionTypeResults,
+                        amount: amount,
+                        transactionId: currentTransactionIdResults
+                    } : null;
+                    showSimilarTransactionsForCategory(description, currentTransactionTypeResults, categoryKey, requestBody);
+                } else {
+                    // Single transaction - update directly
+                    console.log('Single transaction or no similar transactions found, updating directly');
+                    performCategoryUpdate(requestBody, false);
+
+                    // After category is saved, if it's an MCA category, prompt for lender
+                    if (isMcaCategory) {
+                        console.log('MCA category detected, will prompt for lender selection after save');
+                        window.pendingMcaCategorySelection = {
+                            categoryKey: categoryKey,
+                            description: description,
+                            type: currentTransactionTypeResults,
+                            amount: amount,
+                            transactionId: currentTransactionIdResults
+                        };
+                    }
+                }
+            } catch (error) {
+                console.error('Error checking for similar transactions:', error);
+                // If error, just update the single transaction
+                performCategoryUpdate(requestBody, false);
+            }
+        }
+
+        // Similar transactions modal - toggle all checkboxes
+        window.toggleAllSimilarCategory = function() {
+            const selectAll = document.getElementById('select-all-similar-category');
+            document.querySelectorAll('.similar-cat-checkbox').forEach(checkbox => {
+                checkbox.checked = selectAll.checked;
+            });
+            updateSelectedCategoryCount();
+        }
+
+        // Update count of selected transactions in similar transactions modal
+        window.updateSelectedCategoryCount = function() {
+            const selected = document.querySelectorAll('.similar-cat-checkbox:checked').length;
+            document.getElementById('similar-category-selected').textContent = selected;
+        }
+
+        // Close the similar transactions modal
+        window.closeSimilarCategoryModal = function() {
+            document.getElementById('similar-category-modal').classList.add('hidden');
+            window.pendingCategoryUpdateData = null;
+        }
+
+        // Confirm and apply category to selected similar transactions
+        window.confirmSimilarCategoryUpdate = async function() {
+            if (!window.pendingCategoryUpdateData) return;
+
+            // Get selected transaction IDs
+            const selectedIds = Array.from(document.querySelectorAll('.similar-cat-checkbox:checked'))
+                .map(cb => parseInt(cb.value));
+
+            if (selectedIds.length === 0) {
+                alert('Please select at least one transaction');
+                return;
+            }
+
+            const { categoryKey, requestBody } = window.pendingCategoryUpdateData;
+
+            // Close modal
+            closeSimilarCategoryModal();
+
+            // Update requestBody with selected transaction IDs
+            requestBody.transaction_ids = selectedIds;
+            requestBody.update_single_only = false;
+
+            // Perform update
+            try {
+                const response = await fetch('{{ route("bankstatement.toggle-category") }}', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                        'X-CSRF-TOKEN': '{{ csrf_token() }}',
+                        'Accept': 'application/json'
+                    },
+                    body: JSON.stringify(requestBody)
+                });
+
+                const data = await response.json();
+
+                if (data.success) {
+                    showNotificationResults(`✓ Updated ${selectedIds.length} transaction(s)`, 'success');
+
+                    // Check if MCA category was selected - if so, prompt for lender selection
+                    if (window.pendingMcaCategorySelection) {
+                        const mcaInfo = window.pendingMcaCategorySelection;
+                        console.log('MCA category saved for multiple transactions, prompting for lender selection');
+
+                        setTimeout(() => {
+                            if (mcaInfo.type === 'debit') {
+                                showToast(`Category saved for ${selectedIds.length} transaction(s)! Now select the MCA lender...`, 'info');
+                                setTimeout(() => {
+                                    const parts = mcaInfo.transactionId.split('_');
+                                    const sessionId = parts[0];
+                                    const monthKey = parts[1];
+                                    showMcaDropdown(mcaInfo.transactionId, mcaInfo.description, mcaInfo.amount, false, null, null, monthKey, sessionId);
+                                }, 500);
+                            }
+                            window.pendingMcaCategorySelection = null;
+                        }, 1000);
+                    } else {
+                        // Reload page to reflect changes (only if not MCA category)
+                        setTimeout(() => {
+                            window.location.reload();
+                        }, 1500);
+                    }
+                } else {
+                    showNotificationResults(data.message || 'Failed to update categories', 'error');
+                }
+            } catch (error) {
+                console.error('Error updating categories:', error);
+                showNotificationResults('An error occurred while updating categories', 'error');
+            }
+        }
+
+        // ============================================================================
+        // HELPER FUNCTIONS FOR CATEGORY OPERATIONS
+        // ============================================================================
+
+        // Show similar transactions modal for category classification
+        async function showSimilarTransactionsForCategory(description, type, categoryKey, requestBody) {
+            // Get current session IDs from URL
+            const urlParams = new URLSearchParams(window.location.search);
+            const sessionIds = urlParams.getAll('sessions[]');
+
+            // Find similar transactions
+            const response = await fetch('{{ route("bankstatement.find-similar-transactions") }}', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                    'X-CSRF-TOKEN': '{{ csrf_token() }}',
+                    'Accept': 'application/json'
+                },
+                body: JSON.stringify({
+                    description: description,
+                    type: type,
+                    session_ids: sessionIds
+                })
+            });
+
+            const data = await response.json();
+
+            if (data.success && data.count > 0) {
+                // Store pending update
+                window.pendingCategoryUpdateData = {
+                    categoryKey: categoryKey,
+                    requestBody: requestBody,
+                    transactions: data.matching_transactions
+                };
+
+                // Get category info
+                const categoryInfo = categoriesDataResults[categoryKey];
+                const categoryLabel = categoryInfo ? categoryInfo.label : categoryKey;
+
+                // Update modal
+                document.getElementById('similar-category-label').textContent = categoryLabel;
+                document.getElementById('similar-category-count').textContent = data.count;
+
+                // Populate transaction list
+                const listContainer = document.getElementById('similar-category-list');
+                listContainer.innerHTML = data.matching_transactions.map((txn) => `
+                    <div class="flex items-center gap-3 p-3 bg-gray-50 dark:bg-gray-700 rounded-lg">
+                        <input type="checkbox"
+                               id="similar-cat-txn-${txn.id}"
+                               value="${txn.id}"
+                               onchange="updateSelectedCategoryCount()"
+                               class="similar-cat-checkbox w-4 h-4 text-blue-600 rounded"
+                               checked>
+                        <div class="flex-1 text-sm">
+                            <div class="font-medium text-gray-900 dark:text-gray-100">
+                                ${txn.date} - $${txn.amount.toFixed(2)}
+                            </div>
+                            <div class="text-gray-600 dark:text-gray-400 truncate">
+                                ${txn.description}
+                            </div>
+                        </div>
+                    </div>
+                `).join('');
+
+                // Show modal
+                document.getElementById('similar-category-modal').classList.remove('hidden');
+                document.getElementById('select-all-similar-category').checked = true;
+                updateSelectedCategoryCount();
+            }
+        }
+
+        // Perform the actual category update via API
+        function performCategoryUpdate(requestBody, isBulk) {
+            console.log('Performing category update:', requestBody, 'isBulk:', isBulk);
+
+            fetch('{{ route("bankstatement.toggle-category") }}', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                    'X-CSRF-TOKEN': '{{ csrf_token() }}',
+                    'Accept': 'application/json'
+                },
+                body: JSON.stringify(requestBody)
+            })
+            .then(response => response.json())
+            .then(data => {
+                console.log('Response data:', data);
+                if (data.success) {
+                    const description = requestBody.description;
+                    const categoryKey = requestBody.category;
+
+                    // If multiple transactions were updated (and user confirmed bulk), update all visible rows
+                    if (data.updated_count > 1 && isBulk) {
+                        console.log(`Updating ${data.updated_count} transactions with matching description`);
+                        updateAllMatchingRows(description, categoryKey, requestBody.amount, requestBody.type);
+                    } else {
+                        // Update only the current transaction
+                        updateSingleRow(currentTransactionIdResults, categoryKey, description, requestBody.amount, requestBody.type);
+                    }
+
+                    closeCategoryModalResults();
+                    const msg = isBulk && data.updated_count > 1
+                        ? data.message
+                        : `Transaction classified as "${categoriesDataResults[categoryKey].label}"`;
+                    showNotificationResults(msg, 'success');
+
+                    // Update category statistics
+                    updateCategoryStatistics();
+
+                    // Check if we need to prompt for MCA lender selection
+                    if (window.pendingMcaCategorySelection) {
+                        const mcaInfo = window.pendingMcaCategorySelection;
+                        console.log('MCA category saved, now prompting for lender selection:', mcaInfo);
+
+                        setTimeout(() => {
+                            promptMcaLenderAfterCategory(
+                                mcaInfo.description,
+                                mcaInfo.amount,
+                                mcaInfo.type,
+                                mcaInfo.transactionId
+                            );
+                            window.pendingMcaCategorySelection = null;
+                        }, 1000);
+                    }
+                } else {
+                    showNotificationResults(data.message || 'Error updating category', 'error');
+                }
+            })
+            .catch(error => {
+                console.error('Error:', error);
+                showNotificationResults('Network error. Please try again.', 'error');
+            });
+        }
+
+        // Prompt for MCA lender after category is saved
+        function promptMcaLenderAfterCategory(description, amount, type, transactionId) {
+            console.log('Prompting for MCA lender:', { description, amount, type, transactionId });
+
+            if (type === 'debit') {
+                // For debit transactions (MCA Payments), show MCA lender dropdown
+                // Extract session ID and month key from transaction ID
+                const parts = transactionId.split('_');
+                const sessionId = parts[0];
+                const monthKey = parts[1];
+
+                showToast('Category saved! Now select the MCA lender...', 'info');
+
+                // Show the MCA lender dropdown (reuse existing function)
+                const currentLender = null;
+                const currentLenderId = null;
+
+                setTimeout(() => {
+                    showMcaDropdown(transactionId, description, amount, false, currentLender, currentLenderId, monthKey, sessionId);
+                }, 500);
+            } else if (type === 'credit') {
+                // For credit transactions (MCA Funding), we could show a similar dialog
+                showToast('MCA Funding category saved! Consider also marking related payments.', 'info');
+                // Could potentially show a lender selection for funding as well
+            }
+        }
+
+        // Update all matching transaction rows in the UI
+        function updateAllMatchingRows(description, categoryKey, amount, type) {
+            const normalizedDescription = description.trim().toLowerCase();
+            let updatedRowsCount = 0;
+
+            document.querySelectorAll('tr[class*="txn-row-"]').forEach(txnRow => {
+                const descCell = txnRow.querySelector('td:nth-child(2)');
+                if (descCell && descCell.textContent.trim().toLowerCase() === normalizedDescription) {
+                    const rowClasses = txnRow.className.split(' ');
+                    const txnRowClass = rowClasses.find(c => c.startsWith('txn-row-'));
+                    if (txnRowClass) {
+                        const txnId = txnRowClass.replace('txn-row-', '');
+                        const categoryCell = document.getElementById('category-cell-' + txnId);
+                        if (categoryCell) {
+                            const amountCell = txnRow.querySelector('td:nth-child(4)');
+                            const rowAmount = amountCell ? parseFloat(amountCell.textContent.trim().replace(/[$,]/g, '')) : amount;
+                            const txnDbId = txnRow.getAttribute('data-transaction-id');
+                            const rowType = amountCell && (amountCell.classList.contains('text-green-600') || amountCell.classList.contains('text-green-400')) ? 'credit' : 'debit';
+
+                            updateCategoryCellHTML(categoryCell, txnId, categoryKey, description, rowAmount, rowType, txnDbId);
+                            updatedRowsCount++;
+
+                            // Add highlight animation
+                            txnRow.classList.add('bg-blue-50', 'dark:bg-blue-900/20');
+                            setTimeout(() => txnRow.classList.remove('bg-blue-50', 'dark:bg-blue-900/20'), 2000);
+                        }
+                    }
+                }
+            });
+            console.log(`Successfully updated ${updatedRowsCount} visible transaction rows`);
+        }
+
+        // Update a single transaction row in the UI
+        function updateSingleRow(txnId, categoryKey, description, amount, type) {
+            const categoryCell = document.getElementById('category-cell-' + txnId);
+            if (categoryCell) {
+                updateCategoryCellHTML(categoryCell, txnId, categoryKey, description, amount, type, currentTransactionDbIdResults);
+            }
+        }
+
+        // Helper function to update category cell HTML
+        function updateCategoryCellHTML(categoryCell, txnId, categoryKey, description, amount, txnType, txnDbId) {
+            const categoryInfo = categoriesDataResults[categoryKey];
+
+            // Check if this is a transfer category
+            const isTransfer = ['internal_transfer', 'wire_transfer', 'ach_transfer'].includes(categoryKey);
+            const accountNumber = extractAccountNumberResults(description);
+            const transferDirection = isTransfer ? getTransferDirectionResults(description) : null;
+
+            // Escape description for onclick handler
+            const escapedDescription = description.replace(/'/g, "\\'");
+
+            // Build the category display with clickable button
+            let categoryHTML = '<div class="flex flex-col items-center gap-1">';
+
+            // Get color classes based on category color
+            const colorClasses = {
+                'gray': 'bg-gray-100 text-gray-800 dark:bg-gray-900 dark:text-gray-200',
+                'red': 'bg-red-100 text-red-800 dark:bg-red-900 dark:text-red-200',
+                'orange': 'bg-orange-100 text-orange-800 dark:bg-orange-900 dark:text-orange-200',
+                'amber': 'bg-amber-100 text-amber-800 dark:bg-amber-900 dark:text-amber-200',
+                'yellow': 'bg-yellow-100 text-yellow-800 dark:bg-yellow-900 dark:text-yellow-200',
+                'lime': 'bg-lime-100 text-lime-800 dark:bg-lime-900 dark:text-lime-200',
+                'green': 'bg-green-100 text-green-800 dark:bg-green-900 dark:text-green-200',
+                'emerald': 'bg-emerald-100 text-emerald-800 dark:bg-emerald-900 dark:text-emerald-200',
+                'teal': 'bg-teal-100 text-teal-800 dark:bg-teal-900 dark:text-teal-200',
+                'cyan': 'bg-cyan-100 text-cyan-800 dark:bg-cyan-900 dark:text-cyan-200',
+                'blue': 'bg-blue-100 text-blue-800 dark:bg-blue-900 dark:text-blue-200',
+                'indigo': 'bg-indigo-100 text-indigo-800 dark:bg-indigo-900 dark:text-indigo-200',
+                'purple': 'bg-purple-100 text-purple-800 dark:bg-purple-900 dark:text-purple-200',
+                'pink': 'bg-pink-100 text-pink-800 dark:bg-pink-900 dark:text-pink-200'
+            };
+            const categoryColorClass = colorClasses[categoryInfo.color] || colorClasses['gray'];
+
+            // Clickable category badge with optional transfer ring
+            categoryHTML += `<button onclick="openCategoryModalResults('${txnId}', '${escapedDescription}', ${amount}, '${txnType}', ${txnDbId})" class="inline-flex items-center px-2 py-0.5 rounded text-xs font-medium category-badge ${isTransfer ? 'ring-2 ring-offset-1 ring-blue-400 dark:ring-blue-500' : ''} hover:opacity-80 transition cursor-pointer ${categoryColorClass}" data-category="${categoryKey}" title="Click to change category">`;
+
+            // Transfer direction icon
+            if (isTransfer && transferDirection) {
+                if (transferDirection === 'in') {
+                    categoryHTML += `<svg class="w-3 h-3 mr-1 text-green-600 dark:text-green-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M7 11l5-5m0 0l5 5m-5-5v12"></path>
+                    </svg>`;
+                } else {
+                    categoryHTML += `<svg class="w-3 h-3 mr-1 text-red-600 dark:text-red-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M17 13l-5 5m0 0l-5-5m5 5V6"></path>
+                    </svg>`;
+                }
+            }
+
+            categoryHTML += `${categoryInfo.label}`;
+
+            // Add edit icon
+            categoryHTML += `<svg class="w-3 h-3 ml-1 opacity-60" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15.232 5.232l3.536 3.536m-2.036-5.036a2.5 2.5 0 113.536 3.536L6.5 21.036H3v-3.572L16.732 3.732z"></path>
+            </svg>`;
+
+            categoryHTML += `</button>`;
+
+            // Account number badge if present
+            if (accountNumber) {
+                categoryHTML += `<span class="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-mono bg-blue-50 text-blue-700 dark:bg-blue-900 dark:text-blue-300 border border-blue-200 dark:border-blue-700">
+                    <svg class="w-3 h-3 mr-1" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3 10h18M7 15h1m4 0h1m-7 4h12a3 3 0 003-3V8a3 3 0 00-3-3H6a3 3 0 00-3 3v8a3 3 0 003 3z"></path>
+                    </svg>
+                    ****${accountNumber}
+                </span>`;
+            }
+
+            categoryHTML += '</div>';
+            categoryCell.innerHTML = categoryHTML;
+        }
+
+        // Helper function to extract account numbers from descriptions
+        function extractAccountNumberResults(description) {
+            // Match patterns like: ACCT ****1234, ACCT XXXX1234, Account ending in 1234, etc.
+            let match;
+            if (match = description.match(/(?:ACCT|ACCOUNT|A\/C)[\s#:]*([X*]+)?(\d{4,})/i)) {
+                return match[2];
+            } else if (match = description.match(/(?:ending in|ending|ends in)[\s:]*(\d{4,})/i)) {
+                return match[1];
+            } else if (match = description.match(/[X*]{4,}(\d{4,})/)) {
+                return match[1];
+            }
+            return null;
+        }
+
+        // Helper function to determine transfer direction from description
+        function getTransferDirectionResults(description) {
+            if (/(?:FROM|IN|INCOMING|RECEIVED|DEPOSIT)/i.test(description)) {
+                return 'in';
+            } else if (/(?:TO|OUT|OUTGOING|SENT|PAYMENT)/i.test(description)) {
+                return 'out';
+            }
+            return null;
+        }
+
+        // Helper function to update category statistics across the dashboard
+        function updateCategoryStatistics() {
+            // Count transactions by category for each visible session
+            const categoryStats = {};
+
+            document.querySelectorAll('.category-badge').forEach(badge => {
+                const category = badge.dataset.category;
+                if (category) {
+                    if (!categoryStats[category]) {
+                        categoryStats[category] = 0;
+                    }
+                    categoryStats[category]++;
+                }
+            });
+
+            console.log('Updated category statistics:', categoryStats);
+
+            // You can add code here to display these statistics in a summary panel
+            // For now, this provides the data structure for future enhancements
+        }
+
+        // Helper function to show notifications
+        function showNotificationResults(message, type) {
+            const bgColor = type === 'success' ? 'bg-green-500' : 'bg-red-500';
+            const notification = document.createElement('div');
+            notification.className = `fixed top-4 right-4 ${bgColor} text-white px-6 py-3 rounded-lg shadow-lg z-50 transition-opacity`;
+            notification.textContent = message;
+            document.body.appendChild(notification);
+
+            setTimeout(() => {
+                notification.style.opacity = '0';
+                setTimeout(() => notification.remove(), 300);
+            }, 3000);
+        }
+
+        // Store pending category update data (used in bulk update confirmation flow)
+        let pendingCategoryUpdate = null;
+
+        // Show bulk update confirmation modal
+        function showBulkUpdateConfirmation(count, description, categoryKey) {
+            const categoryInfo = categoriesDataResults[categoryKey];
+            document.getElementById('bulk-count').textContent = count;
+            document.getElementById('bulk-count-button').textContent = `(${count})`;
+            document.getElementById('bulk-description').textContent = description;
+            document.getElementById('bulk-category-name').textContent = categoryInfo.label;
+            document.getElementById('bulk-category-name').className = `font-semibold text-${categoryInfo.color}-600 dark:text-${categoryInfo.color}-400`;
+
+            // Hide category modal and show confirmation modal
+            document.getElementById('category-modal-results').classList.add('hidden');
+            document.getElementById('bulk-update-confirmation-modal').classList.remove('hidden');
+        }
+
+        // Confirm bulk update (user wants to update all matching transactions)
+        window.confirmBulkUpdate = function() {
+            console.log('User confirmed bulk update');
+            document.getElementById('bulk-update-confirmation-modal').classList.add('hidden');
+            if (pendingCategoryUpdate) {
+                performCategoryUpdate(pendingCategoryUpdate, true);
+                pendingCategoryUpdate = null;
+            }
+        }
+
+        // Cancel bulk update (user wants to update only current transaction)
+        window.cancelBulkUpdate = function() {
+            console.log('User cancelled bulk update - updating only current transaction');
+            document.getElementById('bulk-update-confirmation-modal').classList.add('hidden');
+            if (pendingCategoryUpdate) {
+                // Update only the current transaction by adding a flag
+                pendingCategoryUpdate.update_single_only = true;
+                performCategoryUpdate(pendingCategoryUpdate, false);
+                pendingCategoryUpdate = null;
+            }
+        }
+
+        // Track current MCA filter state
+        let currentMcaFilter = null;
+
+        // Toggle MCA payment row (for individual session dropdown)
+        function toggleMcaPaymentRow(rowId) {
+            const row = document.getElementById(rowId);
+            if (row) {
+                row.classList.toggle('hidden');
+            }
+        }
+
+        // Filter/highlight MCA transactions in historical data
+        function toggleMcaTransactions(lenderId, lenderName) {
+            console.log('toggleMcaTransactions called:', {lenderId, lenderName});
+
+            // If already filtering this lender, clear the filter
+            if (currentMcaFilter === lenderId) {
+                clearMcaTransactionFilter();
+                return;
+            }
+
+            // Set new filter
+            currentMcaFilter = lenderId;
+
+            // Update button states
+            const buttons = document.querySelectorAll('.mca-view-btn');
+            console.log('Found', buttons.length, 'MCA view buttons');
+
+            buttons.forEach(btn => {
+                const btnLenderId = btn.getAttribute('data-lender-id');
+                if (btnLenderId === lenderId) {
+                    btn.classList.add('bg-blue-100', 'dark:bg-blue-900');
+                    btn.classList.remove('hover:bg-blue-50', 'dark:hover:bg-blue-900/30');
+                } else {
+                    btn.classList.remove('bg-blue-100', 'dark:bg-blue-900');
+                    btn.classList.add('hover:bg-blue-50', 'dark:hover:bg-blue-900/30');
+                }
+            });
+
+            // Find all transaction rows
+            const allRows = document.querySelectorAll('tr[data-transaction-id]');
+            console.log('Found', allRows.length, 'transaction rows');
+
+            let visibleCount = 0;
+            let firstVisibleRow = null;
+
+            // Extract key words from lender name for better matching
+            const lenderNameLower = lenderName.toLowerCase();
+            const lenderWords = lenderNameLower.split(' ').filter(w => w.length > 3);
+            console.log('Searching for lender words:', lenderWords);
+
+            allRows.forEach(row => {
+                // Get transaction description from the row
+                const descriptionCell = row.querySelector('td:nth-child(2)');
+                if (!descriptionCell) return;
+
+                const description = descriptionCell.textContent.trim();
+                const descriptionLower = description.toLowerCase();
+
+                // Check if transaction matches the lender
+                // Try exact match first, then word matching
+                let isMcaForLender = descriptionLower.includes(lenderNameLower);
+
+                // If no exact match, try matching key words
+                if (!isMcaForLender && lenderWords.length > 0) {
+                    const matchedWords = lenderWords.filter(word => descriptionLower.includes(word));
+                    isMcaForLender = matchedWords.length >= Math.min(2, lenderWords.length);
+                }
+
+                if (isMcaForLender) {
+                    console.log('Matched transaction:', description.substring(0, 50));
+                    // Show and highlight this row
+                    row.classList.remove('hidden');
+                    row.classList.add('bg-yellow-50', 'dark:bg-yellow-900/20', 'ring-2', 'ring-yellow-400', 'dark:ring-yellow-600');
+                    visibleCount++;
+                    if (!firstVisibleRow) {
+                        firstVisibleRow = row;
+                    }
+                } else {
+                    // Dim this row
+                    row.classList.add('opacity-30');
+                    row.classList.remove('bg-yellow-50', 'dark:bg-yellow-900/20', 'ring-2', 'ring-yellow-400', 'dark:ring-yellow-600');
+                }
+            });
+
+            console.log('Visible count:', visibleCount);
+
+            // Show filter indicator
+            showMcaFilterIndicator(lenderName, visibleCount);
+
+            // Scroll to first visible transaction
+            if (firstVisibleRow) {
+                setTimeout(() => {
+                    firstVisibleRow.scrollIntoView({ behavior: 'smooth', block: 'center' });
+                }, 300);
+            } else {
+                console.warn('No matching transactions found for', lenderName);
+            }
+        }
+
+        function clearMcaTransactionFilter() {
+            currentMcaFilter = null;
+
+            // Reset button states
+            document.querySelectorAll('.mca-view-btn').forEach(btn => {
+                btn.classList.remove('bg-blue-100', 'dark:bg-blue-900');
+                btn.classList.add('hover:bg-blue-50', 'dark:hover:bg-blue-900/30');
+            });
+
+            // Reset all transaction rows
+            const allRows = document.querySelectorAll('tr[data-transaction-id]');
+            allRows.forEach(row => {
+                row.classList.remove('opacity-30', 'bg-yellow-50', 'dark:bg-yellow-900/20', 'ring-2', 'ring-yellow-400', 'dark:ring-yellow-600');
+            });
+
+            // Hide filter indicator
+            hideMcaFilterIndicator();
+        }
+
+        function showMcaFilterIndicator(lenderName, count) {
+            // Remove existing indicator if any
+            hideMcaFilterIndicator();
+
+            // Create filter indicator
+            const indicator = document.createElement('div');
+            indicator.id = 'mca-filter-indicator';
+            indicator.className = 'fixed top-20 right-4 z-50 bg-blue-600 text-white px-4 py-3 rounded-lg shadow-lg flex items-center gap-3 animate-slide-in-right';
+            indicator.innerHTML = `
+                <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3 4a1 1 0 011-1h16a1 1 0 011 1v2.586a1 1 0 01-.293.707l-6.414 6.414a1 1 0 00-.293.707V17l-4 4v-6.586a1 1 0 00-.293-.707L3.293 7.293A1 1 0 013 6.586V4z"></path>
+                </svg>
+                <div>
+                    <div class="font-semibold text-sm">Filtering: ${lenderName}</div>
+                    <div class="text-xs opacity-90">${count} transaction(s) found</div>
+                </div>
+                <button onclick="clearMcaTransactionFilter()" class="ml-2 hover:bg-blue-700 rounded p-1" title="Clear filter">
+                    <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"></path>
+                    </svg>
+                </button>
+            `;
+
+            document.body.appendChild(indicator);
+        }
+
+        function hideMcaFilterIndicator() {
+            const indicator = document.getElementById('mca-filter-indicator');
+            if (indicator) {
+                indicator.remove();
+            }
+        }
 
         // Pattern normalization function (mirrors PHP RevenueClassification::normalizePattern)
         function normalizePattern(description) {
@@ -3112,46 +4306,83 @@
         }
 
         function updateMonthlySummaryAfterTypeToggle(sessionId, monthKey, amount, oldType, newType) {
-            // Update the monthly summary in the month card
-            const monthCard = document.querySelector(`[data-month="${monthKey}"][data-session="${sessionId}"]`);
-            if (!monthCard) return;
+            console.log('Updating monthly summary:', { sessionId, monthKey, amount, oldType, newType });
 
-            // Find the month summary section
-            const summarySection = monthCard.closest('.bg-white, .dark\\:bg-gray-800')?.querySelector('.grid');
-            if (!summarySection) return;
+            // Find the monthly summary section by looking for the grid container
+            // The structure is: Month button -> Expandable div -> Summary grid (first grid after button)
+            const monthCards = document.querySelectorAll(`[data-month="${monthKey}"][data-session="${sessionId}"]`);
+            if (monthCards.length === 0) {
+                console.log('No month card found');
+                return;
+            }
 
-            // Get all the metric values
-            const metrics = summarySection.querySelectorAll('.metric-value');
-            if (metrics.length < 2) return;
+            // Find the summary grid - it's in the expandable section
+            // Look for parent container and find the summary cards grid
+            const firstCard = monthCards[0];
+            const monthContainer = firstCard.closest('.border-b');
+            if (!monthContainer) {
+                console.log('Month container not found');
+                return;
+            }
 
-            const creditsElement = metrics[0]; // First metric is credits
-            const debitsElement = metrics[1];  // Second metric is debits
+            // Find the summary grid with the 4 cards (Deposits, Adjustments, True Revenue, Total Debits)
+            const summaryGrid = monthContainer.querySelector('.grid.grid-cols-2.md\\:grid-cols-4');
+            if (!summaryGrid) {
+                console.log('Summary grid not found');
+                return;
+            }
+
+            // Get the summary card elements
+            const cards = summaryGrid.querySelectorAll('.bg-white.dark\\:bg-gray-700');
+            if (cards.length < 4) {
+                console.log('Not enough summary cards found');
+                return;
+            }
+
+            // Cards order: [0] = Deposits, [1] = Adjustments, [2] = True Revenue, [3] = Total Debits
+            const depositsElement = cards[0].querySelector('p.text-lg');
+            const adjustmentsElement = cards[1].querySelector('p.text-lg');
+            const trueRevenueElement = cards[2].querySelector('p.text-lg');
+            const debitsElement = cards[3].querySelector('p.text-lg');
+
+            if (!depositsElement || !debitsElement || !trueRevenueElement || !adjustmentsElement) {
+                console.log('Could not find all required elements');
+                return;
+            }
 
             // Parse current values
-            let currentCredits = parseFloat(creditsElement.textContent.replace(/[$,]/g, '')) || 0;
+            let currentDeposits = parseFloat(depositsElement.textContent.replace(/[$,]/g, '')) || 0;
             let currentDebits = parseFloat(debitsElement.textContent.replace(/[$,]/g, '')) || 0;
+            let currentAdjustments = parseFloat(adjustmentsElement.textContent.replace(/[$,]/g, '')) || 0;
 
             // Update values based on the toggle
             if (oldType === 'credit' && newType === 'debit') {
-                currentCredits -= amount;
+                currentDeposits -= amount;
                 currentDebits += amount;
             } else if (oldType === 'debit' && newType === 'credit') {
                 currentDebits -= amount;
-                currentCredits += amount;
+                currentDeposits += amount;
             }
+
+            // Calculate new true revenue (deposits - adjustments)
+            const newTrueRevenue = currentDeposits - currentAdjustments;
 
             // Update the display
-            creditsElement.textContent = '$' + currentCredits.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+            depositsElement.textContent = '$' + currentDeposits.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
             debitsElement.textContent = '$' + currentDebits.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+            trueRevenueElement.textContent = '$' + newTrueRevenue.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
 
-            // Update true revenue if present
-            const trueRevenueElements = summarySection.querySelectorAll('.metric-value');
-            if (trueRevenueElements.length >= 3) {
-                const trueRevenueElement = trueRevenueElements[2];
-                const adjustments = parseFloat(summarySection.querySelector('.metric-value:nth-child(2)')?.textContent.replace(/[$,]/g, '')) || 0;
-                const trueRevenue = currentCredits - adjustments;
-                trueRevenueElement.textContent = '$' + trueRevenue.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+            // Also update the header true revenue display
+            const headerRevenueElement = monthContainer.querySelector(`.header-rev-${sessionId}-${monthKey}`);
+            if (headerRevenueElement) {
+                headerRevenueElement.textContent = '$' + newTrueRevenue.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
             }
+
+            // Update any elements with specific classes for this month
+            const cardRevElements = document.querySelectorAll(`.card-rev-${sessionId}-${monthKey}`);
+            cardRevElements.forEach(el => {
+                el.textContent = '$' + newTrueRevenue.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+            });
 
             // Update the monthlyData object to keep data in sync
             const sessionData = monthlyData[sessionId];
@@ -3167,6 +4398,8 @@
 
             // Update the Combined Analysis Summary dashboard
             updateCombinedSummary();
+
+            console.log('Monthly summary updated successfully');
         }
 
         function updateSessionTotals(sessionId, totals) {
@@ -3421,25 +4654,52 @@
 
         let currentMcaContext = null;
 
-        function showMcaDropdown(uniqueId, description, amount, isMca, currentLender, currentLenderId, monthKey, sessionId) {
+        function showMcaDropdown(uniqueId, description, amount, isMca, currentLender, currentLenderId, monthKey, sessionId, transactionId) {
             // Debug: Log current state of mcaLenders
+            console.log('=== showMcaDropdown called ===');
             console.log('Opening MCA dropdown - mcaLenders has', Object.keys(mcaLenders).length, 'lenders:', Object.keys(mcaLenders));
+            console.log('Raw transaction ID received:', transactionId, 'Type:', typeof transactionId);
+
+            // Parse transaction ID to ensure it's a valid number
+            const parsedTransactionId = transactionId && transactionId !== 'null' && transactionId !== null ? parseInt(transactionId) : null;
+            console.log('Parsed transaction ID:', parsedTransactionId, 'Type:', typeof parsedTransactionId);
 
             // Remove any existing dropdown
             const existingDropdown = document.getElementById('mca-dropdown');
             if (existingDropdown) existingDropdown.remove();
 
-            currentMcaContext = { uniqueId, description, amount, isMca, currentLender, currentLenderId, monthKey, sessionId };
+            currentMcaContext = {
+                uniqueId,
+                description,
+                amount,
+                isMca,
+                currentLender,
+                currentLenderId,
+                monthKey,
+                sessionId,
+                transactionId: parsedTransactionId
+            };
+
+            console.log('Stored context:', currentMcaContext);
 
             const btn = document.querySelector('.mca-toggle-btn-' + uniqueId);
-            const rect = btn.getBoundingClientRect();
 
             // Create dropdown
             const dropdown = document.createElement('div');
             dropdown.id = 'mca-dropdown';
             dropdown.className = 'fixed z-50 bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-lg shadow-xl p-3 w-64';
-            dropdown.style.top = (rect.bottom + 5) + 'px';
-            dropdown.style.left = Math.min(rect.left, window.innerWidth - 280) + 'px';
+
+            // Position dropdown - if button exists, position relative to it, otherwise center on screen
+            if (btn) {
+                const rect = btn.getBoundingClientRect();
+                dropdown.style.top = (rect.bottom + 5) + 'px';
+                dropdown.style.left = Math.min(rect.left, window.innerWidth - 280) + 'px';
+            } else {
+                // Center on screen if button not found
+                dropdown.style.top = '50%';
+                dropdown.style.left = '50%';
+                dropdown.style.transform = 'translate(-50%, -50%)';
+            }
 
             let optionsHtml = '';
             for (const [id, name] of Object.entries(mcaLenders)) {
@@ -3501,7 +4761,7 @@
             currentMcaContext = null;
         }
 
-        async function saveMcaSelection() {
+        window.saveMcaSelection = async function() {
             if (!currentMcaContext) return;
 
             const select = document.getElementById('mca-lender-select');
@@ -3524,17 +4784,136 @@
                 lenderName = mcaLenders[lenderId] || lenderId;
             }
 
-            await toggleMcaStatus(true, lenderId, lenderName);
+            // Store context before closing dropdown
+            const context = { ...currentMcaContext };
+
+            closeMcaDropdown();
+
+            // Show confirmation dialog asking if user wants to scan for similar transactions
+            showMcaScanConfirmation(context, lenderId, lenderName);
         }
 
-        async function removeMcaMarking() {
+        // Show confirmation dialog for scanning similar transactions
+        function showMcaScanConfirmation(context, lenderId, lenderName) {
+            const modal = document.getElementById('mca-scan-confirmation-modal');
+            const lenderNameSpan = document.getElementById('mca-scan-lender-name');
+            const descriptionSpan = document.getElementById('mca-scan-description');
+
+            lenderNameSpan.textContent = lenderName;
+            descriptionSpan.textContent = context.description.substring(0, 80) + (context.description.length > 80 ? '...' : '');
+
+            // Store context for later use
+            window.pendingScanContext = { context, lenderId, lenderName };
+
+            modal.classList.remove('hidden');
+        }
+
+        window.confirmMcaScan = async function() {
+            const modal = document.getElementById('mca-scan-confirmation-modal');
+            modal.classList.add('hidden');
+
+            if (!window.pendingScanContext) return;
+
+            const { context, lenderId, lenderName } = window.pendingScanContext;
+
+            console.log('Starting scan for similar transactions...', {
+                description: context.description,
+                lenderId: lenderId,
+                lenderName: lenderName
+            });
+
+            try {
+                // Show similar transactions modal
+                const result = await window.showSimilarMcaModal(
+                    context.description,
+                    'debit',
+                    lenderId,
+                    lenderName,
+                    true,
+                    context
+                );
+
+                console.log('Scan result:', result);
+
+                // If no similar transactions found, proceed directly with single transaction
+                if (!result || result.count === 0) {
+                    console.log('No similar transactions found, updating single transaction');
+                    currentMcaContext = context;
+                    await toggleMcaStatusDirect(true, lenderId, lenderName, true);
+                }
+            } catch (error) {
+                console.error('Error during scan:', error);
+                showToast('Error scanning for similar transactions: ' + error.message, 'error');
+
+                // Still update the current transaction on error
+                currentMcaContext = context;
+                await toggleMcaStatusDirect(true, lenderId, lenderName, true);
+            }
+
+            window.pendingScanContext = null;
+        }
+
+        window.skipMcaScan = async function() {
+            console.log('=== skipMcaScan called ===');
+            const modal = document.getElementById('mca-scan-confirmation-modal');
+            modal.classList.add('hidden');
+
+            if (!window.pendingScanContext) {
+                console.error('No pendingScanContext found!');
+                return;
+            }
+
+            const { context, lenderId, lenderName } = window.pendingScanContext;
+
+            console.log('Context:', context);
+            console.log('Context has transactionId?', context.transactionId);
+            console.log('Full context object:', JSON.stringify(context, null, 2));
+
+            // Mark only the current transaction (pass true for singleTransactionOnly)
+            currentMcaContext = context;
+            console.log('Calling toggleMcaStatusDirect with singleTransactionOnly=true');
+            await toggleMcaStatusDirect(true, lenderId, lenderName, true);
+
+            window.pendingScanContext = null;
+        }
+
+        window.closeMcaScanConfirmation = function() {
+            const modal = document.getElementById('mca-scan-confirmation-modal');
+            modal.classList.add('hidden');
+            window.pendingScanContext = null;
+        }
+
+        window.removeMcaMarking = async function() {
             if (!currentMcaContext) return;
-            // Pass the current lender info so we know which one to remove
-            await toggleMcaStatus(false, currentMcaContext.currentLenderId || '', currentMcaContext.currentLender || '');
+
+            // Store context before closing dropdown (closeMcaDropdown sets currentMcaContext to null)
+            const context = { ...currentMcaContext };
+
+            closeMcaDropdown();
+
+            // For removal, show simple confirmation dialog first
+            if (!confirm('Remove MCA marking from all similar transactions with this description?')) {
+                return;
+            }
+
+            // Temporarily restore context for the API call
+            currentMcaContext = context;
+
+            // Proceed with removal for all matching transactions
+            await toggleMcaStatusDirect(false, context.currentLenderId || '', context.currentLender || '');
         }
 
-        async function toggleMcaStatus(isMca, lenderId, lenderName) {
-            const { uniqueId, description, amount, monthKey, sessionId } = currentMcaContext;
+        async function toggleMcaStatusDirect(isMca, lenderId, lenderName, singleTransactionOnly = false) {
+            console.log('=== toggleMcaStatusDirect called ===');
+            console.log('Parameters:', { isMca, lenderId, lenderName, singleTransactionOnly });
+            console.log('currentMcaContext:', currentMcaContext);
+
+            const { uniqueId, description, amount, monthKey, sessionId, transactionId } = currentMcaContext;
+
+            console.log('Destructured values:', { uniqueId, description, amount, monthKey, sessionId, transactionId });
+            console.log('transactionId type:', typeof transactionId);
+            console.log('transactionId value:', transactionId);
+
             const btn = document.querySelector('.mca-toggle-btn-' + uniqueId);
             const textSpan = btn.querySelector('.mca-text');
 
@@ -3542,6 +4921,26 @@
 
             btn.disabled = true;
             btn.style.opacity = '0.5';
+
+            // Build request body
+            const requestBody = {
+                description: description,
+                amount: amount,
+                is_mca: isMca,
+                lender_id: lenderId,
+                lender_name: lenderName
+            };
+
+            // If updating single transaction only, include the transaction ID
+            if (singleTransactionOnly && transactionId) {
+                requestBody.transaction_ids = [transactionId];
+                console.log('✅ Updating single transaction ID:', transactionId);
+            } else {
+                console.warn('⚠️ Updating all matching transactions by description');
+                console.log('Reason: singleTransactionOnly=', singleTransactionOnly, 'transactionId=', transactionId);
+            }
+
+            console.log('Final requestBody being sent:', JSON.stringify(requestBody, null, 2));
 
             try {
                 const response = await fetch('{{ route("bankstatement.toggle-mca") }}', {
@@ -3551,13 +4950,7 @@
                         'X-CSRF-TOKEN': '{{ csrf_token() }}',
                         'Accept': 'application/json'
                     },
-                    body: JSON.stringify({
-                        description: description,
-                        amount: amount,
-                        is_mca: isMca,
-                        lender_id: lenderId,
-                        lender_name: lenderName
-                    })
+                    body: JSON.stringify(requestBody)
                 });
 
                 const data = await response.json();
@@ -3569,32 +4962,23 @@
                         console.log('Added new lender to list:', lenderId, lenderName);
                     }
 
-                    // Update button appearance
-                    textSpan.textContent = isMca ? lenderName : 'Mark MCA';
+                    showToast(data.message || `✓ Updated ${data.updated_count || 1} transaction(s)`, 'success');
 
-                    btn.classList.remove('bg-red-100', 'text-red-800', 'dark:bg-red-900', 'dark:text-red-200', 'hover:bg-red-200');
-                    btn.classList.remove('bg-gray-100', 'text-gray-600', 'dark:bg-gray-700', 'dark:text-gray-400', 'hover:bg-gray-200');
-
-                    if (isMca) {
-                        btn.classList.add('bg-red-100', 'text-red-800', 'dark:bg-red-900', 'dark:text-red-200', 'hover:bg-red-200');
-                    } else {
-                        btn.classList.add('bg-gray-100', 'text-gray-600', 'dark:bg-gray-700', 'dark:text-gray-400', 'hover:bg-gray-200');
-                    }
-
-                    // Update MCA summary section
-                    updateMcaSummary(sessionId, isMca, lenderId, lenderName, amount, description);
-
-                    showToast(data.message, 'success');
+                    // Reload page to show all updated transactions
+                    setTimeout(() => {
+                        window.location.reload();
+                    }, 1500);
                 } else {
                     showToast('Failed to update MCA status', 'error');
+                    btn.disabled = false;
+                    btn.style.opacity = '1';
                 }
             } catch (error) {
                 console.error('Error:', error);
                 showToast('Error updating MCA status', 'error');
+                btn.disabled = false;
+                btn.style.opacity = '1';
             }
-
-            btn.disabled = false;
-            btn.style.opacity = '1';
         }
 
         // Track MCA data for real-time updates
@@ -4783,6 +6167,7 @@
     </div>
 
     <!-- Category Classification Modal -->
+    <!-- Category Selection Modal -->
     <div id="category-modal-results" class="hidden fixed inset-0 bg-gray-500 bg-opacity-75 transition-opacity z-50">
         <div class="fixed inset-0 overflow-y-auto">
             <div class="flex min-h-full items-center justify-center p-4">
@@ -4819,119 +6204,234 @@
         </div>
     </div>
 
-    <script>
-        let currentTransactionIdResults = null; // uniqueId for DOM lookups
-        let currentTransactionDbIdResults = null; // database ID for API calls
-        let currentTransactionTypeResults = null;
-        let categoriesDataResults = null;
+    <!-- Bulk Update Confirmation Modal -->
+    <div id="bulk-update-confirmation-modal" class="hidden fixed inset-0 bg-gray-500 bg-opacity-75 transition-opacity z-[60]">
+        <div class="fixed inset-0 overflow-y-auto">
+            <div class="flex min-h-full items-center justify-center p-4">
+                <div class="relative transform overflow-hidden rounded-lg bg-white dark:bg-gray-800 text-left shadow-xl transition-all w-full max-w-md">
+                    <div class="bg-white dark:bg-gray-800 px-6 pt-5 pb-4">
+                        <div class="flex items-center mb-4">
+                            <div class="flex-shrink-0 flex items-center justify-center h-12 w-12 rounded-full bg-blue-100 dark:bg-blue-900">
+                                <svg class="h-6 w-6 text-blue-600 dark:text-blue-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M7 7h.01M7 3h5c.512 0 1.024.195 1.414.586l7 7a2 2 0 010 2.828l-7 7a2 2 0 01-2.828 0l-7-7A1.994 1.994 0 013 12V7a4 4 0 014-4z"></path>
+                                </svg>
+                            </div>
+                            <div class="ml-4">
+                                <h3 class="text-lg font-medium text-gray-900 dark:text-white">Apply to All Similar Transactions?</h3>
+                            </div>
+                        </div>
 
-        // Load categories on page load
-        document.addEventListener('DOMContentLoaded', function() {
-            loadCategoriesResults();
-            applyCategoryColorsResults();
-        });
+                        <div class="mb-4">
+                            <p class="text-sm text-gray-500 dark:text-gray-400 mb-3">
+                                Found <span id="bulk-count" class="font-bold text-gray-900 dark:text-white">0</span> transaction(s) with the same description:
+                            </p>
+                            <p id="bulk-description" class="text-sm font-medium text-gray-900 dark:text-white bg-gray-50 dark:bg-gray-700 p-2 rounded border dark:border-gray-600"></p>
+                            <p class="text-sm text-gray-500 dark:text-gray-400 mt-3">
+                                Would you like to apply the <span id="bulk-category-name" class="font-semibold"></span> category to all of them?
+                            </p>
+                        </div>
+                    </div>
+                    <div class="bg-gray-50 dark:bg-gray-700 px-6 py-3 flex justify-end gap-2">
+                        <button onclick="cancelBulkUpdate()" class="px-4 py-2 text-sm font-medium text-gray-700 dark:text-gray-300 bg-white dark:bg-gray-600 border border-gray-300 dark:border-gray-500 rounded-md hover:bg-gray-50 dark:hover:bg-gray-500">
+                            Only This One
+                        </button>
+                        <button onclick="confirmBulkUpdate()" class="px-4 py-2 text-sm font-medium text-white bg-blue-600 border border-transparent rounded-md hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500">
+                            Apply to All <span id="bulk-count-button"></span>
+                        </button>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
 
-        function loadCategoriesResults() {
-            console.log('Loading categories from API...');
-            fetch('{{ route("bankstatement.categories") }}')
-                .then(response => {
-                    console.log('Categories API response status:', response.status);
-                    if (!response.ok) {
-                        throw new Error('Failed to load categories: ' + response.status);
-                    }
-                    return response.json();
-                })
-                .then(data => {
-                    console.log('Categories loaded successfully:', data);
-                    categoriesDataResults = data.categories;
-                    console.log('Total categories:', Object.keys(categoriesDataResults).length);
-                })
-                .catch(error => {
-                    console.error('Error loading categories:', error);
-                    alert('Failed to load categories. Please refresh the page.');
-                });
-        }
+    <!-- Similar Transactions Modal for Category -->
+    <div id="similar-category-modal" class="hidden fixed inset-0 bg-gray-500 bg-opacity-75 transition-opacity z-[70]">
+        <div class="flex items-center justify-center min-h-screen px-4">
+            <div class="relative bg-white dark:bg-gray-800 rounded-lg shadow-xl max-w-4xl w-full max-h-[80vh] overflow-hidden">
+                <div class="px-6 py-4 border-b border-gray-200 dark:border-gray-700">
+                    <h3 class="text-lg font-medium text-gray-900 dark:text-gray-100">
+                        Similar Transactions Found
+                    </h3>
+                    <p class="mt-1 text-sm text-gray-500 dark:text-gray-400">
+                        Select which transactions to classify as <span id="similar-category-label" class="font-semibold text-blue-600 dark:text-blue-400"></span>
+                    </p>
+                </div>
 
-        window.openCategoryModalResults = function(transactionId, description, amount, type, dbId) {
-            console.log('=== openCategoryModalResults called ===');
-            console.log('transactionId:', transactionId);
-            console.log('description:', description);
-            console.log('amount:', amount);
-            console.log('type:', type);
-            console.log('dbId:', dbId);
+                <div class="px-6 py-4 max-h-[50vh] overflow-y-auto">
+                    <div class="mb-4 flex items-center gap-2">
+                        <input type="checkbox" id="select-all-similar-category" onchange="toggleAllSimilarCategory()" class="w-4 h-4 text-blue-600 rounded" checked>
+                        <label for="select-all-similar-category" class="text-sm font-medium text-gray-700 dark:text-gray-300">
+                            Select All (<span id="similar-category-count">0</span> transactions)
+                        </label>
+                    </div>
 
-            currentTransactionIdResults = transactionId; // uniqueId for finding DOM elements
-            currentTransactionDbIdResults = dbId; // database ID for API call
-            currentTransactionTypeResults = type;
+                    <div id="similar-category-list" class="space-y-2">
+                        <!-- Transactions will be populated here -->
+                    </div>
+                </div>
 
-            const modalDesc = document.getElementById('modal-description-results');
-            if (!modalDesc) {
-                console.error('modal-description-results element not found!');
-                alert('Error: Modal not properly initialized');
-                return;
-            }
-            modalDesc.textContent = description;
+                <div class="bg-gray-50 dark:bg-gray-700 px-6 py-3 flex justify-between items-center">
+                    <span class="text-sm text-gray-600 dark:text-gray-400">
+                        <span id="similar-category-selected">0</span> selected
+                    </span>
+                    <div class="flex gap-2">
+                        <button onclick="closeSimilarCategoryModal()" class="px-4 py-2 text-sm font-medium text-gray-700 dark:text-gray-300 bg-white dark:bg-gray-600 border border-gray-300 dark:border-gray-500 rounded-md hover:bg-gray-50 dark:hover:bg-gray-500">
+                            Cancel
+                        </button>
+                        <button onclick="confirmSimilarCategoryUpdate()" class="px-4 py-2 text-sm font-medium text-white bg-blue-600 border border-transparent rounded-md hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500">
+                            Update Selected
+                        </button>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
 
-            if (!categoriesDataResults) {
-                console.warn('Categories not loaded yet');
-                alert('Categories are still loading. Please try again in a moment.');
-                return;
-            }
-            console.log('Categories loaded:', Object.keys(categoriesDataResults).length);
-
-            // Get the current category if it exists
-            const categoryCell = document.getElementById('category-cell-' + transactionId);
-            const currentCategoryBadge = categoryCell ? categoryCell.querySelector('.category-badge') : null;
-            const currentCategory = currentCategoryBadge ? currentCategoryBadge.dataset.category : null;
-
-            // Filter categories based on transaction type
-            const filteredCategories = Object.entries(categoriesDataResults).filter(([key, cat]) =>
-                cat.type === 'both' || cat.type === type
-            );
-
-            // Build category grid
-            const grid = document.getElementById('category-grid-results');
-            let gridHTML = '';
-
-            // Add "Clear Category" option if a category is currently set
-            if (currentCategory) {
-                gridHTML += `
-                    <button onclick="clearCategoryResults()"
-                            class="flex items-center gap-2 px-3 py-2 text-left text-sm border border-red-300 dark:border-red-700 rounded-lg hover:bg-red-50 dark:hover:bg-red-900/30 transition category-option">
-                        <svg class="w-4 h-4 text-red-600 dark:text-red-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"></path>
+    <!-- MCA Scan Confirmation Modal -->
+    <div id="mca-scan-confirmation-modal" class="hidden fixed inset-0 bg-gray-500 bg-opacity-75 transition-opacity z-[70]">
+        <div class="flex items-center justify-center min-h-screen px-4">
+            <div class="relative bg-white dark:bg-gray-800 rounded-lg shadow-xl max-w-lg w-full">
+                <div class="px-4 py-3 border-b border-gray-200 dark:border-gray-700">
+                    <div class="flex items-center">
+                        <svg class="w-6 h-6 text-red-600 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z"></path>
                         </svg>
-                        <span class="text-red-600 dark:text-red-400 font-medium">Clear Category</span>
+                        <div>
+                            <h3 class="text-base font-semibold text-gray-900 dark:text-gray-100">
+                                Scan for Similar Transactions?
+                            </h3>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="px-4 py-3">
+                    <div class="bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800 rounded p-3 mb-3">
+                        <p class="text-xs font-medium text-red-800 dark:text-red-300">
+                            <span class="font-bold"><span id="mca-scan-lender-name"></span></span>
+                        </p>
+                        <p class="text-xs text-red-700 dark:text-red-400 mt-1 truncate" title="">
+                            <span id="mca-scan-description" class="italic"></span>
+                        </p>
+                    </div>
+
+                    <div class="text-xs text-gray-600 dark:text-gray-400 mb-3">
+                        Would you like to find and mark all similar transactions, or just this one?
+                    </div>
+                </div>
+
+                <div class="bg-gray-50 dark:bg-gray-700 px-4 py-2 flex justify-end gap-2">
+                    <button onclick="closeMcaScanConfirmation()" class="px-3 py-1.5 text-xs font-medium text-gray-700 dark:text-gray-300 bg-white dark:bg-gray-600 border border-gray-300 dark:border-gray-500 rounded hover:bg-gray-100 dark:hover:bg-gray-500">
+                        Cancel
                     </button>
-                `;
-            }
-
-            // Add all other categories
-            gridHTML += filteredCategories.map(([key, cat]) => {
-                const isSelected = key === currentCategory;
-                const selectedClasses = isSelected
-                    ? 'border-2 border-blue-500 bg-blue-50 dark:bg-blue-900/30'
-                    : 'border';
-                const checkIcon = isSelected
-                    ? '<svg class="w-4 h-4 text-blue-600 dark:text-blue-400 ml-auto" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7"></path></svg>'
-                    : '';
-
-                return `
-                    <button onclick="selectCategoryResults('${key}')"
-                            class="flex items-center gap-2 px-3 py-2 text-left text-sm ${selectedClasses} rounded-lg hover:bg-gray-50 dark:hover:bg-gray-700 transition category-option"
-                            data-category="${key}">
-                        <span class="w-3 h-3 rounded-full category-color-${cat.color}"></span>
-                        <span class="text-gray-900 dark:text-white">${cat.label}</span>
-                        ${checkIcon}
+                    <button onclick="skipMcaScan()" class="px-3 py-1.5 text-xs font-medium text-white bg-blue-600 rounded hover:bg-blue-700">
+                        Just This One
                     </button>
-                `;
-            }).join('');
+                    <button onclick="confirmMcaScan()" class="px-3 py-1.5 text-xs font-medium text-white bg-red-600 rounded hover:bg-red-700">
+                        Scan for Similar
+                    </button>
+                </div>
+            </div>
+        </div>
+    </div>
 
-            grid.innerHTML = gridHTML;
+    <!-- Similar Transactions Confirmation Modal for MCA -->
+    <div id="similar-mca-modal" class="hidden fixed inset-0 bg-gray-500 bg-opacity-75 transition-opacity z-[70]">
+        <div class="flex items-center justify-center min-h-screen px-4">
+            <div class="relative bg-white dark:bg-gray-800 rounded-lg shadow-xl max-w-4xl w-full max-h-[80vh] overflow-hidden">
+                <div class="px-6 py-4 border-b border-gray-200 dark:border-gray-700">
+                    <div class="flex items-center justify-between">
+                        <div>
+                            <h3 class="text-lg font-medium text-gray-900 dark:text-gray-100 flex items-center">
+                                <svg class="w-6 h-6 text-red-600 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2"></path>
+                                </svg>
+                                Similar Transactions Found
+                            </h3>
+                            <p class="mt-1 text-sm text-gray-500 dark:text-gray-400">
+                                Select which transactions to mark as <span id="similar-mca-lender-label" class="font-semibold text-red-600 dark:text-red-400"></span>
+                            </p>
+                            <p id="similar-mca-subtitle" class="mt-1 text-xs text-gray-400 dark:text-gray-500 italic"></p>
+                        </div>
+                        <button onclick="closeSimilarMcaModal()" class="text-gray-400 hover:text-gray-600 dark:hover:text-gray-300">
+                            <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"></path>
+                            </svg>
+                        </button>
+                    </div>
+                </div>
 
-            document.getElementById('category-modal-results').classList.remove('hidden');
-        }
+                <div class="px-6 py-4 max-h-[50vh] overflow-y-auto">
+                    <div class="mb-4 flex items-center justify-between p-3 bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800 rounded-lg">
+                        <div class="flex items-center gap-2">
+                            <input type="checkbox" id="select-all-similar" onchange="toggleAllSimilar()" class="w-4 h-4 text-red-600 focus:ring-red-500 rounded">
+                            <label for="select-all-similar" class="text-sm font-medium text-gray-700 dark:text-gray-300">
+                                Select All (<span id="similar-count-total" class="font-bold text-red-600 dark:text-red-400">0</span> transactions)
+                            </label>
+                        </div>
+                        <span class="text-xs text-gray-500 dark:text-gray-400">
+                            Check the transactions you want to mark as MCA
+                        </span>
+                    </div>
 
+                    <div id="similar-transactions-list" class="space-y-2">
+                        <!-- Transactions will be populated here -->
+                    </div>
+                </div>
+
+                <div class="bg-gray-50 dark:bg-gray-700 px-6 py-3 flex justify-between items-center">
+                    <div class="flex items-center gap-4">
+                        <span class="text-sm text-gray-600 dark:text-gray-400">
+                            <span id="similar-selected-count" class="font-semibold text-red-600 dark:text-red-400">0</span> transaction(s) selected
+                        </span>
+                        <span class="text-xs text-gray-500 dark:text-gray-400">
+                            Marking as: <span id="similar-mca-action-label" class="font-medium"></span>
+                        </span>
+                    </div>
+                    <div class="flex gap-2">
+                        <button onclick="closeSimilarMcaModal()" class="px-4 py-2 text-sm font-medium text-gray-700 dark:text-gray-300 bg-white dark:bg-gray-600 border border-gray-300 dark:border-gray-500 rounded-md hover:bg-gray-50 dark:hover:bg-gray-500 transition-colors">
+                            Cancel
+                        </button>
+                        <button onclick="confirmSimilarMcaUpdate()" class="px-5 py-2 text-sm font-medium text-white bg-red-600 border border-transparent rounded-md hover:bg-red-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-red-500 transition-colors">
+                            <svg class="w-4 h-4 inline mr-1" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7"></path>
+                            </svg>
+                            Mark Selected as MCA
+                        </button>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        // ============================================================================
+        // NOTE: Category classification functions have been MOVED to the first script section
+        // to prevent "not defined" errors when onclick handlers execute.
+        //
+        // The following functions are now defined in the first script section (~line 2670):
+        // - window.closeCategoryModalResults
+        // - window.clearCategoryResults
+        // - window.selectCategoryResults
+        // - window.toggleAllSimilarCategory
+        // - window.updateSelectedCategoryCount
+        // - window.closeSimilarCategoryModal
+        // - window.confirmSimilarCategoryUpdate
+        // - showSimilarTransactionsForCategory
+        // - performCategoryUpdate
+        // - updateAllMatchingRows
+        // - updateSingleRow
+        // - updateCategoryCellHTML
+        // - extractAccountNumberResults
+        // - getTransferDirectionResults
+        // - updateCategoryStatistics
+        // - showNotificationResults
+        // - showBulkUpdateConfirmation
+        // - window.confirmBulkUpdate
+        // - window.cancelBulkUpdate
+        // ============================================================================
+
+        /* DUPLICATE CODE REMOVED - ALL CATEGORY FUNCTIONS NOW IN FIRST SCRIPT SECTION */
+        /*
         window.closeCategoryModalResults = function() {
             document.getElementById('category-modal-results').classList.add('hidden');
             currentTransactionIdResults = null;
@@ -4939,160 +6439,14 @@
             currentTransactionTypeResults = null;
         }
 
-        window.clearCategoryResults = function() {
-            console.log('clearCategoryResults called');
-            if (!currentTransactionIdResults) return;
+        ... (duplicate code removed - see first script section) ...
+        */
+        /* END OF COMMENTED OUT DUPLICATE CODE */
 
-            const description = document.getElementById('modal-description-results').textContent;
-
-            // Find row by class name (txn-row-{uniqueId})
-            const row = document.querySelector(`.txn-row-${currentTransactionIdResults}`);
-            if (!row) {
-                console.error('Could not find transaction row');
-                showNotificationResults('Error: Could not find transaction row', 'error');
-                return;
-            }
-
-            const amountText = row.querySelector('td:nth-child(4)').textContent.trim();
-            const amount = parseFloat(amountText.replace(/[$,]/g, ''));
-
-            const requestBody = {
-                description: description,
-                amount: amount,
-                type: currentTransactionTypeResults,
-                category: null, // Set to null to clear
-                subcategory: null
-            };
-
-            // Include transaction_id if we have a valid database ID
-            if (currentTransactionDbIdResults) {
-                requestBody.transaction_id = currentTransactionDbIdResults;
-            }
-
-            console.log('Clear category request:', requestBody);
-
-            fetch('{{ route("bankstatement.toggle-category") }}', {
-                method: 'POST',
-                headers: {
-                    'Content-Type': 'application/json',
-                    'X-CSRF-TOKEN': '{{ csrf_token() }}',
-                    'Accept': 'application/json'
-                },
-                body: JSON.stringify(requestBody)
-            })
-            .then(response => response.json())
-            .then(data => {
-                console.log('Clear response:', data);
-                if (data.success) {
-                    const escapedDescription = description.replace(/'/g, "\\'");
-
-                    // If multiple transactions were cleared, find and update all matching rows across ALL sessions
-                    if (data.updated_count > 1) {
-                        console.log(`Clearing category for ${data.updated_count} transactions with matching description across all visible sessions`);
-
-                        // Find all transaction rows with matching description (case-insensitive)
-                        const normalizedDescription = description.trim().toLowerCase();
-                        let clearedRowsCount = 0;
-
-                        document.querySelectorAll('tr[class*="txn-row-"]').forEach(txnRow => {
-                            // Description is in the 2nd column (td:nth-child(2))
-                            const descCell = txnRow.querySelector('td:nth-child(2)');
-                            if (descCell && descCell.textContent.trim().toLowerCase() === normalizedDescription) {
-                                console.log('Found matching row to clear:', descCell.textContent.trim());
-
-                                // Get the unique ID from the row class
-                                const rowClasses = txnRow.className.split(' ');
-                                const txnRowClass = rowClasses.find(c => c.startsWith('txn-row-'));
-                                if (txnRowClass) {
-                                    const txnId = txnRowClass.replace('txn-row-', '');
-                                    const categoryCell = document.getElementById('category-cell-' + txnId);
-
-                                    if (categoryCell) {
-                                        // Get amount from the row (4th column)
-                                        const amountCell = txnRow.querySelector('td:nth-child(4)');
-                                        const rowAmount = amountCell ? parseFloat(amountCell.textContent.trim().replace(/[$,]/g, '')) : amount;
-
-                                        // Get transaction database ID from data attribute
-                                        const txnDbId = txnRow.getAttribute('data-transaction-id');
-
-                                        const escapedDesc = description.replace(/'/g, "\\'");
-                                        categoryCell.innerHTML = `
-                                            <button onclick="openCategoryModalResults('${txnId}', '${escapedDesc}', ${rowAmount}, '${currentTransactionTypeResults}', ${txnDbId || 'null'})"
-                                                    class="inline-flex items-center px-2 py-0.5 text-xs text-gray-500 dark:text-gray-400 hover:text-blue-600 dark:hover:text-blue-400 transition">
-                                                <svg class="w-3 h-3 mr-1" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M7 7h.01M7 3h5c.512 0 1.024.195 1.414.586l7 7a2 2 0 010 2.828l-7 7a2 2 0 01-2.828 0l-7-7A1.994 1.994 0 013 12V7a4 4 0 014-4z"></path>
-                                                </svg>
-                                                Classify
-                                            </button>
-                                        `;
-                                        clearedRowsCount++;
-
-                                        // Add a subtle highlight animation to show the update
-                                        txnRow.classList.add('bg-orange-50', 'dark:bg-orange-900/20');
-                                        setTimeout(() => {
-                                            txnRow.classList.remove('bg-orange-50', 'dark:bg-orange-900/20');
-                                        }, 2000);
-                                    }
-                                }
-                            }
-                        });
-
-                        console.log(`Successfully cleared ${clearedRowsCount} visible transaction categories in the UI`);
-
-                        // Update category statistics
-                        updateCategoryStatistics();
-                    } else {
-                        // Update only the current transaction
-                        const categoryCell = document.getElementById('category-cell-' + currentTransactionIdResults);
-                        categoryCell.innerHTML = `
-                            <button onclick="openCategoryModalResults('${currentTransactionIdResults}', '${escapedDescription}', ${amount}, '${currentTransactionTypeResults}', ${currentTransactionDbIdResults})"
-                                    class="inline-flex items-center px-2 py-0.5 text-xs text-gray-500 dark:text-gray-400 hover:text-blue-600 dark:hover:text-blue-400 transition">
-                                <svg class="w-3 h-3 mr-1" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M7 7h.01M7 3h5c.512 0 1.024.195 1.414.586l7 7a2 2 0 010 2.828l-7 7a2 2 0 01-2.828 0l-7-7A1.994 1.994 0 013 12V7a4 4 0 014-4z"></path>
-                                </svg>
-                                Classify
-                            </button>
-                        `;
-
-                        // Update category statistics
-                        updateCategoryStatistics();
-                    }
-
-                    closeCategoryModalResults();
-                    showNotificationResults(data.message || 'Category cleared successfully', 'success');
-                } else {
-                    showNotificationResults(data.message || 'Failed to clear category', 'error');
-                }
-            })
-            .catch(error => {
-                console.error('Error:', error);
-                showNotificationResults('An error occurred while clearing the category', 'error');
-            });
-        }
-
-        function extractAccountNumberResults(description) {
-            // Match patterns like: ACCT ****1234, ACCT XXXX1234, Account ending in 1234, etc.
-            let match;
-            if (match = description.match(/(?:ACCT|ACCOUNT|A\/C)[\s#:]*([X*]+)?(\d{4,})/i)) {
-                return match[2];
-            } else if (match = description.match(/(?:ending in|ending|ends in)[\s:]*(\d{4,})/i)) {
-                return match[1];
-            } else if (match = description.match(/[X*]{4,}(\d{4,})/)) {
-                return match[1];
-            }
-            return null;
-        }
-
-        function getTransferDirectionResults(description) {
-            if (/(?:FROM|IN|INCOMING|RECEIVED|DEPOSIT)/i.test(description)) {
-                return 'in';
-            } else if (/(?:TO|OUT|OUTGOING|SENT|PAYMENT)/i.test(description)) {
-                return 'out';
-            }
-            return null;
-        }
-
+        // ============================================================================
         // Account filtering functions - dynamically generated per session/month
+        // These are kept here because they are dynamically generated based on session data
+        // ============================================================================
         @foreach($results as $result)
             @if($result['success'] && isset($result['monthly_data']['months']))
                 @foreach($result['monthly_data']['months'] as $month)
@@ -5137,6 +6491,130 @@
             @endif
         @endforeach
 
+        /* ============================================================================
+         * DUPLICATE CATEGORY FUNCTIONS COMMENTED OUT BELOW
+         * All these functions have been moved to the first script section
+         * ============================================================================
+        // Store pending category update data
+        let pendingCategoryUpdate = null;
+
+        function showBulkUpdateConfirmation(count, description, categoryKey) {
+            const categoryInfo = categoriesDataResults[categoryKey];
+            document.getElementById('bulk-count').textContent = count;
+            document.getElementById('bulk-count-button').textContent = `(${count})`;
+            document.getElementById('bulk-description').textContent = description;
+            document.getElementById('bulk-category-name').textContent = categoryInfo.label;
+            document.getElementById('bulk-category-name').className = `font-semibold text-${categoryInfo.color}-600 dark:text-${categoryInfo.color}-400`;
+
+            // Hide category modal and show confirmation modal
+            document.getElementById('category-modal-results').classList.add('hidden');
+            document.getElementById('bulk-update-confirmation-modal').classList.remove('hidden');
+        }
+
+        window.confirmBulkUpdate = function() {
+            console.log('User confirmed bulk update');
+            document.getElementById('bulk-update-confirmation-modal').classList.add('hidden');
+            if (pendingCategoryUpdate) {
+                performCategoryUpdate(pendingCategoryUpdate, true);
+                pendingCategoryUpdate = null;
+            }
+        }
+
+        window.cancelBulkUpdate = function() {
+            console.log('User cancelled bulk update - updating only current transaction');
+            document.getElementById('bulk-update-confirmation-modal').classList.add('hidden');
+            if (pendingCategoryUpdate) {
+                // Update only the current transaction by adding a flag
+                pendingCategoryUpdate.update_single_only = true;
+                performCategoryUpdate(pendingCategoryUpdate, false);
+                pendingCategoryUpdate = null;
+            }
+        }
+
+        function performCategoryUpdate(requestBody, isBulk) {
+            console.log('Performing category update:', requestBody, 'isBulk:', isBulk);
+
+            fetch('{{ route("bankstatement.toggle-category") }}', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                    'X-CSRF-TOKEN': '{{ csrf_token() }}',
+                    'Accept': 'application/json'
+                },
+                body: JSON.stringify(requestBody)
+            })
+            .then(response => response.json())
+            .then(data => {
+                console.log('Response data:', data);
+                if (data.success) {
+                    const description = requestBody.description;
+                    const categoryKey = requestBody.category;
+
+                    // If multiple transactions were updated (and user confirmed bulk), update all visible rows
+                    if (data.updated_count > 1 && isBulk) {
+                        console.log(`Updating ${data.updated_count} transactions with matching description`);
+                        updateAllMatchingRows(description, categoryKey, requestBody.amount, requestBody.type);
+                    } else {
+                        // Update only the current transaction
+                        updateSingleRow(currentTransactionIdResults, categoryKey, description, requestBody.amount, requestBody.type);
+                    }
+
+                    closeCategoryModalResults();
+                    const msg = isBulk && data.updated_count > 1
+                        ? data.message
+                        : `Transaction classified as "${categoriesDataResults[categoryKey].label}"`;
+                    showNotificationResults(msg, 'success');
+
+                    // Update category statistics
+                    updateCategoryStatistics();
+                } else {
+                    showNotificationResults(data.message || 'Error updating category', 'error');
+                }
+            })
+            .catch(error => {
+                console.error('Error:', error);
+                showNotificationResults('Network error. Please try again.', 'error');
+            });
+        }
+
+        function updateAllMatchingRows(description, categoryKey, amount, type) {
+            const normalizedDescription = description.trim().toLowerCase();
+            let updatedRowsCount = 0;
+
+            document.querySelectorAll('tr[class*="txn-row-"]').forEach(txnRow => {
+                const descCell = txnRow.querySelector('td:nth-child(2)');
+                if (descCell && descCell.textContent.trim().toLowerCase() === normalizedDescription) {
+                    const rowClasses = txnRow.className.split(' ');
+                    const txnRowClass = rowClasses.find(c => c.startsWith('txn-row-'));
+                    if (txnRowClass) {
+                        const txnId = txnRowClass.replace('txn-row-', '');
+                        const categoryCell = document.getElementById('category-cell-' + txnId);
+                        if (categoryCell) {
+                            const amountCell = txnRow.querySelector('td:nth-child(4)');
+                            const rowAmount = amountCell ? parseFloat(amountCell.textContent.trim().replace(/[$,]/g, '')) : amount;
+                            const txnDbId = txnRow.getAttribute('data-transaction-id');
+                            const rowType = amountCell && (amountCell.classList.contains('text-green-600') || amountCell.classList.contains('text-green-400')) ? 'credit' : 'debit';
+
+                            updateCategoryCellHTML(categoryCell, txnId, categoryKey, description, rowAmount, rowType, txnDbId);
+                            updatedRowsCount++;
+
+                            // Add highlight animation
+                            txnRow.classList.add('bg-blue-50', 'dark:bg-blue-900/20');
+                            setTimeout(() => txnRow.classList.remove('bg-blue-50', 'dark:bg-blue-900/20'), 2000);
+                        }
+                    }
+                }
+            });
+            console.log(`Successfully updated ${updatedRowsCount} visible transaction rows`);
+        }
+
+        function updateSingleRow(txnId, categoryKey, description, amount, type) {
+            const categoryCell = document.getElementById('category-cell-' + txnId);
+            if (categoryCell) {
+                updateCategoryCellHTML(categoryCell, txnId, categoryKey, description, amount, type, currentTransactionDbIdResults);
+            }
+        }
+
         window.selectCategoryResults = function(categoryKey) {
             console.log('selectCategoryResults called:', categoryKey);
             console.log('currentTransactionIdResults:', currentTransactionIdResults);
@@ -5158,6 +6636,18 @@
             const amountText = row.querySelector('td:nth-child(4)').textContent.trim();
             const amount = parseFloat(amountText.replace(/[$,]/g, ''));
 
+            // Count matching transactions across all visible rows
+            const normalizedDescription = description.trim().toLowerCase();
+            let matchCount = 0;
+            document.querySelectorAll('tr[class*="txn-row-"]').forEach(txnRow => {
+                const descCell = txnRow.querySelector('td:nth-child(2)');
+                if (descCell && descCell.textContent.trim().toLowerCase() === normalizedDescription) {
+                    matchCount++;
+                }
+            });
+
+            console.log(`Found ${matchCount} matching transactions`);
+
             const requestBody = {
                 description: description,
                 amount: amount,
@@ -5171,8 +6661,158 @@
                 requestBody.transaction_id = currentTransactionDbIdResults;
             }
 
-            console.log('Request body:', requestBody);
+            // If multiple matches, show detailed similar transactions modal
+            if (matchCount > 1) {
+                closeCategoryModalResults();
+                showSimilarTransactionsForCategory(description, currentTransactionTypeResults, categoryKey, requestBody);
+                return;
+            }
 
+            // Single transaction - update directly
+            console.log('Single transaction update:', requestBody);
+            performCategoryUpdate(requestBody, false);
+        }
+
+        // Show similar transactions modal for category classification
+        async function showSimilarTransactionsForCategory(description, type, categoryKey, requestBody) {
+            // Get current session IDs from URL
+            const urlParams = new URLSearchParams(window.location.search);
+            const sessionIds = urlParams.getAll('sessions[]');
+
+            // Find similar transactions
+            const response = await fetch('{{ route("bankstatement.find-similar-transactions") }}', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                    'X-CSRF-TOKEN': '{{ csrf_token() }}',
+                    'Accept': 'application/json'
+                },
+                body: JSON.stringify({
+                    description: description,
+                    type: type,
+                    session_ids: sessionIds
+                })
+            });
+
+            const data = await response.json();
+
+            if (data.success && data.count > 0) {
+                // Store pending update
+                window.pendingCategoryUpdateData = {
+                    categoryKey: categoryKey,
+                    requestBody: requestBody,
+                    transactions: data.matching_transactions
+                };
+
+                // Get category info
+                const categoryInfo = categoriesDataResults[categoryKey];
+                const categoryLabel = categoryInfo ? categoryInfo.label : categoryKey;
+
+                // Update modal
+                document.getElementById('similar-category-label').textContent = categoryLabel;
+                document.getElementById('similar-category-count').textContent = data.count;
+
+                // Populate transaction list
+                const listContainer = document.getElementById('similar-category-list');
+                listContainer.innerHTML = data.matching_transactions.map((txn) => `
+                    <div class="flex items-center gap-3 p-3 bg-gray-50 dark:bg-gray-700 rounded-lg">
+                        <input type="checkbox"
+                               id="similar-cat-txn-${txn.id}"
+                               value="${txn.id}"
+                               onchange="updateSelectedCategoryCount()"
+                               class="similar-cat-checkbox w-4 h-4 text-blue-600 rounded"
+                               checked>
+                        <div class="flex-1 text-sm">
+                            <div class="font-medium text-gray-900 dark:text-gray-100">
+                                ${txn.date} - $${txn.amount.toFixed(2)}
+                            </div>
+                            <div class="text-gray-600 dark:text-gray-400 truncate">
+                                ${txn.description}
+                            </div>
+                        </div>
+                    </div>
+                `).join('');
+
+                // Show modal
+                document.getElementById('similar-category-modal').classList.remove('hidden');
+                document.getElementById('select-all-similar-category').checked = true;
+                updateSelectedCategoryCount();
+            }
+        }
+
+        function toggleAllSimilarCategory() {
+            const selectAll = document.getElementById('select-all-similar-category');
+            document.querySelectorAll('.similar-cat-checkbox').forEach(checkbox => {
+                checkbox.checked = selectAll.checked;
+            });
+            updateSelectedCategoryCount();
+        }
+
+        function updateSelectedCategoryCount() {
+            const selected = document.querySelectorAll('.similar-cat-checkbox:checked').length;
+            document.getElementById('similar-category-selected').textContent = selected;
+        }
+
+        function closeSimilarCategoryModal() {
+            document.getElementById('similar-category-modal').classList.add('hidden');
+            window.pendingCategoryUpdateData = null;
+        }
+
+        async function confirmSimilarCategoryUpdate() {
+            if (!window.pendingCategoryUpdateData) return;
+
+            // Get selected transaction IDs
+            const selectedIds = Array.from(document.querySelectorAll('.similar-cat-checkbox:checked'))
+                .map(cb => parseInt(cb.value));
+
+            if (selectedIds.length === 0) {
+                alert('Please select at least one transaction');
+                return;
+            }
+
+            const { categoryKey, requestBody } = window.pendingCategoryUpdateData;
+
+            // Close modal
+            closeSimilarCategoryModal();
+
+            // Update requestBody with selected transaction IDs
+            requestBody.transaction_ids = selectedIds;
+            requestBody.update_single_only = false;
+
+            // Perform update
+            try {
+                const response = await fetch('{{ route("bankstatement.toggle-category") }}', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                        'X-CSRF-TOKEN': '{{ csrf_token() }}',
+                        'Accept': 'application/json'
+                    },
+                    body: JSON.stringify(requestBody)
+                });
+
+                const data = await response.json();
+
+                if (data.success) {
+                    showNotificationResults(`✓ Updated ${selectedIds.length} transaction(s)`, 'success');
+
+                    // Reload page to reflect changes
+                    setTimeout(() => {
+                        window.location.reload();
+                    }, 1500);
+                } else {
+                    showNotificationResults(data.message || 'Failed to update categories', 'error');
+                }
+            } catch (error) {
+                console.error('Error updating categories:', error);
+                showNotificationResults('An error occurred while updating categories', 'error');
+            }
+        }
+
+        // Removed duplicate dead code - now using performCategoryUpdate() function above
+
+        // Keeping window.clearCategoryResults defined below
+        window._oldCodeRemoved = function() { if (false) {
             fetch('{{ route("bankstatement.toggle-category") }}', {
                 method: 'POST',
                 headers: {
@@ -5276,7 +6916,7 @@
                 console.error('Error:', error);
                 showNotificationResults('An error occurred while classifying the transaction', 'error');
             });
-        }
+        } }; // End of if (false) and _oldCodeRemoved function
 
         function applyCategoryColorsResults() {
             const colorClasses = {
@@ -5413,6 +7053,460 @@
                 notification.style.opacity = '0';
                 setTimeout(() => notification.remove(), 300);
             }, 3000);
+        }
+        */ // END OF COMMENTED OUT DUPLICATE CATEGORY FUNCTIONS
+
+        // ============================================================================
+        // Similar MCA Transactions Modal Functions (NOT category-related)
+        let pendingMcaUpdate = null;
+        let similarTransactionsData = [];
+
+        window.showSimilarMcaModal = async function(description, type, lenderId, lenderName, isMca, sourceContext = null) {
+            console.log('showSimilarMcaModal called with:', { description, type, lenderId, lenderName, isMca });
+
+            // Get current session IDs from URL
+            const urlParams = new URLSearchParams(window.location.search);
+            const sessionIds = urlParams.getAll('sessions[]');
+
+            console.log('Session IDs from URL:', sessionIds);
+
+            // Show loading state
+            showToast('Scanning for similar transactions...', 'info');
+
+            try {
+                // Find similar transactions
+                const response = await fetch('{{ route("bankstatement.find-similar-transactions") }}', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                        'X-CSRF-TOKEN': '{{ csrf_token() }}',
+                        'Accept': 'application/json'
+                    },
+                    body: JSON.stringify({
+                        description: description,
+                        type: type,
+                        session_ids: sessionIds
+                    })
+                });
+
+                if (!response.ok) {
+                    throw new Error(`HTTP error! status: ${response.status}`);
+                }
+
+                const data = await response.json();
+                console.log('API response:', data);
+
+            if (data.success && data.count > 0) {
+                similarTransactionsData = data.matching_transactions;
+                pendingMcaUpdate = { description, type, lenderId, lenderName, isMca, sourceContext };
+
+                // Update modal title and subtitle
+                document.getElementById('similar-mca-lender-label').textContent =
+                    isMca ? lenderName : 'Not MCA';
+                document.getElementById('similar-count-total').textContent = data.count;
+
+                // Update action label in footer
+                const actionLabel = document.getElementById('similar-mca-action-label');
+                if (actionLabel) {
+                    actionLabel.textContent = isMca ? lenderName : 'Not MCA';
+                }
+
+                // Update subtitle with description
+                const subtitle = document.getElementById('similar-mca-subtitle');
+                if (subtitle) {
+                    subtitle.textContent = `Found ${data.count} transaction(s) matching: "${description.substring(0, 60)}${description.length > 60 ? '...' : ''}"`;
+                }
+
+                // Populate transaction list
+                const listContainer = document.getElementById('similar-transactions-list');
+                listContainer.innerHTML = data.matching_transactions.map((txn, index) => `
+                    <div class="flex items-center gap-3 p-3 bg-gray-50 dark:bg-gray-700 rounded-lg hover:bg-gray-100 dark:hover:bg-gray-600 transition-colors border border-transparent hover:border-red-200 dark:hover:border-red-800">
+                        <input type="checkbox"
+                               id="similar-txn-${txn.id}"
+                               value="${txn.id}"
+                               onchange="updateSelectedCount()"
+                               class="similar-txn-checkbox w-4 h-4 text-red-600 focus:ring-red-500 rounded">
+                        <div class="flex-1 text-sm">
+                            <div class="font-medium text-gray-900 dark:text-gray-100">
+                                <span class="text-red-600 dark:text-red-400 font-mono">${txn.date}</span>
+                                <span class="mx-2 text-gray-400">|</span>
+                                <span class="font-semibold">$${parseFloat(txn.amount).toLocaleString('en-US', {minimumFractionDigits: 2, maximumFractionDigits: 2})}</span>
+                            </div>
+                            <div class="text-gray-600 dark:text-gray-400 truncate mt-1" title="${txn.description}">
+                                ${txn.description}
+                            </div>
+                            ${txn.is_mca_payment ? `
+                                <div class="mt-1">
+                                    <span class="text-xs px-2 py-0.5 bg-orange-100 text-orange-800 dark:bg-orange-900 dark:text-orange-200 rounded">
+                                        Currently: ${txn.mca_lender_name || 'MCA'}
+                                    </span>
+                                </div>
+                            ` : ''}
+                        </div>
+                    </div>
+                `).join('');
+
+                // Show modal
+                document.getElementById('similar-mca-modal').classList.remove('hidden');
+                document.getElementById('select-all-similar').checked = true;
+                document.querySelectorAll('.similar-txn-checkbox').forEach(cb => cb.checked = true);
+                updateSelectedCount();
+
+                showToast(`Found ${data.count} similar transaction(s)`, 'success');
+                return { count: data.count };
+            } else {
+                // No similar transactions found
+                console.log('No similar transactions found');
+                showToast('No similar transactions found', 'info');
+                return { count: 0 };
+            }
+            } catch (error) {
+                console.error('Error in showSimilarMcaModal:', error);
+                showToast('Error searching for similar transactions: ' + error.message, 'error');
+                return { count: 0, error: error.message };
+            }
+        }
+
+        window.toggleAllSimilar = function() {
+            const selectAll = document.getElementById('select-all-similar');
+            document.querySelectorAll('.similar-txn-checkbox').forEach(checkbox => {
+                checkbox.checked = selectAll.checked;
+            });
+            window.updateSelectedCount();
+        }
+
+        window.updateSelectedCount = function() {
+            const selected = document.querySelectorAll('.similar-txn-checkbox:checked').length;
+            document.getElementById('similar-selected-count').textContent = selected;
+        }
+
+        window.closeSimilarMcaModal = function() {
+            document.getElementById('similar-mca-modal').classList.add('hidden');
+            pendingMcaUpdate = null;
+            similarTransactionsData = [];
+        }
+
+        window.confirmSimilarMcaUpdate = async function() {
+            if (!pendingMcaUpdate) return;
+
+            // Get selected transaction IDs
+            const selectedIds = Array.from(document.querySelectorAll('.similar-txn-checkbox:checked'))
+                .map(cb => parseInt(cb.value));
+
+            if (selectedIds.length === 0) {
+                alert('Please select at least one transaction');
+                return;
+            }
+
+            const { description, type, lenderId, lenderName, isMca } = pendingMcaUpdate;
+
+            // Close modal
+            closeSimilarMcaModal();
+
+            // Update transactions via API
+            const endpoint = type === 'debit'
+                ? '{{ route("bankstatement.toggle-mca") }}'
+                : '{{ route("bankstatement.toggle-revenue") }}';
+
+            const requestBody = type === 'debit' ? {
+                description: description,
+                amount: 0,
+                is_mca: isMca,
+                lender_id: lenderId,
+                lender_name: lenderName,
+                transaction_ids: selectedIds
+            } : {
+                transaction_id: 0,
+                description: description,
+                amount: 0,
+                current_classification: 'true_revenue',
+                is_mca_funding: isMca,
+                mca_lender_id: lenderId,
+                mca_lender_name: lenderName,
+                transaction_ids: selectedIds
+            };
+
+            try {
+                const response = await fetch(endpoint, {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                        'X-CSRF-TOKEN': '{{ csrf_token() }}',
+                        'Accept': 'application/json'
+                    },
+                    body: JSON.stringify(requestBody)
+                });
+
+                const data = await response.json();
+
+                if (data.success) {
+                    showNotificationResults(`✓ Updated ${selectedIds.length} transaction(s)`, 'success');
+
+                    // Reload page to reflect changes
+                    setTimeout(() => {
+                        window.location.reload();
+                    }, 1500);
+                } else {
+                    showNotificationResults(data.message || 'Failed to update transactions', 'error');
+                }
+            } catch (error) {
+                console.error('Error updating transactions:', error);
+                showNotificationResults('An error occurred while updating transactions', 'error');
+            }
+        }
+    </script>
+
+    <!-- Chart.js for Category Distribution -->
+    <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
+    <script>
+        // Global variables for category chart
+        let categoryChartInstance = null;
+        let allCategoryStats = {};
+        let creditCategoryStats = {};
+        let debitCategoryStats = {};
+        let currentCategoryView = 'all';
+
+        // Category Distribution Chart
+        document.addEventListener('DOMContentLoaded', function() {
+            const results = @json($results);
+
+            // Calculate category distribution for all, credit, and debit separately
+            allCategoryStats = {};
+            creditCategoryStats = {};
+            debitCategoryStats = {};
+            let totalAmount = 0;
+            let totalCount = 0;
+
+            // Process all transactions from all sessions
+            results.forEach(result => {
+                if (result.success && result.monthly_data && result.monthly_data.months) {
+                    result.monthly_data.months.forEach(month => {
+                        if (month.transactions && Array.isArray(month.transactions)) {
+                            month.transactions.forEach(txn => {
+                                const category = txn.category || 'Uncategorized';
+                                const amount = Math.abs(parseFloat(txn.amount) || 0);
+                                const type = txn.type;
+
+                                // Update all stats
+                                if (!allCategoryStats[category]) {
+                                    allCategoryStats[category] = { count: 0, amount: 0, label: category };
+                                }
+                                allCategoryStats[category].count++;
+                                allCategoryStats[category].amount += amount;
+                                totalCount++;
+                                totalAmount += amount;
+
+                                // Update type-specific stats
+                                if (type === 'credit') {
+                                    if (!creditCategoryStats[category]) {
+                                        creditCategoryStats[category] = { count: 0, amount: 0, label: category };
+                                    }
+                                    creditCategoryStats[category].count++;
+                                    creditCategoryStats[category].amount += amount;
+                                } else if (type === 'debit') {
+                                    if (!debitCategoryStats[category]) {
+                                        debitCategoryStats[category] = { count: 0, amount: 0, label: category };
+                                    }
+                                    debitCategoryStats[category].count++;
+                                    debitCategoryStats[category].amount += amount;
+                                }
+                            });
+                        }
+                    });
+                }
+            });
+
+            console.log('All Category Stats:', allCategoryStats);
+            console.log('Credit Category Stats:', creditCategoryStats);
+            console.log('Debit Category Stats:', debitCategoryStats);
+            console.log('Total transactions found:', totalCount);
+
+            // Initialize the chart with 'all' view
+            renderCategoryChart('all');
+
+        });
+
+        // Define colors for categories (matching category colors)
+        const categoryColors = {
+            'loan_payments': 'rgb(147, 51, 234)',
+            'operating_expenses': 'rgb(59, 130, 246)',
+            'payroll': 'rgb(99, 102, 241)',
+            'revenue': 'rgb(34, 197, 94)',
+            'transfers': 'rgb(6, 182, 212)',
+            'fees': 'rgb(245, 158, 11)',
+            'taxes': 'rgb(239, 68, 68)',
+            'equipment': 'rgb(236, 72, 153)',
+            'marketing': 'rgb(234, 179, 8)',
+            'inventory': 'rgb(16, 185, 129)',
+            'utilities': 'rgb(249, 115, 22)',
+            'rent': 'rgb(20, 184, 166)',
+            'Uncategorized': 'rgb(107, 114, 128)'
+        };
+
+        // Function to render category chart based on view mode
+        function renderCategoryChart(viewMode) {
+            currentCategoryView = viewMode;
+
+            // Select the appropriate stats based on view mode
+            let categoryStats = {};
+            if (viewMode === 'all') {
+                categoryStats = allCategoryStats;
+            } else if (viewMode === 'credit') {
+                categoryStats = creditCategoryStats;
+            } else if (viewMode === 'debit') {
+                categoryStats = debitCategoryStats;
+            }
+
+            const categories = Object.keys(categoryStats);
+            const totalCount = categories.reduce((sum, cat) => sum + categoryStats[cat].count, 0);
+            const totalAmount = categories.reduce((sum, cat) => sum + categoryStats[cat].amount, 0);
+
+            console.log(`Rendering ${viewMode} view:`, categoryStats);
+
+            // If no categories found, show a message
+            if (categories.length === 0) {
+                console.warn(`No categorized ${viewMode} transactions found`);
+                const ctx = document.getElementById('categoryPieChart');
+                if (ctx && ctx.parentElement) {
+                    ctx.parentElement.innerHTML = `<div class="text-center text-gray-500 dark:text-gray-400 py-8"><p>No categorized ${viewMode} transactions yet.</p><p class="text-sm mt-2">Start classifying transactions to see the distribution.</p></div>`;
+                }
+
+                // Clear the table
+                const tableBody = document.getElementById('categoryStatsTable');
+                if (tableBody) {
+                    tableBody.innerHTML = '<tr><td colspan="4" class="px-4 py-8 text-center text-gray-500 dark:text-gray-400">No data available</td></tr>';
+                }
+                return;
+            }
+
+            const counts = categories.map(cat => categoryStats[cat].count);
+            const backgroundColors = categories.map(cat =>
+                categoryColors[cat] || `hsl(${Math.random() * 360}, 70%, 60%)`
+            );
+
+            // Destroy existing chart if it exists
+            if (categoryChartInstance) {
+                categoryChartInstance.destroy();
+            }
+
+            // Create pie chart
+            const ctx = document.getElementById('categoryPieChart');
+            if (ctx) {
+                categoryChartInstance = new Chart(ctx, {
+                    type: 'pie',
+                    data: {
+                        labels: categories.map(cat => {
+                            // Convert category key to readable label
+                            return cat.split('_').map(word =>
+                                word.charAt(0).toUpperCase() + word.slice(1)
+                            ).join(' ');
+                        }),
+                        datasets: [{
+                            data: counts,
+                            backgroundColor: backgroundColors,
+                            borderColor: 'rgba(255, 255, 255, 1)',
+                            borderWidth: 2
+                        }]
+                    },
+                    options: {
+                        responsive: true,
+                        maintainAspectRatio: true,
+                        plugins: {
+                            legend: {
+                                position: 'bottom',
+                                labels: {
+                                    padding: 15,
+                                    font: {
+                                        size: 12
+                                    },
+                                    color: getComputedStyle(document.documentElement)
+                                        .getPropertyValue('color') || '#374151'
+                                }
+                            },
+                            tooltip: {
+                                callbacks: {
+                                    label: function(context) {
+                                        const category = categories[context.dataIndex];
+                                        const count = categoryStats[category].count;
+                                        const amount = categoryStats[category].amount;
+                                        const percentage = ((count / totalCount) * 100).toFixed(1);
+                                        return [
+                                            `Count: ${count} (${percentage}%)`,
+                                            `Amount: $${amount.toLocaleString('en-US', {minimumFractionDigits: 2, maximumFractionDigits: 2})}`
+                                        ];
+                                    }
+                                }
+                            }
+                        }
+                    }
+                });
+            }
+
+            // Populate stats table
+            const tableBody = document.getElementById('categoryStatsTable');
+            if (tableBody) {
+                // Sort categories by count (descending)
+                const sortedCategories = categories.sort((a, b) =>
+                    categoryStats[b].count - categoryStats[a].count
+                );
+
+                tableBody.innerHTML = sortedCategories.map((cat, index) => {
+                    const stats = categoryStats[cat];
+                    const percentage = ((stats.count / totalCount) * 100).toFixed(1);
+                    const label = cat.split('_').map(word =>
+                        word.charAt(0).toUpperCase() + word.slice(1)
+                    ).join(' ');
+                    const color = backgroundColors[categories.indexOf(cat)];
+
+                    return `
+                        <tr class="hover:bg-gray-50 dark:hover:bg-gray-700">
+                            <td class="px-4 py-3 text-sm">
+                                <div class="flex items-center">
+                                    <span class="w-3 h-3 rounded-full mr-2" style="background-color: ${color}"></span>
+                                    <span class="text-gray-900 dark:text-gray-100">${label}</span>
+                                </div>
+                            </td>
+                            <td class="px-4 py-3 text-sm text-center text-gray-700 dark:text-gray-300">${stats.count}</td>
+                            <td class="px-4 py-3 text-sm text-right text-gray-700 dark:text-gray-300">$${stats.amount.toLocaleString('en-US', {minimumFractionDigits: 2, maximumFractionDigits: 2})}</td>
+                            <td class="px-4 py-3 text-sm text-center text-gray-700 dark:text-gray-300">${percentage}%</td>
+                        </tr>
+                    `;
+                }).join('');
+
+                // Add total row
+                tableBody.innerHTML += `
+                    <tr class="bg-gray-100 dark:bg-gray-700 font-semibold">
+                        <td class="px-4 py-3 text-sm text-gray-900 dark:text-gray-100">Total</td>
+                        <td class="px-4 py-3 text-sm text-center text-gray-900 dark:text-gray-100">${totalCount}</td>
+                        <td class="px-4 py-3 text-sm text-right text-gray-900 dark:text-gray-100">$${totalAmount.toLocaleString('en-US', {minimumFractionDigits: 2, maximumFractionDigits: 2})}</td>
+                        <td class="px-4 py-3 text-sm text-center text-gray-900 dark:text-gray-100">100%</td>
+                    </tr>
+                `;
+            }
+        }
+
+        // Toggle function for category view
+        function toggleCategoryView(viewMode) {
+            // Update button styles
+            const allBtn = document.getElementById('category-all-btn');
+            const creditBtn = document.getElementById('category-credit-btn');
+            const debitBtn = document.getElementById('category-debit-btn');
+
+            // Reset all buttons
+            [allBtn, creditBtn, debitBtn].forEach(btn => {
+                if (btn) {
+                    btn.className = 'px-4 py-2 text-sm font-medium rounded-md transition-all duration-200 text-gray-600 dark:text-gray-400 hover:bg-gray-200 dark:hover:bg-gray-600';
+                }
+            });
+
+            // Set active button
+            const activeBtn = viewMode === 'all' ? allBtn : (viewMode === 'credit' ? creditBtn : debitBtn);
+            if (activeBtn) {
+                activeBtn.className = 'px-4 py-2 text-sm font-medium rounded-md transition-all duration-200 bg-white dark:bg-gray-800 text-purple-600 dark:text-purple-400 shadow-sm';
+            }
+
+            // Render chart with new view
+            renderCategoryChart(viewMode);
         }
     </script>
 </x-app-layout>

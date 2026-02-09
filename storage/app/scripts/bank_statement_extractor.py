@@ -15,22 +15,26 @@ import sys
 import os
 import re
 from datetime import datetime
-from openai import OpenAI
+from anthropic import Anthropic
 from typing import List, Dict, Tuple
 import pytesseract
 from pdf2image import convert_from_path
 from PIL import Image
 import fitz  # PyMuPDF
 
-# Pricing per 1M tokens (as of 2024)
+# Pricing per 1M tokens (as of 2026)
 PRICING = {
-    "gpt-4o": {
-        "input": 2.50,
-        "output": 10.00
+    "claude-opus-4-6": {
+        "input": 15.00,
+        "output": 75.00
     },
-    "gpt-4o-mini": {
-        "input": 0.150,
-        "output": 0.600
+    "claude-sonnet-4-5": {
+        "input": 3.00,
+        "output": 15.00
+    },
+    "claude-haiku-4-5": {
+        "input": 0.80,
+        "output": 4.00
     }
 }
 
@@ -83,9 +87,9 @@ def extract_text_with_ocr(pdf_path: str) -> Tuple[str, int]:
             raise Exception("Could not convert PDF to images")
 
         text_content = []
-        print(f"OCR: Processing {len(images)} pages...")
+        print(f"OCR: Processing {len(images)} pages...", file=sys.stderr)
         for i, image in enumerate(images):
-            print(f"  Page {i+1}/{len(images)}...", end=' ', flush=True)
+            print(f"  Page {i+1}/{len(images)}...", end=' ', flush=True, file=sys.stderr)
             # Run OCR on each image with optimized config
             # PSM 6 = Assume uniform block of text
             # PSM 4 = Assume a single column of text of variable sizes (better for statements)
@@ -94,7 +98,7 @@ def extract_text_with_ocr(pdf_path: str) -> Tuple[str, int]:
             text = pytesseract.image_to_string(image, lang='eng', config=custom_config)
             if text and text.strip():
                 text_content.append(f"\n=== PAGE {i+1} ===\n{text}")
-            print("done")
+            print("done", file=sys.stderr)
 
         if not text_content:
             raise Exception("No text could be extracted via OCR")
@@ -418,6 +422,17 @@ def deduplicate_transactions(transactions: List[Dict]) -> List[Dict]:
 def parse_json_response(result: str) -> Dict:
     """Parse JSON response from OpenAI with multiple recovery strategies."""
     data = None
+
+    # Strip markdown code block markers if present
+    result = result.strip()
+    if result.startswith('```json'):
+        result = result[7:]  # Remove ```json
+    elif result.startswith('```'):
+        result = result[3:]  # Remove ```
+    if result.endswith('```'):
+        result = result[:-3]  # Remove closing ```
+    result = result.strip()
+
     try:
         data = json.loads(result)
     except json.JSONDecodeError as e:
@@ -535,8 +550,147 @@ def chunk_text(text: str, max_tokens: int = 100000, overlap_lines: int = 5) -> L
     return chunks
 
 
-def extract_transactions_with_ai(text: str, api_key: str, model: str, corrections: List[Dict] = None) -> Tuple[List[Dict], Dict]:
-    client = OpenAI(api_key=api_key)
+def extract_transactions_deterministic(pdf_path: str) -> Tuple[List[Dict], bool]:
+    """
+    Extract transactions deterministically using table structure from PDF.
+    Returns (transactions_list, success_flag).
+
+    This method uses pdfplumber to extract tables with exact column positions,
+    then classifies transactions based on which column contains the amount.
+    """
+    try:
+        transactions = []
+
+        with pdfplumber.open(pdf_path) as pdf:
+            for page_num, page in enumerate(pdf.pages, 1):
+                # Extract tables from the page
+                tables = page.extract_tables()
+
+                if not tables:
+                    continue
+
+                for table in tables:
+                    if not table or len(table) < 2:  # Need at least header + 1 row
+                        continue
+
+                    # First row is likely headers
+                    headers = [str(h).lower() if h else '' for h in table[0]]
+
+                    # Identify column indices
+                    date_col = None
+                    desc_col = None
+                    debit_col = None
+                    credit_col = None
+                    balance_col = None
+
+                    for i, header in enumerate(headers):
+                        if 'date' in header:
+                            date_col = i
+                        elif 'description' in header or 'transaction' in header:
+                            desc_col = i
+                        elif 'debit' in header or 'withdrawal' in header or 'payment' in header and 'out' in header:
+                            debit_col = i
+                        elif 'credit' in header or 'deposit' in header or 'payment' in header and 'in' in header:
+                            credit_col = i
+                        elif 'balance' in header:
+                            balance_col = i
+
+                    # Skip if we can't identify debit and credit columns
+                    if debit_col is None or credit_col is None:
+                        continue
+
+                    # Process each row (skip header)
+                    for row in table[1:]:
+                        if not row or len(row) <= max(debit_col, credit_col):
+                            continue
+
+                        # Extract values
+                        date_val = row[date_col] if date_col is not None and date_col < len(row) else None
+                        desc_val = row[desc_col] if desc_col is not None and desc_col < len(row) else ''
+                        debit_val = row[debit_col] if debit_col < len(row) else None
+                        credit_val = row[credit_col] if credit_col < len(row) else None
+                        balance_val = row[balance_col] if balance_col is not None and balance_col < len(row) else None
+
+                        # Skip if no date or description
+                        if not date_val or not desc_val:
+                            continue
+
+                        # Parse amount and determine type based on column
+                        amount = None
+                        txn_type = None
+
+                        # Check debit column first
+                        if debit_val and str(debit_val).strip() and str(debit_val).strip() not in ['-', '', 'None']:
+                            amount_str = str(debit_val).replace('$', '').replace(',', '').replace('(', '').replace(')', '').strip()
+                            try:
+                                amount = abs(float(amount_str))
+                                txn_type = 'debit'
+                            except ValueError:
+                                pass
+
+                        # Check credit column if no debit
+                        if amount is None and credit_val and str(credit_val).strip() and str(credit_val).strip() not in ['-', '', 'None']:
+                            amount_str = str(credit_val).replace('$', '').replace(',', '').replace('(', '').replace(')', '').strip()
+                            try:
+                                amount = abs(float(amount_str))
+                                txn_type = 'credit'
+                            except ValueError:
+                                pass
+
+                        # Skip if we couldn't extract amount
+                        if amount is None or txn_type is None:
+                            continue
+
+                        # Parse date
+                        date_str = str(date_val).strip()
+                        parsed_date = None
+
+                        # Try common date formats
+                        for date_format in ['%m/%d/%Y', '%m/%d/%y', '%Y-%m-%d', '%m-%d-%Y', '%m-%d-%y', '%m/%d', '%d/%m/%Y']:
+                            try:
+                                parsed_date = datetime.strptime(date_str, date_format)
+                                # If year is missing, assume current year
+                                if date_format in ['%m/%d']:
+                                    parsed_date = parsed_date.replace(year=datetime.now().year)
+                                break
+                            except ValueError:
+                                continue
+
+                        if not parsed_date:
+                            continue
+
+                        # Parse balance if available
+                        ending_balance = None
+                        if balance_val and str(balance_val).strip() not in ['-', '', 'None']:
+                            balance_str = str(balance_val).replace('$', '').replace(',', '').replace('(', '').replace(')', '').strip()
+                            try:
+                                ending_balance = float(balance_str)
+                            except ValueError:
+                                pass
+
+                        # Create transaction dict
+                        transaction = {
+                            'date': parsed_date.strftime('%Y-%m-%d'),
+                            'description': str(desc_val).strip(),
+                            'amount': round(amount, 2),
+                            'type': txn_type
+                        }
+
+                        if ending_balance is not None:
+                            transaction['ending_balance'] = ending_balance
+
+                        transactions.append(transaction)
+
+        # Return success if we extracted at least some transactions
+        return (transactions, len(transactions) > 0)
+
+    except Exception as e:
+        print(f"Deterministic extraction failed: {str(e)}", file=sys.stderr)
+        return ([], False)
+
+
+def extract_transactions_with_ai(text: str, api_key: str, model: str, corrections: List[Dict] = None) -> Tuple[List[Dict], Dict, Dict]:
+    client = Anthropic(api_key=api_key)
     current_year = datetime.now().year
 
     # Build corrections section for prompt
@@ -568,36 +722,25 @@ AMOUNT PARSING - CRITICAL:
 - Examples: "1,368.47" = 1368.47, "2,500.00" = 2500.00, "15,234.56" = 15234.56
 - Return amounts as plain numbers WITHOUT commas or dollar signs in the JSON
 
-SECTION AWARENESS:
-- Transactions under "DEPOSITS & CREDITS" section = ALL are credits
-- Transactions under "WITHDRAWALS" or "DEBITS" section = ALL are debits
-- "Merch Dep" or "Merchant Deposit" = ALWAYS credit (money received from merchant processor)
-- "Merch Fee" or "Merchant Fee" = ALWAYS debit (fees paid)
+🚨 CLASSIFICATION - READ FIRST 🚨
 
-CREDIT vs DEBIT CLASSIFICATION:
+STEP 1: Analyze the statement format
+- Does it have section headers? ("CREDITS", "DEBITS", "DEPOSITS", "WITHDRAWALS")
+- OR does it have a table with separate columns? (Debits column, Credits column)
 
-CREDITS (money coming INTO the account - balance increases):
-- ANY Deposit (ATM Cash Deposit, Mobile Deposit, Direct Deposit, Merchant Deposit, etc.) = ALWAYS CREDIT
-- "Merch Dep", "Merchant Service Merch Dep" = CREDIT (merchant processor deposits)
-- Direct deposits, payroll
-- Incoming transfers (money received)
-- Payments received (PayPal, Zelle, Venmo, Stripe incoming)
-- Refunds, reversals, credits, chargebacks won
-- Interest earned, interest payment
-- Reimbursements from employers, insurance, etc.
-- If under "DEPOSITS & CREDITS" header = CREDIT
-- Keywords: "deposit", "credit", "dep", "from", "received", "incoming", "interest", "transfer in", "refund", "reimbursement"
+STEP 2: Classify based on structure ONLY
 
-DEBITS (money going OUT of the account - balance decreases):
-- Withdrawals (any kind)
-- Purchases, POS transactions, Card purchases
-- ALL "PURCHASE" transactions = DEBIT (card purchases at merchants)
-- ALL "CHECKCARD" transactions = DEBIT (debit card transactions)
-- Outgoing transfers (money sent)
-- Payments made (bills, checks)
-- Fees, charges (including "Merch Fee", "Merchant Fee")
-- If under "WITHDRAWALS" or "DEBITS" header = DEBIT
-- Keywords: "withdrawal", "debit", "purchase", "checkcard", "payment", "fee", "check", "transfer out"
+IF SECTION-BASED (has section headers):
+- ALL transactions under "CREDITS" or "DEPOSITS" section → type: "credit"
+- ALL transactions under "DEBITS" or "WITHDRAWALS" section → type: "debit"
+
+IF COLUMN-BASED (table format):
+- Find the column headers: "Debits", "Withdrawals", "Credits", "Deposits"
+- For each transaction row, check which column has the dollar amount
+- Amount in Debits/Withdrawals column → type: "debit"
+- Amount in Credits/Deposits column → type: "credit"
+
+CRITICAL: Description text is IRRELEVANT. ONLY use section or column position.
 
 CARD PURCHASES & CHECKCARD TRANSACTIONS (EXTREMELY IMPORTANT):
 - Bank statements often contain MANY card purchase transactions spread across multiple pages
@@ -612,46 +755,61 @@ CARD PURCHASES & CHECKCARD TRANSACTIONS (EXTREMELY IMPORTANT):
 - Even small amounts like $1.99, $5.00 must be extracted
 - Look for patterns: "PURCHASE 09", "CHECKCARD 09", "PURCHASE 0905", etc.
 
-CRITICAL RULES:
-1. PAY ATTENTION TO SECTION HEADERS - they tell you if transactions are credits or debits
-2. Look at the CONTEXT - if money is coming IN, it's a credit. If money is going OUT, it's a debit
-3. "Transfer from" or "from [person/account]" = CREDIT (money received)
-4. "Transfer to" or "to [person/account]" = DEBIT (money sent)
-5. PayPal/Zelle/Venmo/Stripe transfers with a person's name are usually CREDITS (payments received)
-6. When unsure, look at how the balance changed - increase = credit, decrease = debit
-7. "Merch Dep" = Merchant Deposit = CREDIT, "Merch Fee" = Merchant Fee = DEBIT
-8. NEVER skip PURCHASE or CHECKCARD transactions - they are critical card purchases
+Example (Section-Based):
+```
+CREDITS
+  12/01  Transaction A  100.00 → type: "credit"
+  12/02  Transaction B  200.00 → type: "credit"
+DEBITS
+  12/03  Transaction C  50.00 → type: "debit"
+```
 
-AMBIGUOUS "PAYMENT" TRANSACTIONS (VERY IMPORTANT):
-The word "Payment" is ambiguous - it could be money IN or OUT. Use these rules:
+Example (Column-Based):
+```
+| Date  | Description    | Withdrawals | Deposits | Balance |
+| 12/01 | Transaction A  | -           | 100.00   | 1100.00 | → type: "credit"
+| 12/02 | Transaction B  | 50.00       | -        | 1050.00 | → type: "debit"
+```
 
-A. If under "DEPOSITS & CREDITS" section = CREDIT (regardless of description)
-B. If under "WITHDRAWALS & DEBITS" section = DEBIT (regardless of description)
-C. Context clues for direction:
-   - "Payment from [name/company]" = CREDIT (money received)
-   - "Payment to [name/company]" = DEBIT (money sent)
-   - "[Company] Payment" with no direction = CHECK SECTION HEADER FIRST
-   - "Autopay", "Auto Payment", "Bill Payment" = Usually DEBIT
-   - Employer name + "Payment" = Usually CREDIT (payroll)
-   - Gym/Membership + "Payment" = Could be either - CHECK SECTION!
-
-D. Special cases:
-   - "Refund Payment" = CREDIT (getting money back)
-   - "Return Payment" = CREDIT (chargeback in your favor)
-   - "NSF Payment" = DEBIT (overdraft fee)
-
-ALWAYS PRIORITIZE: Section header > Context clues > Description keywords
+NEVER use description words to determine type. ONLY structure (section or column).
 
 {corrections_prompt}
+BALANCE EXTRACTION (IMPORTANT FOR ACCURACY):
+- Many statements show a running balance or ending balance column
+- If the statement has a balance column, extract the balance value for EACH transaction
+- The balance shown is typically the account balance AFTER that transaction posted
+- If no balance column exists, omit the balance field (don't guess or calculate)
+- Balance format examples: "$1,234.56" → 1234.56, "($500.00)" → -500.00 (negative)
+- Negative balances are shown in parentheses: "(1,234.56)" = -1234.56
+
+STATEMENT SUMMARY EXTRACTION (CRITICAL):
+- Look for the statement summary section (usually at the top or bottom)
+- Extract the "Beginning Balance", "Opening Balance", or "Previous Balance"
+- Extract the "Ending Balance", "Closing Balance", or "New Balance"
+- These are typically shown as summary lines, NOT individual transactions
+- Example formats:
+  "Beginning Balance: $1,234.56"
+  "Previous Balance.............$1,234.56"
+  "Opening Balance    $1,234.56"
+- Return these as separate fields in the JSON output (not as transactions)
+
 OUTPUT FORMAT - Return ONLY valid JSON:
 {{
+  "statement_summary": {{
+    "beginning_balance": 1234.56,
+    "ending_balance": 5678.90
+  }},
   "transactions": [
-    {{"date": "YYYY-MM-DD", "description": "description text", "amount": 123.45, "type": "credit"}}
+    {{"date": "YYYY-MM-DD", "description": "description text", "amount": 123.45, "type": "credit", "ending_balance": 1234.56}}
   ]
 }}
 
 - amount: POSITIVE number only
 - type: exactly "credit" or "debit"
+- ending_balance: (OPTIONAL) Account balance after this transaction (can be negative)
+- statement_summary: (OPTIONAL) If the statement shows summary balances, include them here
+- statement_summary.beginning_balance: Opening/beginning/previous balance (can be negative)
+- statement_summary.ending_balance: Closing/ending/new balance (can be negative)
 """
 
     # Debug: log input text length
@@ -683,6 +841,7 @@ OUTPUT FORMAT - Return ONLY valid JSON:
             f.write("\n")
 
         all_transactions = []
+        statement_summary = None
         total_usage = {
             "prompt_tokens": 0,
             "completion_tokens": 0,
@@ -695,32 +854,34 @@ OUTPUT FORMAT - Return ONLY valid JSON:
             with open(debug_log, 'a') as f:
                 f.write(f"=== PROCESSING CHUNK {i+1}/{len(chunks)} ===\n")
 
-            response = client.chat.completions.create(
+            response = client.messages.create(
                 model=model,
-                messages=[
-                    {"role": "system", "content": prompt},
-                    {"role": "user", "content": f"Bank Statement Text (Part {i+1} of {len(chunks)}):\n\n{chunk}"}
-                ],
-                temperature=0,
                 max_tokens=16000,
-                response_format={"type": "json_object"}
+                temperature=0,
+                system=prompt,
+                messages=[
+                    {"role": "user", "content": f"Bank Statement Text (Part {i+1} of {len(chunks)}):\n\n{chunk}"}
+                ]
             )
 
-            result = response.choices[0].message.content
+            result = response.content[0].text
 
             # Accumulate usage stats
-            total_usage["prompt_tokens"] += response.usage.prompt_tokens
-            total_usage["completion_tokens"] += response.usage.completion_tokens
-            total_usage["total_tokens"] += response.usage.total_tokens
+            total_usage["prompt_tokens"] += response.usage.input_tokens
+            total_usage["completion_tokens"] += response.usage.output_tokens
+            total_usage["total_tokens"] += response.usage.input_tokens + response.usage.output_tokens
 
             with open(debug_log, 'a') as f:
                 f.write(f"Response length: {len(result)} characters\n")
-                f.write(f"Tokens - Prompt: {response.usage.prompt_tokens}, Completion: {response.usage.completion_tokens}\n\n")
+                f.write(f"Tokens - Input: {response.usage.input_tokens}, Output: {response.usage.output_tokens}\n\n")
 
             # Parse the chunk result
             chunk_data = parse_json_response(result)
             if chunk_data and "transactions" in chunk_data:
                 all_transactions.extend(chunk_data["transactions"])
+            # Extract statement summary if it appears in any chunk (usually first chunk)
+            if chunk_data and "statement_summary" in chunk_data and statement_summary is None:
+                statement_summary = chunk_data["statement_summary"]
 
         # Deduplicate transactions that might appear in overlapping regions
         transactions = deduplicate_transactions(all_transactions)
@@ -733,23 +894,22 @@ OUTPUT FORMAT - Return ONLY valid JSON:
             f.write(f"Total tokens used: {usage['total_tokens']}\n\n")
     else:
         # Single request for small PDFs
-        response = client.chat.completions.create(
+        response = client.messages.create(
             model=model,
-            messages=[
-                {"role": "system", "content": prompt},
-                {"role": "user", "content": f"Bank Statement Text:\n\n{text}"}
-            ],
-            temperature=0,
             max_tokens=16000,
-            response_format={"type": "json_object"}
+            temperature=0,
+            system=prompt,
+            messages=[
+                {"role": "user", "content": f"Bank Statement Text:\n\n{text}"}
+            ]
         )
 
-        result = response.choices[0].message.content
+        result = response.content[0].text
 
         usage = {
-            "prompt_tokens": response.usage.prompt_tokens,
-            "completion_tokens": response.usage.completion_tokens,
-            "total_tokens": response.usage.total_tokens,
+            "prompt_tokens": response.usage.input_tokens,
+            "completion_tokens": response.usage.output_tokens,
+            "total_tokens": response.usage.input_tokens + response.usage.output_tokens,
             "model": model
         }
 
@@ -757,12 +917,29 @@ OUTPUT FORMAT - Return ONLY valid JSON:
         with open(debug_log, 'a') as f:
             f.write(f"=== RESPONSE ===\n")
             f.write(f"Response length: {len(result)} characters\n")
-            f.write(f"Finish reason: {response.choices[0].finish_reason}\n")
-            f.write(f"Tokens - Prompt: {response.usage.prompt_tokens}, Completion: {response.usage.completion_tokens}\n\n")
+            f.write(f"Stop reason: {response.stop_reason}\n")
+            f.write(f"Tokens - Input: {response.usage.input_tokens}, Output: {response.usage.output_tokens}\n\n")
+            f.write(f"=== RAW CLAUDE RESPONSE (first 2000 chars) ===\n")
+            f.write(result[:2000])
+            f.write(f"\n\n=== END RAW RESPONSE ===\n\n")
 
         # Parse the response
         chunk_data = parse_json_response(result)
+
+        # Debug: log what we got from Claude
+        print(f"DEBUG: chunk_data type: {type(chunk_data)}", file=sys.stderr)
+        print(f"DEBUG: chunk_data keys: {chunk_data.keys() if chunk_data else 'None'}", file=sys.stderr)
+        if chunk_data and "transactions" in chunk_data:
+            print(f"DEBUG: transactions count from Claude: {len(chunk_data['transactions'])}", file=sys.stderr)
+        else:
+            print(f"DEBUG: No transactions key in chunk_data!", file=sys.stderr)
+
         transactions = chunk_data.get("transactions", []) if chunk_data else []
+
+        # Extract statement summary if available (for non-chunked responses)
+        statement_summary = None
+        if chunk_data and "statement_summary" in chunk_data:
+            statement_summary = chunk_data["statement_summary"]
 
     # Validate and clean transactions - ensure all required fields exist
     validated = []
@@ -771,16 +948,22 @@ OUTPUT FORMAT - Return ONLY valid JSON:
             continue
         # Ensure required fields with defaults
         # Use safe_float_amount to handle commas and dollar signs
-        validated.append({
+        transaction_dict = {
             "date": txn.get("date", ""),
             "description": txn.get("description", "Unknown"),
             "amount": safe_float_amount(txn.get("amount", 0)),
             "type": txn.get("type", "debit")  # Default to debit if missing
-        })
+        }
+
+        # Include ending_balance if available
+        if "ending_balance" in txn and txn["ending_balance"] is not None:
+            transaction_dict["ending_balance"] = safe_float_amount(txn["ending_balance"])
+
+        validated.append(transaction_dict)
 
     # Debug log to see what was extracted
     debug_log = "/var/www/html/crmfinity_laravel/storage/logs/openai_debug.log"
-    with open(debug_log, 'w') as f:
+    with open(debug_log, 'a') as f:
         f.write("=== OpenAI Extraction Results ===\n")
         credits = [t for t in validated if t['type'] == 'credit']
         debits = [t for t in validated if t['type'] == 'debit']
@@ -795,12 +978,12 @@ OUTPUT FORMAT - Return ONLY valid JSON:
         f.write(f"\nCredit Total: ${sum(t['amount'] for t in credits):.2f}\n")
         f.write(f"Debit Total: ${sum(t['amount'] for t in debits):.2f}\n")
 
-    return validated, usage
+    return validated, usage, statement_summary
 
 
 def calculate_api_cost(usage: Dict) -> Dict:
-    model = usage.get("model", "gpt-4o")
-    pricing = PRICING.get(model, PRICING["gpt-4o"])
+    model = usage.get("model", "claude-opus-4-6")
+    pricing = PRICING.get(model, PRICING["claude-opus-4-6"])
 
     input_cost = (usage["prompt_tokens"] / 1_000_000) * pricing["input"]
     output_cost = (usage["completion_tokens"] / 1_000_000) * pricing["output"]
@@ -1009,7 +1192,7 @@ def main():
 
     pdf_path = sys.argv[1]
     api_key = sys.argv[2]
-    model = sys.argv[3] if len(sys.argv) > 3 else "gpt-4o"
+    model = sys.argv[3] if len(sys.argv) > 3 else "claude-opus-4-6"
 
     # Parse corrections JSON if provided
     corrections = []
@@ -1024,17 +1207,31 @@ def main():
         pdf_text, pages = extract_text_from_pdf(pdf_path)
 
         # Extract expected totals from statement header for validation
-        expected_totals = extract_statement_totals(pdf_text)
+        # expected_totals = extract_statement_totals(pdf_text)
 
         # Pre-process check tables to extract individual check transactions
         # TEMPORARILY DISABLED - causing issues with PNC format
         # pdf_text = preprocess_check_tables(pdf_text)
 
-        # Use AI to extract transactions (with corrections in prompt)
-        transactions, usage = extract_transactions_with_ai(pdf_text, api_key, model, corrections)
+        # TRY DETERMINISTIC EXTRACTION FIRST (Option 1 - programmatic table parsing)
+        print("Attempting deterministic table extraction...", file=sys.stderr)
+        transactions_det, det_success = extract_transactions_deterministic(pdf_path)
 
-        # Apply corrections post-processing (double-check)
-        if corrections:
+        if det_success and len(transactions_det) > 0:
+            # Deterministic extraction succeeded - use these results
+            print(f"✓ Deterministic extraction successful: {len(transactions_det)} transactions", file=sys.stderr)
+            transactions = transactions_det
+            usage = {"input_tokens": 0, "output_tokens": 0}  # No AI usage
+            extraction_method = "deterministic"
+            statement_summary = None  # Deterministic extraction doesn't extract summary
+        else:
+            # Fallback to AI extraction
+            print("Deterministic extraction failed or returned no transactions. Falling back to AI extraction...", file=sys.stderr)
+            transactions, usage, statement_summary = extract_transactions_with_ai(pdf_text, api_key, model, corrections)
+            extraction_method = "ai"
+
+        # Apply corrections post-processing (double-check) - only for AI extraction
+        if corrections and extraction_method == "ai":
             transactions = apply_corrections(transactions, corrections)
             corrections_applied = len([t for t in transactions if t.get('corrected_by_learning')])
         else:
@@ -1050,8 +1247,10 @@ def main():
         # Validate extracted totals against statement header
         validation_warnings = []
 
-        expected_credits = expected_totals.get('total_credits') or expected_totals.get('total_deposits')
-        expected_debits = expected_totals.get('total_debits') or expected_totals.get('total_withdrawals')
+        # expected_credits = expected_totals.get('total_credits') or expected_totals.get('total_deposits')
+        # expected_debits = expected_totals.get('total_debits') or expected_totals.get('total_withdrawals')
+        expected_credits = None
+        expected_debits = None
 
         if expected_credits:
             credit_diff = abs(expected_credits - summary['credit_total'])
@@ -1086,6 +1285,7 @@ def main():
             "api_cost": api_cost,
             "transactions": transactions,
             "mca_analysis": mca_summary,
+            "statement_summary": statement_summary,  # Beginning/ending balance from statement
             "validation": {
                 "expected_credits": round(expected_credits, 2) if expected_credits else None,
                 "expected_debits": round(expected_debits, 2) if expected_debits else None,
@@ -1096,7 +1296,8 @@ def main():
                 "pdf_file": os.path.basename(pdf_path),
                 "pages": pages,
                 "extraction_date": datetime.now().isoformat(),
-                "model_used": model,
+                "extraction_method": extraction_method,
+                "model_used": model if extraction_method == "ai" else None,
                 "characters_extracted": len(pdf_text),
                 "corrections_available": len(corrections),
                 "corrections_applied": corrections_applied

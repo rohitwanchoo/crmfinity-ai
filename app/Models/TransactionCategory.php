@@ -57,6 +57,11 @@ class TransactionCategory extends Model
             'bank_fee' => ['label' => 'Bank Fee', 'type' => 'debit', 'color' => 'red'],
             'nsf_fee' => ['label' => 'NSF/Overdraft Fee', 'type' => 'debit', 'color' => 'red'],
             'service_charge' => ['label' => 'Service Charge', 'type' => 'debit', 'color' => 'orange'],
+            'returned_unpaid' => ['label' => 'Returned Unpaid', 'type' => 'returned', 'color' => 'orange'],
+
+            // MCA Categories
+            'mca_payment' => ['label' => 'MCA Payment', 'type' => 'debit', 'color' => 'red'],
+            'mca_funding' => ['label' => 'MCA Funding', 'type' => 'credit', 'color' => 'orange'],
 
             // Other
             'loan_payment' => ['label' => 'Loan Payment', 'type' => 'debit', 'color' => 'purple'],
@@ -165,6 +170,16 @@ class TransactionCategory extends Model
             ['pattern' => 'insufficient funds', 'category' => 'nsf_fee'],
             ['pattern' => 'overdraft fee', 'category' => 'nsf_fee'],
             ['pattern' => 'od fee', 'category' => 'nsf_fee'],
+
+            // Returned/Unpaid Items
+            ['pattern' => 'returned unpaid', 'category' => 'returned_unpaid'],
+            ['pattern' => 'items returned unpaid', 'category' => 'returned_unpaid'],
+            ['pattern' => 'item returned unpaid', 'category' => 'returned_unpaid'],
+            ['pattern' => 'returned item', 'category' => 'returned_unpaid'],
+            ['pattern' => 'returned check', 'category' => 'returned_unpaid'],
+            ['pattern' => 'returned ach', 'category' => 'returned_unpaid'],
+            ['pattern' => 'returned payment', 'category' => 'returned_unpaid'],
+            ['pattern' => 'dishonored', 'category' => 'returned_unpaid'],
 
             // Interest
             ['pattern' => 'interest earned', 'category' => 'interest_income'],

@@ -7,18 +7,16 @@ use Illuminate\Support\Facades\Log;
 
 /**
  * Model Ensemble Service for transaction classification
- * Uses multiple AI models (Claude + GPT-4) with voting for higher accuracy
+ * Uses multiple Claude AI models (Opus + Sonnet) with voting for higher accuracy
  * Part of PR3: Advanced Features - Model Ensemble System
  */
 class ModelEnsembleService
 {
     private string $claudeApiKey;
-    private string $openaiApiKey;
 
     public function __construct()
     {
         $this->claudeApiKey = config('services.anthropic.api_key', env('ANTHROPIC_API_KEY', ''));
-        $this->openaiApiKey = config('services.openai.api_key', env('OPENAI_API_KEY', ''));
     }
 
     /**
@@ -53,12 +51,12 @@ class ModelEnsembleService
 
         Log::info("ModelEnsemble: Verifying " . count($needsVerification) . " transactions");
 
-        // Get classifications from both models
-        $claudeClassifications = $this->getClaudeClassifications($needsVerification, $bankContext);
-        $gptClassifications = $this->getGPTClassifications($needsVerification, $bankContext);
+        // Get classifications from both Claude models (Opus and Sonnet)
+        $opusClassifications = $this->getClaudeClassifications($needsVerification, $bankContext, 'claude-opus-4-6');
+        $sonnetClassifications = $this->getClaudeClassifications($needsVerification, $bankContext, 'claude-sonnet-4-5');
 
         // Combine with voting
-        $verified = $this->voteOnClassifications($needsVerification, $claudeClassifications, $gptClassifications);
+        $verified = $this->voteOnClassifications($needsVerification, $opusClassifications, $sonnetClassifications);
 
         // Merge back
         $result = [];
@@ -76,7 +74,7 @@ class ModelEnsembleService
     /**
      * Get classifications from Claude
      */
-    private function getClaudeClassifications(array $transactions, string $bankContext): array
+    private function getClaudeClassifications(array $transactions, string $bankContext, string $model = 'claude-sonnet-4-5'): array
     {
         if (empty($this->claudeApiKey)) {
             return [];
@@ -102,10 +100,11 @@ class ModelEnsembleService
                     'content-type' => 'application/json',
                 ])
                 ->post('https://api.anthropic.com/v1/messages', [
-                    'model' => 'claude-3-5-sonnet-latest',
+                    'model' => $model,
                     'max_tokens' => 4096,
+                    'system' => $prompt,
                     'messages' => [
-                        ['role' => 'user', 'content' => $prompt]
+                        ['role' => 'user', 'content' => 'Please classify these transactions based on the rules provided.']
                     ]
                 ]);
 
@@ -114,57 +113,12 @@ class ModelEnsembleService
                 return $this->parseClassificationResponse($content);
             }
         } catch (\Exception $e) {
-            Log::warning("ModelEnsemble: Claude classification failed - " . $e->getMessage());
+            Log::warning("ModelEnsemble: Claude ($model) classification failed - " . $e->getMessage());
         }
 
         return [];
     }
 
-    /**
-     * Get classifications from GPT-4
-     */
-    private function getGPTClassifications(array $transactions, string $bankContext): array
-    {
-        if (empty($this->openaiApiKey)) {
-            return [];
-        }
-
-        $txnList = [];
-        foreach ($transactions as $idx => $txn) {
-            $txnList[] = [
-                'id' => $idx,
-                'description' => $txn['description'] ?? '',
-                'amount' => $txn['amount'] ?? 0,
-                'date' => $txn['date'] ?? '',
-            ];
-        }
-
-        $prompt = $this->buildClassificationPrompt($txnList, $bankContext);
-
-        try {
-            $response = Http::timeout(60)
-                ->withHeaders([
-                    'Authorization' => 'Bearer ' . $this->openaiApiKey,
-                    'Content-Type' => 'application/json',
-                ])
-                ->post('https://api.openai.com/v1/chat/completions', [
-                    'model' => 'gpt-4o',
-                    'max_tokens' => 4096,
-                    'messages' => [
-                        ['role' => 'user', 'content' => $prompt]
-                    ]
-                ]);
-
-            if ($response->successful()) {
-                $content = $response->json()['choices'][0]['message']['content'] ?? '';
-                return $this->parseClassificationResponse($content);
-            }
-        } catch (\Exception $e) {
-            Log::warning("ModelEnsemble: GPT classification failed - " . $e->getMessage());
-        }
-
-        return [];
-    }
 
     /**
      * Build classification prompt for ensemble models
@@ -229,33 +183,33 @@ PROMPT;
     }
 
     /**
-     * Vote on classifications from multiple models
+     * Vote on classifications from multiple Claude models
      */
-    private function voteOnClassifications(array $transactions, array $claude, array $gpt): array
+    private function voteOnClassifications(array $transactions, array $opus, array $sonnet): array
     {
         $result = [];
 
         foreach ($transactions as $idx => $txn) {
             $originalType = $txn['type'] ?? 'debit';
-            $claudeType = $claude[$idx]['type'] ?? null;
-            $gptType = $gpt[$idx]['type'] ?? null;
+            $opusType = $opus[$idx]['type'] ?? null;
+            $sonnetType = $sonnet[$idx]['type'] ?? null;
 
             // Count votes
             $votes = ['credit' => 0, 'debit' => 0];
             $votes[$originalType]++;
 
-            if ($claudeType) {
-                $votes[$claudeType]++;
+            if ($opusType) {
+                $votes[$opusType]++;
             }
-            if ($gptType) {
-                $votes[$gptType]++;
+            if ($sonnetType) {
+                $votes[$sonnetType]++;
             }
 
             // Determine winner
             $finalType = $votes['credit'] > $votes['debit'] ? 'credit' : 'debit';
 
             // Calculate confidence based on agreement
-            $totalVotes = ($claudeType ? 1 : 0) + ($gptType ? 1 : 0) + 1;
+            $totalVotes = ($opusType ? 1 : 0) + ($sonnetType ? 1 : 0) + 1;
             $winnerVotes = max($votes['credit'], $votes['debit']);
 
             if ($winnerVotes === $totalVotes) {
@@ -272,8 +226,8 @@ PROMPT;
                 'ensemble_verified' => true,
                 'vote_details' => [
                     'original' => $originalType,
-                    'claude' => $claudeType,
-                    'gpt' => $gptType,
+                    'opus' => $opusType,
+                    'sonnet' => $sonnetType,
                     'final' => $finalType,
                 ],
             ]);

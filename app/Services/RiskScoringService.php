@@ -41,6 +41,45 @@ class RiskScoringService
     }
 
     /**
+     * Calculate overall risk for an application model
+     */
+    public function calculateOverallRisk($application): array
+    {
+        // Prepare data from application model
+        $data = [];
+
+        // Add credit data if available
+        if ($application->credit_score) {
+            $data['credit'] = [
+                'credit_score' => $application->credit_score,
+                'flags' => []
+            ];
+        }
+
+        // Add industry data if available
+        if ($application->business_type) {
+            $data['industry'] = $application->business_type;
+        }
+
+        // Add bank analysis data from bank statements if available
+        if ($application->plaidItems()->exists()) {
+            $plaidItem = $application->plaidItems()->first();
+            if ($plaidItem && $plaidItem->accounts()->exists()) {
+                $account = $plaidItem->accounts()->first();
+                $data['bank_analysis'] = [
+                    'avg_daily_balance' => $account->balances['current'] ?? 0,
+                    'revenue_consistency' => 0.7, // Default - could be calculated from transactions
+                    'nsf_count' => 0,
+                    'negative_days' => 0,
+                ];
+            }
+        }
+
+        // Calculate using the main risk score method
+        return $this->calculateRiskScore($data);
+    }
+
+    /**
      * Calculate comprehensive risk score
      */
     public function calculateRiskScore(array $data): array

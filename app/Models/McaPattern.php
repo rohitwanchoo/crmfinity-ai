@@ -146,6 +146,7 @@ class McaPattern extends Model
             'bitty_advance' => 'Bitty Advance',
             'bluevine' => 'BlueVine',
             'broadway_advance' => 'Broadway Advance',
+            'britecap' => 'Britecap Financial',
             'byzfunder' => 'ByzFunder',
             'can_capital' => 'CAN Capital',
             'capybara' => 'Capybara',

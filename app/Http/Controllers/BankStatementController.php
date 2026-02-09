@@ -10,6 +10,7 @@ use App\Models\AnalyzedTransaction;
 use App\Models\RevenueClassification;
 use App\Models\McaPattern;
 use App\Models\TransactionCategory;
+use App\Services\NsfAndNegativeDaysCalculator;
 
 class BankStatementController extends Controller
 {
@@ -19,17 +20,17 @@ class BankStatementController extends Controller
     public function index()
     {
         $stats = [
-            'total_sessions' => AnalysisSession::where('analysis_type', 'openai')->count(),
+            'total_sessions' => AnalysisSession::whereIn('analysis_type', ['openai', 'claude'])->count(),
             'total_transactions' => AnalyzedTransaction::whereHas('session', function ($q) {
-                $q->where('analysis_type', 'openai');
+                $q->whereIn('analysis_type', ['openai', 'claude']);
             })->count(),
-            'total_credits' => AnalysisSession::where('analysis_type', 'openai')->sum('total_credits'),
-            'total_debits' => AnalysisSession::where('analysis_type', 'openai')->sum('total_debits'),
+            'total_credits' => AnalysisSession::whereIn('analysis_type', ['openai', 'claude'])->sum('total_credits'),
+            'total_debits' => AnalysisSession::whereIn('analysis_type', ['openai', 'claude'])->sum('total_debits'),
             'total_lenders' => McaPattern::distinct('lender_name')->count('lender_name'),
         ];
 
         // Get bank statistics
-        $bankStats = AnalysisSession::where('analysis_type', 'openai')
+        $bankStats = AnalysisSession::whereIn('analysis_type', ['openai', 'claude'])
             ->whereNotNull('bank_name')
             ->where('bank_name', '!=', '')
             ->selectRaw('bank_name, COUNT(*) as count, SUM(total_transactions) as transactions')
@@ -37,12 +38,21 @@ class BankStatementController extends Controller
             ->orderByDesc('count')
             ->get();
 
-        $recentSessions = AnalysisSession::where('analysis_type', 'openai')
+        $recentSessions = AnalysisSession::whereIn('analysis_type', ['openai', 'claude'])
             ->orderBy('created_at', 'desc')
             ->limit(5)
             ->get();
 
         return view('bankstatement.index', compact('stats', 'recentSessions', 'bankStats'));
+    }
+
+    /**
+     * Handle GET requests to /analyze - redirect to upload form.
+     */
+    public function analyzeGet()
+    {
+        return redirect()->route('bankstatement.index')
+            ->with('info', 'Please upload a bank statement to analyze.');
     }
 
     /**
@@ -53,16 +63,16 @@ class BankStatementController extends Controller
         $request->validate([
             'statements' => 'required|array|min:1',
             'statements.*' => 'required|file|mimes:pdf|max:20480',
-            'model' => 'nullable|in:gpt-4o,gpt-4o-mini',
+            'model' => 'nullable|in:claude-opus-4-6,claude-sonnet-4-5,claude-haiku-4-5',
         ]);
 
         $results = [];
-        $defaultModel = config('services.openai.default_model', 'gpt-4o');
+        $defaultModel = config('services.anthropic.default_model', 'claude-opus-4-6');
         $model = $request->input('model', $defaultModel);
-        $apiKey = config('services.openai.key') ?: env('OPENAI_API_KEY');
+        $apiKey = config('services.anthropic.api_key') ?: env('ANTHROPIC_API_KEY');
 
         if (!$apiKey) {
-            return back()->with('error', 'OpenAI API key not configured. Please add OPENAI_API_KEY to your .env file.');
+            return back()->with('error', 'Anthropic API key not configured. Please add ANTHROPIC_API_KEY to your .env file.');
         }
 
         foreach ($request->file('statements') as $file) {
@@ -88,21 +98,47 @@ class BankStatementController extends Controller
                 $correctionsJson = json_encode($corrections);
 
                 // Run Python script with corrections
+                // Redirect stderr to a separate temp file so debug messages don't mix with JSON output
                 $scriptPath = storage_path('app/scripts/bank_statement_extractor.py');
+                $stderrFile = storage_path('logs/python_stderr_' . $sessionId . '.log');
                 $command = sprintf(
-                    'python3 %s %s %s %s %s 2>&1',
+                    'python3 %s %s %s %s %s 2>%s',
                     escapeshellarg($scriptPath),
                     escapeshellarg($savedPath),
                     escapeshellarg($apiKey),
                     escapeshellarg($model),
-                    escapeshellarg($correctionsJson)
+                    escapeshellarg($correctionsJson),
+                    escapeshellarg($stderrFile)
                 );
 
                 $output = shell_exec($command);
-                $data = json_decode($output, true);
+
+                // Clean up: extract only the JSON part if there's any extra text
+                // The JSON should be the last complete JSON object in the output
+                $lines = explode("\n", trim($output));
+                $jsonLine = end($lines);
+
+                // If the last line doesn't look like JSON, try to find it
+                if (!str_starts_with(trim($jsonLine), '{')) {
+                    foreach (array_reverse($lines) as $line) {
+                        if (str_starts_with(trim($line), '{')) {
+                            $jsonLine = $line;
+                            break;
+                        }
+                    }
+                }
+
+                $data = json_decode($jsonLine, true);
 
                 if (!$data || !isset($data['success'])) {
-                    throw new \Exception('Failed to parse Python script output: ' . ($output ?: 'No output'));
+                    // Read stderr for debugging if JSON parsing failed
+                    $stderr = file_exists($stderrFile) ? file_get_contents($stderrFile) : '';
+                    throw new \Exception('Failed to parse Python script output. Output: ' . substr($output, 0, 200) . '... Stderr: ' . substr($stderr, 0, 200));
+                }
+
+                // Clean up stderr log file
+                if (file_exists($stderrFile)) {
+                    @unlink($stderrFile);
                 }
 
                 if (!$data['success']) {
@@ -128,54 +164,78 @@ class BankStatementController extends Controller
                     'high_confidence_count' => $data['summary']['total_transactions'],
                     'medium_confidence_count' => 0,
                     'low_confidence_count' => 0,
-                    'analysis_type' => 'openai',
+                    'analysis_type' => 'claude',
                     'model_used' => $model,
                     'api_cost' => $data['api_cost']['total_cost'] ?? 0,
+                    'beginning_balance' => isset($data['statement_summary']['beginning_balance']) ? $data['statement_summary']['beginning_balance'] : null,
+                    'ending_balance' => isset($data['statement_summary']['ending_balance']) ? $data['statement_summary']['ending_balance'] : null,
                 ]);
 
                 // Save transactions
-                foreach ($data['transactions'] as $txn) {
-                    $type = $txn['type'] ?? 'debit'; // Default to debit if not specified
-                    $description = $txn['description'] ?? 'Unknown';
+                \Log::info("Starting to save transactions", [
+                    'session_id' => $sessionId,
+                    'transaction_count' => count($data['transactions'] ?? []),
+                ]);
 
-                    // Auto-assign category based on description
-                    $category = null;
-                    $categoryData = TransactionCategory::getCategoryForDescription($description, $type);
-                    if ($categoryData) {
-                        $category = $categoryData['category'];
-                    }
+                foreach ($data['transactions'] as $index => $txn) {
+                    try {
+                        $type = $txn['type'] ?? 'debit'; // Default to debit if not specified
+                        $description = $txn['description'] ?? 'Unknown';
 
-                    $transactionData = [
-                        'analysis_session_id' => $session->id,
-                        'transaction_date' => $txn['date'] ?? date('Y-m-d'),
-                        'description' => $description,
-                        'amount' => $txn['amount'] ?? 0,
-                        'type' => $type,
-                        'original_type' => $type,
-                        'confidence' => 1.0,
-                        'confidence_label' => 'high',
-                        'category' => $category,
-                    ];
-
-                    // Add balance if available and calculate beginning balance
-                    if (isset($txn['ending_balance'])) {
-                        $endingBalance = (float) $txn['ending_balance'];
-                        $amount = (float) ($txn['amount'] ?? 0);
-
-                        $transactionData['ending_balance'] = $endingBalance;
-
-                        // Calculate beginning balance:
-                        // For credits: beginning_balance = ending_balance - amount
-                        // For debits: beginning_balance = ending_balance + amount
-                        if ($type === 'credit') {
-                            $transactionData['beginning_balance'] = $endingBalance - $amount;
-                        } else {
-                            $transactionData['beginning_balance'] = $endingBalance + $amount;
+                        // Auto-assign category based on description
+                        $category = null;
+                        $categoryData = TransactionCategory::getCategoryForDescription($description, $type);
+                        if ($categoryData) {
+                            $category = $categoryData['category'];
                         }
-                    }
 
-                    AnalyzedTransaction::create($transactionData);
+                        $transactionData = [
+                            'analysis_session_id' => $session->id,
+                            'transaction_date' => $txn['date'] ?? date('Y-m-d'),
+                            'description' => $description,
+                            'amount' => $txn['amount'] ?? 0,
+                            'type' => $type,
+                            'original_type' => $type,
+                            'confidence' => 1.0,
+                            'confidence_label' => 'high',
+                            'category' => $category,
+                        ];
+
+                        // Add balance if available and calculate beginning balance
+                        if (isset($txn['ending_balance'])) {
+                            $endingBalance = (float) $txn['ending_balance'];
+                            $amount = (float) ($txn['amount'] ?? 0);
+
+                            $transactionData['ending_balance'] = $endingBalance;
+
+                            // Calculate beginning balance:
+                            // For credits: beginning_balance = ending_balance - amount
+                            // For debits: beginning_balance = ending_balance + amount
+                            if ($type === 'credit') {
+                                $transactionData['beginning_balance'] = $endingBalance - $amount;
+                            } else {
+                                $transactionData['beginning_balance'] = $endingBalance + $amount;
+                            }
+                        }
+
+                        AnalyzedTransaction::create($transactionData);
+                    } catch (\Exception $e) {
+                        \Log::error("Failed to save transaction", [
+                            'session_id' => $sessionId,
+                            'transaction_index' => $index,
+                            'transaction_data' => $txn,
+                            'error' => $e->getMessage(),
+                            'file' => $e->getFile(),
+                            'line' => $e->getLine(),
+                        ]);
+                        throw $e; // Re-throw to stop processing
+                    }
                 }
+
+                \Log::info("Finished saving transactions", [
+                    'session_id' => $sessionId,
+                    'transactions_saved' => $session->transactions()->count(),
+                ]);
 
                 // Reload transactions from database to get IDs and any applied logic
                 $transactionsWithIds = $session->transactions()
@@ -203,12 +263,29 @@ class BankStatementController extends Controller
                             'is_mca_payment' => $txn->is_mca_payment ?? false,
                             'mca_lender' => $txn->mca_lender ?? null,
                             'category' => $category,
+                            'ending_balance' => $txn->ending_balance !== null ? (float) $txn->ending_balance : null,
+                            'beginning_balance' => $txn->beginning_balance !== null ? (float) $txn->beginning_balance : null,
                         ];
                     })
                     ->toArray();
 
                 // Group transactions by month and calculate true revenue
                 $monthlyData = $this->groupTransactionsByMonth($transactionsWithIds);
+
+                // Recalculate summary from actual saved transactions (not Python output)
+                $actualCredits = $session->transactions()->where('type', 'credit')->get();
+                $actualDebits = $session->transactions()->where('type', 'debit')->get();
+
+                $correctedSummary = [
+                    'total_transactions' => $session->transactions()->count(),
+                    'credit_count' => $actualCredits->count(),
+                    'debit_count' => $actualDebits->count(),
+                    'credit_total' => $actualCredits->sum('amount'),
+                    'debit_total' => $actualDebits->sum('amount'),
+                    'net_balance' => $actualCredits->sum('amount') - $actualDebits->sum('amount'),
+                    'returned_count' => $data['summary']['returned_count'] ?? 0,
+                    'returned_total' => $data['summary']['returned_total'] ?? 0,
+                ];
 
                 // Get MCA analysis from Python script output
                 $mcaAnalysis = $data['mca_analysis'] ?? [
@@ -222,7 +299,7 @@ class BankStatementController extends Controller
                     'filename' => $filename,
                     'session_id' => $sessionId,
                     'success' => true,
-                    'summary' => $data['summary'],
+                    'summary' => $correctedSummary,
                     'api_cost' => $data['api_cost'],
                     'transactions' => $transactionsWithIds,
                     'monthly_data' => $monthlyData,
@@ -249,6 +326,30 @@ class BankStatementController extends Controller
             return back()->with('error', 'All files failed to process. ' . ($results[0]['error'] ?? ''));
         }
 
+        // Store results in session for viewing
+        session()->put('analysis_results', $results);
+
+        // Redirect to results page (Post-Redirect-Get pattern)
+        return redirect()->route('bankstatement.view-results')->with('success', 'Analysis completed successfully!');
+    }
+
+    /**
+     * View analysis results (GET route after POST redirect).
+     */
+    public function viewResults()
+    {
+        // Get results from session
+        $results = session()->get('analysis_results');
+
+        // If no results in session, redirect to index
+        if (!$results) {
+            return redirect()->route('bankstatement.index')
+                ->with('error', 'No analysis results found. Please upload a new statement.');
+        }
+
+        // Clear the results from session after retrieving
+        session()->forget('analysis_results');
+
         return view('bankstatement.results', compact('results'));
     }
 
@@ -257,7 +358,7 @@ class BankStatementController extends Controller
      */
     public function history()
     {
-        $sessions = AnalysisSession::where('analysis_type', 'openai')
+        $sessions = AnalysisSession::whereIn('analysis_type', ['openai', 'claude'])
             ->orderBy('created_at', 'desc')
             ->paginate(20);
 
@@ -270,7 +371,7 @@ class BankStatementController extends Controller
     public function session(Request $request, $sessionId)
     {
         $session = AnalysisSession::where('session_id', $sessionId)
-            ->where('analysis_type', 'openai')
+            ->whereIn('analysis_type', ['openai', 'claude'])
             ->firstOrFail();
 
         $transactions = $session->transactions()->orderBy('transaction_date')->get();
@@ -305,7 +406,7 @@ class BankStatementController extends Controller
 
         foreach ($sessionIds as $sessionId) {
             $session = AnalysisSession::where('session_id', $sessionId)
-                ->where('analysis_type', 'openai')
+                ->whereIn('analysis_type', ['openai', 'claude'])
                 ->first();
 
             if (!$session) {
@@ -337,14 +438,17 @@ class BankStatementController extends Controller
                         'original_type' => $txn->original_type,
                         'was_corrected' => $txn->was_corrected,
                         'is_mca_payment' => $txn->is_mca_payment ?? false,
-                        'mca_lender' => $txn->mca_lender ?? null,
+                        'mca_lender' => $txn->mca_lender_name ?? null,
+                        'mca_lender_id' => $txn->mca_lender_id ?? null,
                         'category' => $category,
+                        'ending_balance' => $txn->ending_balance !== null ? (float) $txn->ending_balance : null,
+                        'beginning_balance' => $txn->beginning_balance !== null ? (float) $txn->beginning_balance : null,
                     ];
                 })
                 ->toArray();
 
             // Recalculate monthly data with fresh transactions
-            $monthlyData = $this->groupTransactionsByMonth($transactions);
+            $monthlyData = $this->groupTransactionsByMonth($transactions, $session);
 
             // Collect all processed transactions from monthly data (these have MCA funding flags set)
             $processedTransactions = [];
@@ -398,7 +502,22 @@ class BankStatementController extends Controller
             return redirect()->route('bankstatement.history')->with('error', 'No valid sessions found.');
         }
 
-        return view('bankstatement.results', compact('results'));
+        // Get all known MCA lenders (static + dynamic from database)
+        $mcaLenders = McaPattern::getKnownLenders();
+
+        // Add custom lenders from database
+        $customLenders = \App\Models\McaPattern::where('is_mca', true)
+            ->select('lender_id', 'lender_name')
+            ->distinct()
+            ->get();
+
+        foreach ($customLenders as $lender) {
+            if (!isset($mcaLenders[$lender->lender_id])) {
+                $mcaLenders[$lender->lender_id] = $lender->lender_name;
+            }
+        }
+
+        return view('bankstatement.results', compact('results', 'mcaLenders'));
     }
 
     /**
@@ -691,7 +810,7 @@ class BankStatementController extends Controller
     public function downloadCsv($sessionId)
     {
         $session = AnalysisSession::where('session_id', $sessionId)
-            ->where('analysis_type', 'openai')
+            ->whereIn('analysis_type', ['openai', 'claude'])
             ->firstOrFail();
 
         $transactions = $session->transactions()->orderBy('transaction_date')->get();
@@ -795,6 +914,8 @@ class BankStatementController extends Controller
             'is_mca_funding' => 'nullable|boolean',
             'mca_lender_id' => 'nullable|string',
             'mca_lender_name' => 'nullable|string',
+            'transaction_ids' => 'nullable|array',
+            'transaction_ids.*' => 'integer',
         ]);
 
         $newClassification = $request->current_classification === 'true_revenue' ? 'adjustment' : 'true_revenue';
@@ -819,13 +940,49 @@ class BankStatementController extends Controller
             $mcaLenderName
         );
 
-        $message = "Transaction marked as " . str_replace('_', ' ', $newClassification);
+        // Update specified transactions or find matching ones
+        $transactionIds = $request->input('transaction_ids', []);
+        $updatedCount = 0;
+
+        if (!empty($transactionIds)) {
+            // Update only the specified transaction IDs
+            $updatedCount = AnalyzedTransaction::whereIn('id', $transactionIds)
+                ->where('type', 'credit')
+                ->update([
+                    'is_mca_payment' => $isMcaFunding,
+                    'mca_lender_id' => $isMcaFunding ? $mcaLenderId : null,
+                    'mca_lender_name' => $isMcaFunding ? $mcaLenderName : null,
+                ]);
+        } else {
+            // Fallback: Update by description pattern (old behavior)
+            $normalizedPattern = \App\Models\RevenueClassification::normalizePattern($request->description);
+            $transactions = AnalyzedTransaction::where('type', 'credit')->get();
+            $matchingIds = [];
+
+            foreach ($transactions as $txn) {
+                $txnNormalized = \App\Models\RevenueClassification::normalizePattern($txn->description);
+                if ($txnNormalized === $normalizedPattern || $txn->description === $request->description) {
+                    $matchingIds[] = $txn->id;
+                }
+            }
+
+            if (!empty($matchingIds)) {
+                $updatedCount = AnalyzedTransaction::whereIn('id', $matchingIds)
+                    ->update([
+                        'is_mca_payment' => $isMcaFunding,
+                        'mca_lender_id' => $isMcaFunding ? $mcaLenderId : null,
+                        'mca_lender_name' => $isMcaFunding ? $mcaLenderName : null,
+                    ]);
+            }
+        }
+
+        $message = "Marked {$updatedCount} transaction(s) as " . str_replace('_', ' ', $newClassification);
         if ($isMcaFunding && $mcaLenderName) {
             $message .= " (MCA Funding from {$mcaLenderName})";
         }
         $message .= ". AI will learn from this.";
 
-        Log::info("BankStatement Revenue Classification: '{$request->description}' marked as {$newClassification}" . ($isMcaFunding ? " (MCA Funding from {$mcaLenderName})" : ""));
+        Log::info("BankStatement Revenue Classification: '{$request->description}' marked as {$newClassification}" . ($isMcaFunding ? " (MCA Funding from {$mcaLenderName})" : "") . " - Updated {$updatedCount} transactions");
 
         return response()->json([
             'success' => true,
@@ -835,6 +992,7 @@ class BankStatementController extends Controller
             'is_mca_funding' => $isMcaFunding,
             'mca_lender_id' => $mcaLenderId,
             'mca_lender_name' => $mcaLenderName,
+            'updated_count' => $updatedCount,
         ]);
     }
 
@@ -849,11 +1007,14 @@ class BankStatementController extends Controller
             'is_mca' => 'required|boolean',
             'lender_id' => 'required_if:is_mca,true|nullable|string',
             'lender_name' => 'required_if:is_mca,true|nullable|string',
+            'transaction_ids' => 'nullable|array',
+            'transaction_ids.*' => 'integer',
         ]);
 
         $isMca = (bool) $request->is_mca;
         $lenderId = $request->lender_id ?? 'unknown';
         $lenderName = $request->lender_name ?? 'Unknown Lender';
+        $transactionIds = $request->input('transaction_ids', []);
 
         // Save to MCA patterns table for AI learning
         McaPattern::recordPattern(
@@ -864,11 +1025,45 @@ class BankStatementController extends Controller
             auth()->id()
         );
 
-        $message = $isMca
-            ? "Transaction marked as MCA payment from {$lenderName}. AI will learn from this."
-            : "Transaction removed from MCA payments. AI will learn from this.";
+        // Update specified transactions or find matching ones
+        $updatedCount = 0;
+        if (!empty($transactionIds)) {
+            // Update only the specified transaction IDs
+            $updatedCount = AnalyzedTransaction::whereIn('id', $transactionIds)
+                ->where('type', 'debit')
+                ->update([
+                    'is_mca_payment' => $isMca,
+                    'mca_lender_id' => $isMca ? $lenderId : null,
+                    'mca_lender_name' => $isMca ? $lenderName : null,
+                ]);
+        } else {
+            // Fallback: Update by description pattern (old behavior)
+            $normalizedPattern = McaPattern::normalizePattern($request->description);
+            $transactions = AnalyzedTransaction::where('type', 'debit')->get();
+            $matchingIds = [];
 
-        Log::info("BankStatement MCA Classification: '{$request->description}' marked as " . ($isMca ? "MCA ({$lenderName})" : "Not MCA"));
+            foreach ($transactions as $txn) {
+                $txnNormalized = McaPattern::normalizePattern($txn->description);
+                if ($txnNormalized === $normalizedPattern || $txn->description === $request->description) {
+                    $matchingIds[] = $txn->id;
+                }
+            }
+
+            if (!empty($matchingIds)) {
+                $updatedCount = AnalyzedTransaction::whereIn('id', $matchingIds)
+                    ->update([
+                        'is_mca_payment' => $isMca,
+                        'mca_lender_id' => $isMca ? $lenderId : null,
+                        'mca_lender_name' => $isMca ? $lenderName : null,
+                    ]);
+            }
+        }
+
+        $message = $isMca
+            ? "Marked {$updatedCount} transaction(s) as MCA payment from {$lenderName}. AI will learn from this."
+            : "Removed {$updatedCount} transaction(s) from MCA payments. AI will learn from this.";
+
+        Log::info("BankStatement MCA Classification: '{$request->description}' marked as " . ($isMca ? "MCA ({$lenderName})" : "Not MCA") . " - Updated {$updatedCount} transactions");
 
         return response()->json([
             'success' => true,
@@ -877,6 +1072,56 @@ class BankStatementController extends Controller
             'lender_id' => $lenderId,
             'lender_name' => $lenderName,
             'amount' => (float) $request->amount,
+            'updated_count' => $updatedCount,
+        ]);
+    }
+
+    /**
+     * Find similar transactions based on normalized pattern matching
+     */
+    public function findSimilarTransactions(Request $request)
+    {
+        $request->validate([
+            'description' => 'required|string',
+            'type' => 'required|in:credit,debit',
+            'session_ids' => 'nullable|array',
+        ]);
+
+        $normalizedPattern = McaPattern::normalizePattern($request->description);
+        $sessionIds = $request->input('session_ids', []);
+
+        // Build query for transactions of the specified type
+        $query = AnalyzedTransaction::where('type', $request->type);
+
+        // Filter by session IDs if provided
+        if (!empty($sessionIds)) {
+            $sessionDbIds = AnalysisSession::whereIn('session_id', $sessionIds)->pluck('id');
+            $query->whereIn('analysis_session_id', $sessionDbIds);
+        }
+
+        $transactions = $query->get();
+        $matchingTransactions = [];
+
+        foreach ($transactions as $txn) {
+            $txnNormalized = McaPattern::normalizePattern($txn->description);
+
+            // Check if normalized patterns match
+            if ($txnNormalized === $normalizedPattern) {
+                $matchingTransactions[] = [
+                    'id' => $txn->id,
+                    'date' => $txn->transaction_date->format('Y-m-d'),
+                    'description' => $txn->description,
+                    'amount' => (float) $txn->amount,
+                    'is_mca_payment' => $txn->is_mca_payment,
+                    'mca_lender_name' => $txn->mca_lender_name,
+                ];
+            }
+        }
+
+        return response()->json([
+            'success' => true,
+            'matching_transactions' => $matchingTransactions,
+            'count' => count($matchingTransactions),
         ]);
     }
 
@@ -887,21 +1132,30 @@ class BankStatementController extends Controller
     {
         $request->validate([
             'transaction_id' => 'nullable|integer',
+            'transaction_ids' => 'nullable|array',
+            'transaction_ids.*' => 'integer',
             'description' => 'required|string',
             'amount' => 'required|numeric',
             'type' => 'required|in:credit,debit,returned',
             'category' => 'nullable|string',
             'subcategory' => 'nullable|string',
+            'update_single_only' => 'nullable|boolean',
         ]);
 
         $category = $request->category;
         $subcategory = $request->subcategory;
         $transactionType = $request->type;
+        $updateSingleOnly = $request->update_single_only ?? false;
+        $transactionIds = $request->input('transaction_ids', []);
 
         // If category is null, clear the category
         if ($category === null) {
-            // Update the actual transaction record if transaction_id is provided
-            if ($request->transaction_id) {
+            // Update the actual transaction record if transaction_id or transaction_ids are provided
+            if (!empty($transactionIds)) {
+                $updatedCount = AnalyzedTransaction::whereIn('id', $transactionIds)
+                    ->update(['category' => null]);
+                Log::info("Cleared category for {$updatedCount} transaction(s)");
+            } elseif ($request->transaction_id) {
                 $transaction = AnalyzedTransaction::find($request->transaction_id);
                 if ($transaction) {
                     $transaction->update([
@@ -933,11 +1187,33 @@ class BankStatementController extends Controller
         // Normalize the description pattern for matching similar transactions
         $normalizedPattern = TransactionCategory::normalizePattern($request->description);
 
-        // Find and update ALL transactions with the same description pattern
-        $updatedCount = AnalyzedTransaction::whereRaw('LOWER(description) = ?', [strtolower($request->description)])
-            ->update(['category' => $category]);
+        // Update transactions - priority: transaction_ids array > single transaction > all matching
+        if (!empty($transactionIds)) {
+            // Update only the specific transactions by IDs
+            $updatedCount = AnalyzedTransaction::whereIn('id', $transactionIds)
+                ->update(['category' => $category]);
 
-        Log::info("Batch category update: {$updatedCount} transaction(s) with description '{$request->description}' updated to category: {$category}");
+            Log::info("Batch category update by IDs: {$updatedCount} transaction(s) updated to category: {$category}");
+        } elseif ($updateSingleOnly && $request->transaction_id) {
+            // Update only the specific transaction
+            $transaction = AnalyzedTransaction::find($request->transaction_id);
+            if ($transaction) {
+                $transaction->update(['category' => $category]);
+                $updatedCount = 1;
+                Log::info("Single transaction update: Transaction {$transaction->id} updated to category: {$category}");
+            } else {
+                return response()->json([
+                    'success' => false,
+                    'message' => 'Transaction not found.',
+                ], 404);
+            }
+        } else {
+            // Find and update ALL transactions with the same description pattern
+            $updatedCount = AnalyzedTransaction::whereRaw('LOWER(description) = ?', [strtolower($request->description)])
+                ->update(['category' => $category]);
+
+            Log::info("Batch category update: {$updatedCount} transaction(s) with description '{$request->description}' updated to category: {$category}");
+        }
 
         // Save to transaction_categories table for AI learning
         TransactionCategory::recordCategory(
@@ -1400,7 +1676,7 @@ class BankStatementController extends Controller
      * Group transactions by month and calculate true revenue for each month.
      * Matches FCS PDF format with adjustments.
      */
-    private function groupTransactionsByMonth(array $transactions): array
+    private function groupTransactionsByMonth(array $transactions, $session = null): array
     {
         // Patterns to exclude from true revenue (non-revenue deposits/adjustments)
         $adjustmentPatterns = [
@@ -1419,9 +1695,6 @@ class BankStatementController extends Controller
             // NSF reversals
             'nsf fee reversal', 'overdraft reversal', 'fee waiver',
         ];
-
-        // NSF/Overdraft patterns for counting
-        $nsfPatterns = ['nsf', 'non-sufficient', 'insufficient funds', 'overdraft', 'od fee'];
 
         // Group transactions by month
         $monthlyGroups = [];
@@ -1451,7 +1724,6 @@ class BankStatementController extends Controller
                     'true_revenue' => 0,
                     'debits' => 0,
                     'debit_count' => 0,
-                    'nsf_count' => 0,
                     'transactions' => [],
                     'days_in_month' => date('t', $timestamp),
                 ];
@@ -1519,13 +1791,8 @@ class BankStatementController extends Controller
                 $monthlyGroups[$monthKey]['debits'] += $amount;
                 $monthlyGroups[$monthKey]['debit_count']++;
 
-                // Check for NSF/overdraft fees
-                foreach ($nsfPatterns as $pattern) {
-                    if (stripos($description, $pattern) !== false) {
-                        $monthlyGroups[$monthKey]['nsf_count']++;
-                        break;
-                    }
-                }
+                // NSF counting will be done comprehensively later with the new calculator
+                // Skip simple pattern matching here
 
                 // Check for MCA payments (for UI toggle state)
                 $txn['is_mca'] = false;
@@ -1579,94 +1846,67 @@ class BankStatementController extends Controller
         }
 
         // Calculate true revenue, averages, and negative days for each month
+        $isFirstMonth = true;
         foreach ($monthlyGroups as &$month) {
             $month['true_revenue'] = $month['deposits'] - $month['adjustments'];
             $month['average_daily'] = $month['days_in_month'] > 0
                 ? $month['true_revenue'] / $month['days_in_month']
                 : 0;
 
+            // Calculate negative days and NSF using the comprehensive calculator
+            $calculator = new NsfAndNegativeDaysCalculator();
+
+            // Get opening balance for this month
+            $openingBalance = null;
+
+            // For the first month, use the session's beginning_balance if available
+            if ($isFirstMonth && $session && $session->beginning_balance !== null) {
+                $openingBalance = (float) $session->beginning_balance;
+                $isFirstMonth = false;
+            }
+            // Otherwise check if first transaction has beginning_balance
+            elseif (!empty($month['transactions'])) {
+                $firstTxn = $month['transactions'][0];
+                if (isset($firstTxn['beginning_balance'])) {
+                    $openingBalance = $firstTxn['beginning_balance'];
+                }
+            }
+
             // Calculate negative days
-            $negativeDays = 0;
-            $dailyBalances = [];
-            $hasActualBalances = false;
+            $negativeDaysResult = $calculator->calculateNegativeDays($month['transactions'], $openingBalance);
+            $month['negative_days'] = $negativeDaysResult['negative_days_count'];
+            $month['negative_dates'] = $negativeDaysResult['negative_dates'];
+            $month['negative_days_method'] = $negativeDaysResult['method_used'];
+            $month['beginning_balance'] = $openingBalance; // Store for use in combined view
 
-            // Check if we have actual balance data
-            foreach ($month['transactions'] as $txn) {
-                if (isset($txn['ending_balance']) && $txn['ending_balance'] !== null) {
-                    $hasActualBalances = true;
-                    break;
-                }
-            }
+            // Debug logging
+            \Log::info('Negative Days Calculation', [
+                'month' => $month['month_name'],
+                'negative_days_count' => $negativeDaysResult['negative_days_count'],
+                'method_used' => $negativeDaysResult['method_used'],
+                'opening_balance' => $openingBalance,
+                'transaction_count' => count($month['transactions']),
+                'negative_dates' => $negativeDaysResult['negative_dates'],
+            ]);
 
-            if ($hasActualBalances) {
-                // Use actual ending balances from bank statement
-                // Group transactions by date to get the last balance for each day
-                $transactionsByDate = [];
-                foreach ($month['transactions'] as $txn) {
-                    $date = $txn['date'] ?? null;
-                    if (!$date) continue;
+            // Calculate NSF counts
+            $nsfResult = $calculator->calculateNsfCounts($month['transactions']);
+            $month['nsf_count'] = $nsfResult['unique_nsf_events']; // Use unique events for the main count
+            $month['nsf_fee_count'] = $nsfResult['nsf_fee_count'];
+            $month['returned_item_count'] = $nsfResult['returned_item_count'];
+            $month['nsf_details'] = [
+                'fees' => $nsfResult['nsf_fees'],
+                'returned_items' => $nsfResult['returned_items'],
+                'unique_events' => $nsfResult['unique_events'],
+            ];
 
-                    $dateStr = is_string($date) ? $date : (string) $date;
-
-                    if (!isset($transactionsByDate[$dateStr])) {
-                        $transactionsByDate[$dateStr] = [];
-                    }
-
-                    $transactionsByDate[$dateStr][] = $txn;
-                }
-
-                // For each day, get the last transaction's ending balance
-                foreach ($transactionsByDate as $dateStr => $dayTransactions) {
-                    // Get the last transaction of the day (assuming transactions are in chronological order)
-                    $lastTransaction = end($dayTransactions);
-                    $endingBalance = $lastTransaction['ending_balance'] ?? null;
-
-                    if ($endingBalance !== null) {
-                        $dailyBalances[$dateStr] = (float) $endingBalance;
-                    }
-                }
-
-                // Count unique days where balance < 0
-                foreach ($dailyBalances as $dateStr => $balance) {
-                    if ($balance < 0) {
-                        $negativeDays++;
-                    }
-                }
-            } else {
-                // Fallback: Calculate running balance from transactions
-                foreach ($month['transactions'] as $txn) {
-                    $date = $txn['date'] ?? null;
-                    if (!$date) continue;
-
-                    $dateStr = is_string($date) ? $date : (string) $date;
-                    $amount = (float) ($txn['amount'] ?? 0);
-                    $type = $txn['type'] ?? 'debit';
-
-                    if (!isset($dailyBalances[$dateStr])) {
-                        $dailyBalances[$dateStr] = 0;
-                    }
-
-                    // For running balance: credits add, debits subtract
-                    if ($type === 'credit') {
-                        $dailyBalances[$dateStr] += $amount;
-                    } else {
-                        $dailyBalances[$dateStr] -= $amount;
-                    }
-                }
-
-                // Calculate running balance and count negative days
-                $runningBalance = 0;
-                ksort($dailyBalances); // Sort by date
-
-                foreach ($dailyBalances as $netFlow) {
-                    $runningBalance += $netFlow;
-                    if ($runningBalance < 0) {
-                        $negativeDays++;
-                    }
-                }
-            }
-
-            $month['negative_days'] = $negativeDays;
+            // Debug logging
+            \Log::info('NSF Calculation', [
+                'month' => $month['month_name'],
+                'unique_nsf_events' => $nsfResult['unique_nsf_events'],
+                'nsf_fee_count' => $nsfResult['nsf_fee_count'],
+                'returned_item_count' => $nsfResult['returned_item_count'],
+            ]);
         }
         unset($month); // Important: unset reference to prevent PHP reference bug
 
@@ -1682,6 +1922,8 @@ class BankStatementController extends Controller
             'deposit_count' => 0,
             'debit_count' => 0,
             'nsf_count' => 0,
+            'nsf_fee_count' => 0,
+            'returned_item_count' => 0,
             'average_daily' => 0,
             'negative_days' => 0,
         ];
@@ -1695,7 +1937,9 @@ class BankStatementController extends Controller
             $totals['debits'] += $month['debits'];
             $totals['deposit_count'] += $month['deposit_count'];
             $totals['debit_count'] += $month['debit_count'];
-            $totals['nsf_count'] += $month['nsf_count'];
+            $totals['nsf_count'] += $month['nsf_count']; // Unique NSF events
+            $totals['nsf_fee_count'] += $month['nsf_fee_count'] ?? 0;
+            $totals['returned_item_count'] += $month['returned_item_count'] ?? 0;
             $totals['average_daily'] += $month['average_daily'];
             $totals['negative_days'] += $month['negative_days'];
         }

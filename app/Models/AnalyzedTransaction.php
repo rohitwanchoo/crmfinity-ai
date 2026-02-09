@@ -26,6 +26,9 @@ class AnalyzedTransaction extends Model
         'confidence_label',
         'category',
         'merchant_name',
+        'is_mca_payment',
+        'mca_lender_id',
+        'mca_lender_name',
     ];
 
     protected $casts = [
@@ -36,6 +39,7 @@ class AnalyzedTransaction extends Model
         'confidence' => 'decimal:4',
         'was_corrected' => 'boolean',
         'exclude_from_revenue' => 'boolean',
+        'is_mca_payment' => 'boolean',
     ];
 
     public function session()

@@ -128,7 +128,9 @@
                                 AI Model
                             </label>
                             <select name="model" class="mt-1 block w-full rounded-md border-gray-300 dark:border-gray-600 dark:bg-gray-700 dark:text-gray-300 shadow-sm focus:border-green-500 focus:ring-green-500">
-                                <option value="gpt-4o">LSC AI</option>
+                                <option value="claude-sonnet-4-5" selected>LSC Pro (Balanced - Recommended)</option>
+                                <option value="claude-opus-4-6">LSC Max (Most Accurate)</option>
+                                <option value="claude-haiku-4-5">LSC Basis (Fastest)</option>
                             </select>
                         </div>
 

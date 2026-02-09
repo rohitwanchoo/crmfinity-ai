@@ -103,8 +103,17 @@ class TestNegativeDays extends Command
             $transactionsByDay = [];
             foreach ($month['transactions'] as $txn) {
                 $date = $txn['date'] ?? null;
-                if (!$date) continue;
-                $dateStr = is_string($date) ? $date : (string) $date;
+                if (empty($date)) continue;
+
+                // Ensure date is converted to string safely
+                if (is_object($date) && method_exists($date, '__toString')) {
+                    $dateStr = (string) $date;
+                } elseif (is_string($date)) {
+                    $dateStr = $date;
+                } else {
+                    continue; // Skip if we can't convert to string
+                }
+
                 if (!isset($transactionsByDay[$dateStr])) {
                     $transactionsByDay[$dateStr] = [];
                 }

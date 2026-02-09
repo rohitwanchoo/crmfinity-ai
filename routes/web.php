@@ -29,13 +29,16 @@ Route::middleware('auth')->group(function () {
     // Bank Statement Analyzer (OpenAI)
     Route::prefix('bankstatement')->name('bankstatement.')->group(function () {
         Route::get('/', [BankStatementController::class, 'index'])->name('index');
+        Route::get('/analyze', [BankStatementController::class, 'analyzeGet'])->name('analyze.get');
         Route::post('/analyze', [BankStatementController::class, 'analyze'])->name('analyze');
+        Route::get('/results', [BankStatementController::class, 'viewResults'])->name('view-results');
         Route::get('/history', [BankStatementController::class, 'history'])->name('history');
         Route::get('/session/{sessionId}', [BankStatementController::class, 'session'])->name('session');
         Route::get('/download/{sessionId}', [BankStatementController::class, 'downloadCsv'])->name('download');
         Route::post('/toggle-type', [BankStatementController::class, 'toggleType'])->name('toggle-type');
         Route::post('/toggle-revenue', [BankStatementController::class, 'toggleRevenue'])->name('toggle-revenue');
         Route::post('/toggle-mca', [BankStatementController::class, 'toggleMca'])->name('toggle-mca');
+        Route::post('/find-similar-transactions', [BankStatementController::class, 'findSimilarTransactions'])->name('find-similar-transactions');
         Route::post('/toggle-category', [BankStatementController::class, 'toggleCategory'])->name('toggle-category');
         Route::get('/categories', [BankStatementController::class, 'getCategories'])->name('categories');
         Route::post('/batch-classify', [BankStatementController::class, 'batchClassify'])->name('batch-classify');
