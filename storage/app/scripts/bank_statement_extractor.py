@@ -689,6 +689,78 @@ def extract_transactions_deterministic(pdf_path: str) -> Tuple[List[Dict], bool]
         return ([], False)
 
 
+def validate_statement_summary(statement_summary: Dict, transactions: List[Dict], debug_log: str) -> Dict:
+    """
+    Validate the statement_summary balances to catch extraction errors.
+
+    Common issues:
+    1. Beginning balance extracted with wrong sign
+    2. Ending balance doesn't match last transaction's ending_balance
+
+    Returns corrected statement_summary or original if validation passes.
+    """
+    if not statement_summary:
+        return statement_summary
+
+    beginning_balance = statement_summary.get("beginning_balance")
+    ending_balance = statement_summary.get("ending_balance")
+
+    # Skip validation if we don't have balances to validate
+    if beginning_balance is None:
+        return statement_summary
+
+    # Validation 1: Check if ending balance matches last transaction's ending_balance
+    if ending_balance is not None and transactions:
+        # Find last transaction with ending_balance
+        last_txn_balance = None
+        for txn in reversed(transactions):
+            if "ending_balance" in txn and txn["ending_balance"] is not None:
+                last_txn_balance = txn["ending_balance"]
+                break
+
+        if last_txn_balance is not None:
+            # If signs don't match, there might be an error
+            if (ending_balance < 0) != (last_txn_balance < 0):
+                with open(debug_log, 'a') as f:
+                    f.write("\n⚠️  WARNING: Ending balance sign mismatch!\n")
+                    f.write(f"  Statement summary ending: ${ending_balance:.2f}\n")
+                    f.write(f"  Last transaction ending: ${last_txn_balance:.2f}\n")
+
+    # Validation 2: Calculate expected ending balance from beginning + credits - debits
+    credits_total = sum(t["amount"] for t in transactions if t.get("type") == "credit")
+    debits_total = sum(t["amount"] for t in transactions if t.get("type") == "debit")
+    calculated_ending = beginning_balance + credits_total - debits_total
+
+    with open(debug_log, 'a') as f:
+        f.write("\n=== STATEMENT SUMMARY VALIDATION ===\n")
+        f.write(f"Beginning Balance: ${beginning_balance:.2f}\n")
+        f.write(f"Total Credits: ${credits_total:.2f}\n")
+        f.write(f"Total Debits: ${debits_total:.2f}\n")
+        f.write(f"Calculated Ending: ${calculated_ending:.2f}\n")
+        if ending_balance is not None:
+            f.write(f"Stated Ending: ${ending_balance:.2f}\n")
+            difference = abs(calculated_ending - ending_balance)
+            f.write(f"Difference: ${difference:.2f}\n")
+
+            # If difference is significant and beginning balance sign is suspect, flag it
+            if difference > 100 and beginning_balance < 0:
+                f.write("\n⚠️  WARNING: Large discrepancy detected!\n")
+                f.write("   Beginning balance may have wrong sign (negative when should be positive)\n")
+                f.write(f"   Try flipping sign: ${-beginning_balance:.2f}\n")
+
+                # Recalculate with flipped sign
+                flipped_ending = -beginning_balance + credits_total - debits_total
+                flipped_difference = abs(flipped_ending - ending_balance) if ending_balance else None
+
+                if flipped_difference and flipped_difference < difference:
+                    f.write(f"   ✓ Flipped calculation is closer: ${flipped_ending:.2f}\n")
+                    f.write(f"   ✓ New difference: ${flipped_difference:.2f}\n")
+                    f.write("   → AUTO-CORRECTING beginning_balance sign\n")
+                    statement_summary["beginning_balance"] = -beginning_balance
+
+    return statement_summary
+
+
 def extract_transactions_with_ai(text: str, api_key: str, model: str, corrections: List[Dict] = None) -> Tuple[List[Dict], Dict, Dict]:
     client = Anthropic(api_key=api_key)
     current_year = datetime.now().year
@@ -782,15 +854,41 @@ BALANCE EXTRACTION (IMPORTANT FOR ACCURACY):
 - Balance format examples: "$1,234.56" → 1234.56, "($500.00)" → -500.00 (negative)
 - Negative balances are shown in parentheses: "(1,234.56)" = -1234.56
 
-STATEMENT SUMMARY EXTRACTION (CRITICAL):
-- Look for the statement summary section (usually at the top or bottom)
-- Extract the "Beginning Balance", "Opening Balance", or "Previous Balance"
-- Extract the "Ending Balance", "Closing Balance", or "New Balance"
-- These are typically shown as summary lines, NOT individual transactions
-- Example formats:
-  "Beginning Balance: $1,234.56"
-  "Previous Balance.............$1,234.56"
-  "Opening Balance    $1,234.56"
+STATEMENT SUMMARY EXTRACTION (CRITICAL - HIGHEST PRIORITY):
+This is the MOST IMPORTANT part of extraction - get these balances correct!
+
+WHERE TO LOOK:
+1. FIRST: Check the top of the first page for "Account Summary" or "Statement Summary" section
+2. SECOND: Check the bottom of the last page for summary totals
+3. THIRD: Look for clearly labeled summary lines anywhere in the statement
+
+WHAT TO EXTRACT:
+- "Beginning Balance", "Opening Balance", "Previous Balance", or "Starting Balance"
+- "Ending Balance", "Closing Balance", "New Balance", or "Current Balance"
+- These are SUMMARY LINES, NOT individual transactions
+- They are usually in a box, table, or clearly separated section
+
+FORMAT EXAMPLES:
+  "Beginning Balance: $1,234.56" → 1234.56 (positive)
+  "Previous Balance.............$1,234.56" → 1234.56 (positive)
+  "Opening Balance    ($1,234.56)" → -1234.56 (negative - parentheses mean negative)
+  "Starting Balance    $1,234.56 CR" → 1234.56 (positive - CR means credit/positive)
+  "Beginning Balance    $1,234.56 DR" → -1234.56 (negative - DR means debit/negative)
+
+SIGN VALIDATION (VERY IMPORTANT):
+- Parentheses () around a balance = NEGATIVE
+- No parentheses and positive number = POSITIVE
+- "CR" suffix = POSITIVE (credit balance)
+- "DR" suffix = NEGATIVE (debit balance)
+- Most checking accounts have POSITIVE beginning balances
+- If you see a balance without parentheses and no DR suffix, it is POSITIVE
+
+EXAMPLES OF CORRECT EXTRACTION:
+  "$5,000.00" → 5000.00 (positive)
+  "($500.00)" → -500.00 (negative - has parentheses)
+  "$2,000 CR" → 2000.00 (positive - CR means credit)
+  "$2,000 DR" → -2000.00 (negative - DR means debit)
+
 - Return these as separate fields in the JSON output (not as transactions)
 
 OUTPUT FORMAT - Return ONLY valid JSON:
@@ -977,6 +1075,10 @@ OUTPUT FORMAT - Return ONLY valid JSON:
             f.write(f"  {t['date']} | ${t['amount']:.2f} | {t['description'][:50]}\n")
         f.write(f"\nCredit Total: ${sum(t['amount'] for t in credits):.2f}\n")
         f.write(f"Debit Total: ${sum(t['amount'] for t in debits):.2f}\n")
+
+    # Validate statement_summary balances
+    if statement_summary and validated:
+        statement_summary = validate_statement_summary(statement_summary, validated, debug_log)
 
     return validated, usage, statement_summary
 
