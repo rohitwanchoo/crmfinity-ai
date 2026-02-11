@@ -12,6 +12,7 @@ class AnalysisSession extends Model
 
     protected $fillable = [
         'session_id',
+        'batch_id',
         'user_id',
         'application_id',
         'filename',

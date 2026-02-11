@@ -71,6 +71,9 @@ class BankStatementController extends Controller
         $model = $request->input('model', $defaultModel);
         $apiKey = config('services.anthropic.api_key') ?: env('ANTHROPIC_API_KEY');
 
+        // Generate a unique batch ID for all statements uploaded together
+        $batchId = 'BATCH-' . strtoupper(Str::random(16));
+
         if (!$apiKey) {
             return back()->with('error', 'Anthropic API key not configured. Please add ANTHROPIC_API_KEY to your .env file.');
         }
@@ -151,6 +154,7 @@ class BankStatementController extends Controller
                 // Save to database
                 $session = AnalysisSession::create([
                     'session_id' => $sessionId,
+                    'batch_id' => $batchId,
                     'user_id' => auth()->id(),
                     'filename' => $filename,
                     'bank_name' => $bankName,

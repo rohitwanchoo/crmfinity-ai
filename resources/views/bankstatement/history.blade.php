@@ -194,6 +194,7 @@
         $sessionsJson = $sessions->map(function($s) {
             return [
                 'session_id' => $s->session_id,
+                'batch_id' => $s->batch_id,
                 'filename' => $s->filename,
                 'total_transactions' => $s->total_transactions,
                 'total_credits' => $s->total_credits,
@@ -317,18 +318,22 @@
             }
         }
 
-        // Group sessions by upload time (within 5 minutes = same upload batch)
+        // Group sessions by batch_id (statements uploaded together)
         function groupSessionsByUpload() {
             const groups = [];
-            let currentGroup = null;
+            const batchMap = new Map();
 
             // Sort by timestamp descending
             const sorted = [...sessionsData].sort((a, b) => b.created_timestamp - a.created_timestamp);
 
             sorted.forEach(session => {
-                if (!currentGroup || (currentGroup.timestamp - session.created_timestamp) > 300) {
-                    // New group (more than 5 minutes apart)
-                    currentGroup = {
+                // If session has a batch_id, group by it. Otherwise, treat as individual.
+                const batchKey = session.batch_id || session.session_id;
+
+                if (!batchMap.has(batchKey)) {
+                    // New group
+                    const group = {
+                        batch_id: batchKey,
                         timestamp: session.created_timestamp,
                         date: session.created_at,
                         sessions: [session],
@@ -336,13 +341,15 @@
                         totalCredits: parseFloat(session.total_credits),
                         totalDebits: parseFloat(session.total_debits)
                     };
-                    groups.push(currentGroup);
+                    batchMap.set(batchKey, group);
+                    groups.push(group);
                 } else {
-                    // Same group
-                    currentGroup.sessions.push(session);
-                    currentGroup.totalTransactions += session.total_transactions;
-                    currentGroup.totalCredits += parseFloat(session.total_credits);
-                    currentGroup.totalDebits += parseFloat(session.total_debits);
+                    // Same batch - add to existing group
+                    const group = batchMap.get(batchKey);
+                    group.sessions.push(session);
+                    group.totalTransactions += session.total_transactions;
+                    group.totalCredits += parseFloat(session.total_credits);
+                    group.totalDebits += parseFloat(session.total_debits);
                 }
             });
 
