@@ -14,6 +14,7 @@ import json
 import sys
 import os
 import re
+import time
 from datetime import datetime
 from anthropic import Anthropic
 from typing import List, Dict, Tuple
@@ -79,26 +80,34 @@ def extract_text_with_ocr(pdf_path: str) -> Tuple[str, int]:
         raise FileNotFoundError(f"PDF file not found: {pdf_path}")
 
     try:
-        # Convert PDF pages to images at 200 DPI (balanced speed/accuracy)
-        # Reduced from 300 DPI for faster processing while maintaining quality
-        images = convert_from_path(pdf_path, dpi=200, fmt='jpeg')
+        # Convert PDF pages to images at 150 DPI (optimized for speed)
+        # Lower DPI = faster processing, still readable for bank statements
+        # Most bank statements are clear enough at 150 DPI
+        images = convert_from_path(pdf_path, dpi=150, fmt='jpeg', thread_count=4)
 
         if not images:
             raise Exception("Could not convert PDF to images")
 
         text_content = []
-        print(f"OCR: Processing {len(images)} pages...", file=sys.stderr)
-        for i, image in enumerate(images):
-            print(f"  Page {i+1}/{len(images)}...", end=' ', flush=True, file=sys.stderr)
+        total_pages = len(images)
+        print(f"OCR: Processing {total_pages} pages at 150 DPI (optimized for speed)...", file=sys.stderr)
+
+        # Limit OCR to first 10 pages to prevent excessive processing time
+        # Most bank statements are 1-5 pages
+        max_pages = min(total_pages, 10)
+        if total_pages > 10:
+            print(f"  WARNING: PDF has {total_pages} pages, limiting to first {max_pages} pages", file=sys.stderr)
+
+        for i, image in enumerate(images[:max_pages]):
+            print(f"  Page {i+1}/{max_pages}...", end=' ', flush=True, file=sys.stderr)
             # Run OCR on each image with optimized config
-            # PSM 6 = Assume uniform block of text
-            # PSM 4 = Assume a single column of text of variable sizes (better for statements)
-            # OEM 3 = Default, based on what is available (LSTM + legacy)
-            custom_config = r'--oem 3 --psm 4'
+            # PSM 6 = Assume uniform block of text (faster than PSM 4)
+            # OEM 1 = Neural nets LSTM only (faster than OEM 3)
+            custom_config = r'--oem 1 --psm 6'
             text = pytesseract.image_to_string(image, lang='eng', config=custom_config)
             if text and text.strip():
                 text_content.append(f"\n=== PAGE {i+1} ===\n{text}")
-            print("done", file=sys.stderr)
+            print("✓", file=sys.stderr)
 
         if not text_content:
             raise Exception("No text could be extracted via OCR")
@@ -114,8 +123,11 @@ def is_text_garbled(text: str) -> bool:
     Check if extracted text is garbled (contains too many CID references, encoding issues, or watermarks).
     CID references look like (cid:0), (cid:2), etc. and indicate font encoding problems.
     Watermarks create scattered single letters throughout the text.
+
+    NOTE: This is intentionally LESS strict to avoid triggering slow OCR unnecessarily.
+    We prefer to use slightly garbled text over waiting minutes for OCR.
     """
-    if not text or len(text) < 100:
+    if not text or len(text) < 50:  # Reduced from 100 to be less strict
         return True
 
     # Count CID references
@@ -146,9 +158,10 @@ def is_text_garbled(text: str) -> bool:
                 if single_letter_count / len(tokens) > 0.7:
                     single_letter_lines += 1
 
-    # If more than 3% of lines are watermark noise, consider it garbled
-    # Lowered threshold from 15% to 3% to catch watermarked PDFs
-    if total_lines > 0 and (single_letter_lines / total_lines) > 0.03:
+    # If more than 10% of lines are watermark noise, consider it garbled
+    # Increased threshold from 3% to 10% to avoid triggering OCR unnecessarily
+    # Most bank statements can be processed even with minor watermark noise
+    if total_lines > 0 and (single_letter_lines / total_lines) > 0.10:
         return True
 
     return False
@@ -177,19 +190,37 @@ def extract_text_from_pdf(pdf_path: str) -> Tuple[str, int]:
 
     # If no text was extracted or text is garbled, try alternative methods
     if not text_content or is_text_garbled(extracted_text):
+        print(f"⚠️  pdfplumber extraction {'failed' if not text_content else 'produced garbled text'}, trying PyMuPDF...", file=sys.stderr)
+
         # First try PyMuPDF (better font handling)
         try:
             pymupdf_text, pymupdf_pages = extract_text_with_pymupdf(pdf_path)
             # Check if PyMuPDF text is also garbled
             if not is_text_garbled(pymupdf_text):
+                print("✓ PyMuPDF extraction successful", file=sys.stderr)
                 return pymupdf_text, pymupdf_pages
+            else:
+                print("⚠️  PyMuPDF produced garbled text", file=sys.stderr)
         except Exception as pymupdf_error:
-            pass  # Continue to OCR if PyMuPDF fails
+            print(f"⚠️  PyMuPDF failed: {str(pymupdf_error)}", file=sys.stderr)
 
-        # If PyMuPDF also fails or produces garbled text, fall back to OCR
+        # Check if we have SOME usable text before falling back to OCR
+        # If we have at least 500 characters of text, use it even if slightly garbled
+        # This avoids slow OCR when text is mostly readable
+        if len(extracted_text) > 500:
+            print(f"ℹ️  Using pdfplumber text despite minor issues ({len(extracted_text)} chars available)", file=sys.stderr)
+            print("   Skipping OCR to save time", file=sys.stderr)
+            return extracted_text, pages
+
+        # Last resort: fall back to OCR (SLOW!)
+        print("⚠️  Falling back to OCR (this may take several minutes)...", file=sys.stderr)
         try:
             return extract_text_with_ocr(pdf_path)
         except Exception as ocr_error:
+            # If OCR fails but we had some text from pdfplumber, use that
+            if len(extracted_text) > 100:
+                print(f"⚠️  OCR failed, using pdfplumber text as fallback ({len(extracted_text)} chars)", file=sys.stderr)
+                return extracted_text, pages
             raise Exception(f"No text could be extracted from PDF. Text extraction (pdfplumber), PyMuPDF, and OCR all failed.")
 
     return extracted_text, pages
@@ -761,9 +792,74 @@ def validate_statement_summary(statement_summary: Dict, transactions: List[Dict]
     return statement_summary
 
 
+def call_claude_with_retry(client, model, max_tokens, temperature, system, messages, max_retries=5, allow_fallback=False):
+    """
+    Call Claude API with exponential backoff retry logic.
+    Retries on 529 (overloaded) and 500 (internal error) errors with increasing delays.
+    If allow_fallback=True and model is Haiku, will fallback to Sonnet after all retries fail.
+    """
+    current_model = model
+
+    for attempt in range(max_retries):
+        try:
+            response = client.messages.create(
+                model=current_model,
+                max_tokens=max_tokens,
+                temperature=temperature,
+                system=system,
+                messages=messages
+            )
+            return response
+        except Exception as e:
+            error_str = str(e)
+            # Check if it's a retryable error (529 overloaded, 500 internal error, or 503 service unavailable)
+            is_retryable = any(code in error_str for code in ['529', '500', '503']) or \
+                          any(keyword in error_str.lower() for keyword in ['overloaded', 'internal server error', 'service unavailable'])
+
+            if is_retryable:
+                if attempt < max_retries - 1:
+                    # Exponential backoff: 5s, 10s, 20s, 40s, 80s
+                    wait_time = 5 * (2 ** attempt)
+                    error_type = "API Error" if '500' in error_str else "API Overloaded" if '529' in error_str else "Service Unavailable"
+                    print(f"⚠️  {error_type} (attempt {attempt + 1}/{max_retries}), retrying in {wait_time}s...", file=sys.stderr)
+                    time.sleep(wait_time)
+                    continue
+                else:
+                    # All retries exhausted - try fallback if enabled and model is Haiku
+                    if allow_fallback and current_model == "claude-haiku-4-5":
+                        print(f"❌ Haiku unavailable after {max_retries} attempts", file=sys.stderr)
+                        print(f"🔄 Falling back to Sonnet 4.5 for this statement...", file=sys.stderr)
+                        current_model = "claude-sonnet-4-5"
+                        # Reset attempt counter for fallback model (give it one try)
+                        try:
+                            response = client.messages.create(
+                                model=current_model,
+                                max_tokens=max_tokens,
+                                temperature=temperature,
+                                system=system,
+                                messages=messages
+                            )
+                            print(f"✅ Fallback to Sonnet successful!", file=sys.stderr)
+                            return response
+                        except Exception as fallback_error:
+                            print(f"❌ Sonnet fallback also failed: {str(fallback_error)}", file=sys.stderr)
+                            raise
+                    else:
+                        print(f"❌ API still unavailable after {max_retries} attempts", file=sys.stderr)
+                        raise
+            else:
+                # For non-retryable errors, raise immediately
+                raise
+
+
 def extract_transactions_with_ai(text: str, api_key: str, model: str, corrections: List[Dict] = None) -> Tuple[List[Dict], Dict, Dict]:
-    client = Anthropic(api_key=api_key)
+    # Increase timeout to 20 minutes for large statements with 200+ transactions
+    client = Anthropic(api_key=api_key, timeout=1200.0)  # 20 minutes in seconds
     current_year = datetime.now().year
+
+    # Track original model for potential fallback
+    original_model = model
+    fallback_attempted = False
 
     # Build corrections section for prompt
     corrections_prompt = build_corrections_prompt(corrections) if corrections else ""
@@ -952,14 +1048,16 @@ OUTPUT FORMAT - Return ONLY valid JSON:
             with open(debug_log, 'a') as f:
                 f.write(f"=== PROCESSING CHUNK {i+1}/{len(chunks)} ===\n")
 
-            response = client.messages.create(
+            response = call_claude_with_retry(
+                client=client,
                 model=model,
-                max_tokens=16000,
+                max_tokens=32000,  # Increased from 16000 to handle statements with 200+ transactions
                 temperature=0,
                 system=prompt,
                 messages=[
                     {"role": "user", "content": f"Bank Statement Text (Part {i+1} of {len(chunks)}):\n\n{chunk}"}
-                ]
+                ],
+                allow_fallback=True  # Allow fallback to Sonnet if Haiku fails
             )
 
             result = response.content[0].text
@@ -992,14 +1090,16 @@ OUTPUT FORMAT - Return ONLY valid JSON:
             f.write(f"Total tokens used: {usage['total_tokens']}\n\n")
     else:
         # Single request for small PDFs
-        response = client.messages.create(
+        response = call_claude_with_retry(
+            client=client,
             model=model,
-            max_tokens=16000,
+            max_tokens=32000,  # Increased from 16000 to handle statements with 200+ transactions
             temperature=0,
             system=prompt,
             messages=[
                 {"role": "user", "content": f"Bank Statement Text:\n\n{text}"}
-            ]
+            ],
+            allow_fallback=True  # Allow fallback to Sonnet if Haiku fails
         )
 
         result = response.content[0].text
@@ -1294,7 +1394,7 @@ def main():
 
     pdf_path = sys.argv[1]
     api_key = sys.argv[2]
-    model = sys.argv[3] if len(sys.argv) > 3 else "claude-opus-4-6"
+    model = sys.argv[3] if len(sys.argv) > 3 else "claude-haiku-4-5"  # Default to most cost-effective model
 
     # Parse corrections JSON if provided
     corrections = []

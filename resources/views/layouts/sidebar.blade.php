@@ -88,6 +88,16 @@
             <span x-show="!collapsed">Configuration</span>
         </a>
 
+        <!-- API Documentation -->
+        <a href="/api/documentation"
+           target="_blank"
+           class="sidebar-link {{ request()->is('api/documentation') ? 'active' : '' }}">
+            <svg class="sidebar-link-icon" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10 20l4-16m4 4l4 4-4 4M6 16l-4-4 4-4" />
+            </svg>
+            <span x-show="!collapsed">API Documentation</span>
+        </a>
+
         <!-- Profile -->
         <a href="{{ route('profile.edit') }}"
            class="sidebar-link {{ request()->routeIs('profile.*') ? 'active' : '' }}">

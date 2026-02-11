@@ -43,7 +43,7 @@ return [
 
     'anthropic' => [
         'api_key' => env('ANTHROPIC_API_KEY'),
-        'default_model' => env('ANTHROPIC_DEFAULT_MODEL', 'claude-opus-4-6'),  // Use Claude Opus 4.6 for superior accuracy
+        'default_model' => env('ANTHROPIC_DEFAULT_MODEL', 'claude-haiku-4-5'),  // Use Claude Haiku 4.5 for fastest and most cost-effective analysis
         'version' => env('ANTHROPIC_VERSION', '2023-06-01'),
         'max_tokens' => env('ANTHROPIC_MAX_TOKENS', 16000),
     ],
