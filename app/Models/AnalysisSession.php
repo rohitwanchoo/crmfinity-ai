@@ -32,6 +32,9 @@ class AnalysisSession extends Model
         'analysis_type',
         'model_used',
         'api_cost',
+        'input_tokens',
+        'output_tokens',
+        'total_tokens',
         'beginning_balance',
         'ending_balance',
     ];
@@ -51,6 +54,9 @@ class AnalysisSession extends Model
         'high_confidence_count' => 'integer',
         'medium_confidence_count' => 'integer',
         'low_confidence_count' => 'integer',
+        'input_tokens' => 'integer',
+        'output_tokens' => 'integer',
+        'total_tokens' => 'integer',
     ];
 
     protected static function boot()
@@ -77,6 +83,11 @@ class AnalysisSession extends Model
     public function transactions()
     {
         return $this->hasMany(AnalyzedTransaction::class);
+    }
+
+    public function apiUsageLogs()
+    {
+        return $this->hasMany(ApiUsageLog::class);
     }
 
     /**

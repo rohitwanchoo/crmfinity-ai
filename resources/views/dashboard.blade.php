@@ -108,12 +108,13 @@
             </div>
         </a>
 
-        <!-- Total Detections -->
-        <div class="stat-card">
+        <!-- API Usage Cost -->
+        <a href="{{ route('api-usage.index') }}" class="stat-card hover:shadow-lg transition-shadow duration-200">
             <div class="flex items-center justify-between">
                 <div>
-                    <p class="stat-card-label">Total Detections</p>
-                    <p class="stat-card-value mt-1">{{ number_format($stats['total_detections']) }}</p>
+                    <p class="stat-card-label">API Cost (30d)</p>
+                    <p class="stat-card-value mt-1">${{ number_format($stats['api_cost'] ?? 0, 2) }}</p>
+                    <!-- DEBUG: {{ $stats['api_cost'] ?? 'NULL' }} -->
                 </div>
                 <div class="stat-card-icon bg-green-100">
                     <svg class="w-6 h-6 text-green-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -121,10 +122,13 @@
                     </svg>
                 </div>
             </div>
-            <div class="mt-4 flex items-center text-xs">
-                <span class="text-secondary-500">MCA patterns identified</span>
+            <div class="mt-4 flex items-center justify-between text-xs">
+                <span class="text-secondary-500">{{ number_format($stats['api_requests']) }} requests</span>
+                <svg class="w-4 h-4 text-secondary-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5l7 7-7 7" />
+                </svg>
             </div>
-        </div>
+        </a>
     </div>
 
     <!-- Application Status Overview -->

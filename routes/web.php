@@ -1,5 +1,6 @@
 <?php
 
+use App\Http\Controllers\ApiUsageController;
 use App\Http\Controllers\ApplicationController;
 use App\Http\Controllers\BankStatementController;
 use App\Http\Controllers\ConfigurationController;
@@ -130,6 +131,13 @@ Route::middleware('auth')->group(function () {
         Route::put('/{integration}', [ConfigurationController::class, 'update'])->name('update');
         Route::post('/{integration}/test', [ConfigurationController::class, 'test'])->name('test');
         Route::post('/{integration}/toggle', [ConfigurationController::class, 'toggle'])->name('toggle');
+    });
+
+    // API Usage Tracking
+    Route::prefix('api-usage')->name('api-usage.')->group(function () {
+        Route::get('/', [ApiUsageController::class, 'index'])->name('index');
+        Route::get('/stats', [ApiUsageController::class, 'getStats'])->name('stats');
+        Route::get('/export', [ApiUsageController::class, 'exportCsv'])->name('export');
     });
 
     // Training (ML Model Training)

@@ -2,6 +2,8 @@
 
 namespace App\Http\Controllers;
 
+use App\Models\AnalysisSession;
+use App\Models\ApiUsageLog;
 use App\Models\LearnedPattern;
 use App\Models\MCAApplication;
 use App\Models\McaPattern;
@@ -21,6 +23,36 @@ class DashboardController extends Controller
         $knownLenders = McaPattern::getKnownLenders();
         $knownDebtCollectors = McaPattern::getKnownDebtCollectors();
 
+        // Get API usage statistics from historical analysis sessions (last 30 days)
+        $startDate = now()->subDays(30);
+        $endDate = now();
+
+        $totalCost = AnalysisSession::where('created_at', '>=', $startDate)
+            ->where('created_at', '<=', $endDate)
+            ->sum('api_cost');
+
+        $totalTokens = AnalysisSession::where('created_at', '>=', $startDate)
+            ->where('created_at', '<=', $endDate)
+            ->sum('total_tokens');
+
+        $totalRequests = AnalysisSession::where('created_at', '>=', $startDate)
+            ->where('created_at', '<=', $endDate)
+            ->whereNotNull('api_cost')
+            ->count();
+
+        $apiStats = [
+            'total_cost' => (float) $totalCost,
+            'total_tokens' => (int) $totalTokens,
+            'total_requests' => $totalRequests,
+        ];
+
+        \Log::info('Dashboard API Stats', [
+            'total_cost' => $totalCost,
+            'total_tokens' => $totalTokens,
+            'total_requests' => $totalRequests,
+            'apiStats_array' => $apiStats,
+        ]);
+
         // Get dashboard statistics
         $stats = [
             'total_sessions' => TrainingSession::count(),
@@ -37,7 +69,12 @@ class DashboardController extends Controller
                 ->latest()
                 ->take(5)
                 ->get(),
+            'api_cost' => $apiStats['total_cost'],
+            'api_tokens' => $apiStats['total_tokens'],
+            'api_requests' => $apiStats['total_requests'],
         ];
+
+        \Log::info('Stats array api_cost value', ['api_cost' => $stats['api_cost']]);
 
         // Top lenders by detection count
         $topLenders = McaPattern::select('lender_id', 'lender_name')
