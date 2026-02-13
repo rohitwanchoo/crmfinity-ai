@@ -11,6 +11,7 @@ use App\Models\RevenueClassification;
 use App\Models\McaPattern;
 use App\Models\TransactionCategory;
 use App\Services\NsfAndNegativeDaysCalculator;
+use App\Jobs\ProcessBankStatement;
 
 class BankStatementController extends Controller
 {
@@ -58,6 +59,9 @@ class BankStatementController extends Controller
     /**
      * Analyze uploaded bank statement using OpenAI.
      */
+    /**
+     * Analyze uploaded bank statement PDFs (dispatch to queue for parallel processing).
+     */
     public function analyze(Request $request)
     {
         $request->validate([
@@ -66,8 +70,7 @@ class BankStatementController extends Controller
             'model' => 'nullable|in:claude-opus-4-6,claude-sonnet-4-5,claude-haiku-4-5',
         ]);
 
-        $results = [];
-        $defaultModel = config('services.anthropic.default_model', 'claude-opus-4-6');
+        $defaultModel = config('services.anthropic.default_model', 'claude-haiku-4-5');
         $model = $request->input('model', $defaultModel);
         $apiKey = config('services.anthropic.api_key') ?: env('ANTHROPIC_API_KEY');
 
@@ -78,265 +81,54 @@ class BankStatementController extends Controller
             return back()->with('error', 'Anthropic API key not configured. Please add ANTHROPIC_API_KEY to your .env file.');
         }
 
+        $uploadPath = storage_path('app/uploads');
+        if (!file_exists($uploadPath)) {
+            mkdir($uploadPath, 0755, true);
+        }
+
+        $jobsDispatched = [];
+
+        // Save files and dispatch jobs for parallel processing
         foreach ($request->file('statements') as $file) {
             $filename = $file->getClientOriginalName();
             $sessionId = Str::uuid()->toString();
-
-            // Save the file
-            $uploadPath = storage_path('app/uploads');
-            if (!file_exists($uploadPath)) {
-                mkdir($uploadPath, 0755, true);
-            }
-
             $savedPath = $uploadPath . '/' . $sessionId . '_' . $filename;
+            
+            // Save the file
             $file->move($uploadPath, $sessionId . '_' . $filename);
 
-            try {
-                // Get learned corrections for AI training
-                $corrections = \App\Models\TransactionCorrection::select('description_pattern', 'correct_type')
-                    ->orderBy('usage_count', 'desc')
-                    ->limit(50)
-                    ->get()
-                    ->toArray();
-                $correctionsJson = json_encode($corrections);
+            // Dispatch job to queue for parallel processing
+            ProcessBankStatement::dispatch(
+                $sessionId,
+                $batchId,
+                $filename,
+                $savedPath,
+                $model,
+                $apiKey,
+                auth()->id()
+            );
 
-                // Run Python script with corrections
-                // Redirect stderr to a separate temp file so debug messages don't mix with JSON output
-                $scriptPath = storage_path('app/scripts/bank_statement_extractor.py');
-                $stderrFile = storage_path('logs/python_stderr_' . $sessionId . '.log');
-                $command = sprintf(
-                    'python3 %s %s %s %s %s 2>%s',
-                    escapeshellarg($scriptPath),
-                    escapeshellarg($savedPath),
-                    escapeshellarg($apiKey),
-                    escapeshellarg($model),
-                    escapeshellarg($correctionsJson),
-                    escapeshellarg($stderrFile)
-                );
+            $jobsDispatched[] = [
+                'session_id' => $sessionId,
+                'filename' => $filename,
+                'batch_id' => $batchId,
+            ];
 
-                $output = shell_exec($command);
-
-                // Clean up: extract only the JSON part if there's any extra text
-                // The JSON should be the last complete JSON object in the output
-                $lines = explode("\n", trim($output));
-                $jsonLine = end($lines);
-
-                // If the last line doesn't look like JSON, try to find it
-                if (!str_starts_with(trim($jsonLine), '{')) {
-                    foreach (array_reverse($lines) as $line) {
-                        if (str_starts_with(trim($line), '{')) {
-                            $jsonLine = $line;
-                            break;
-                        }
-                    }
-                }
-
-                $data = json_decode($jsonLine, true);
-
-                if (!$data || !isset($data['success'])) {
-                    // Read stderr for debugging if JSON parsing failed
-                    $stderr = file_exists($stderrFile) ? file_get_contents($stderrFile) : '';
-                    throw new \Exception('Failed to parse Python script output. Output: ' . substr($output, 0, 200) . '... Stderr: ' . substr($stderr, 0, 200));
-                }
-
-                // Clean up stderr log file
-                if (file_exists($stderrFile)) {
-                    @unlink($stderrFile);
-                }
-
-                if (!$data['success']) {
-                    throw new \Exception($data['error'] ?? 'Unknown error from Python script');
-                }
-
-                // Detect bank name from metadata or filename
-                $bankName = $data['metadata']['bank_name'] ?? $this->detectBankName($filename);
-
-                // Save to database
-                $session = AnalysisSession::create([
-                    'session_id' => $sessionId,
-                    'batch_id' => $batchId,
-                    'user_id' => auth()->id(),
-                    'filename' => $filename,
-                    'bank_name' => $bankName,
-                    'pages' => $data['metadata']['pages'] ?? 1,
-                    'total_transactions' => $data['summary']['total_transactions'],
-                    'total_credits' => $data['summary']['credit_total'],
-                    'total_debits' => $data['summary']['debit_total'],
-                    'total_returned' => $data['summary']['returned_total'] ?? 0,
-                    'returned_count' => $data['summary']['returned_count'] ?? 0,
-                    'net_flow' => $data['summary']['net_balance'],
-                    'high_confidence_count' => $data['summary']['total_transactions'],
-                    'medium_confidence_count' => 0,
-                    'low_confidence_count' => 0,
-                    'analysis_type' => 'claude',
-                    'model_used' => $model,
-                    'api_cost' => $data['api_cost']['total_cost'] ?? 0,
-                    'beginning_balance' => isset($data['statement_summary']['beginning_balance']) ? $data['statement_summary']['beginning_balance'] : null,
-                    'ending_balance' => isset($data['statement_summary']['ending_balance']) ? $data['statement_summary']['ending_balance'] : null,
-                ]);
-
-                // Save transactions
-                \Log::info("Starting to save transactions", [
-                    'session_id' => $sessionId,
-                    'transaction_count' => count($data['transactions'] ?? []),
-                ]);
-
-                foreach ($data['transactions'] as $index => $txn) {
-                    try {
-                        $type = $txn['type'] ?? 'debit'; // Default to debit if not specified
-                        $description = $txn['description'] ?? 'Unknown';
-
-                        // Auto-assign category based on description
-                        $category = null;
-                        $categoryData = TransactionCategory::getCategoryForDescription($description, $type);
-                        if ($categoryData) {
-                            $category = $categoryData['category'];
-                        }
-
-                        $transactionData = [
-                            'analysis_session_id' => $session->id,
-                            'transaction_date' => $txn['date'] ?? date('Y-m-d'),
-                            'description' => $description,
-                            'amount' => $txn['amount'] ?? 0,
-                            'type' => $type,
-                            'original_type' => $type,
-                            'confidence' => 1.0,
-                            'confidence_label' => 'high',
-                            'category' => $category,
-                        ];
-
-                        // Add balance if available and calculate beginning balance
-                        if (isset($txn['ending_balance'])) {
-                            $endingBalance = (float) $txn['ending_balance'];
-                            $amount = (float) ($txn['amount'] ?? 0);
-
-                            $transactionData['ending_balance'] = $endingBalance;
-
-                            // Calculate beginning balance:
-                            // For credits: beginning_balance = ending_balance - amount
-                            // For debits: beginning_balance = ending_balance + amount
-                            if ($type === 'credit') {
-                                $transactionData['beginning_balance'] = $endingBalance - $amount;
-                            } else {
-                                $transactionData['beginning_balance'] = $endingBalance + $amount;
-                            }
-                        }
-
-                        AnalyzedTransaction::create($transactionData);
-                    } catch (\Exception $e) {
-                        \Log::error("Failed to save transaction", [
-                            'session_id' => $sessionId,
-                            'transaction_index' => $index,
-                            'transaction_data' => $txn,
-                            'error' => $e->getMessage(),
-                            'file' => $e->getFile(),
-                            'line' => $e->getLine(),
-                        ]);
-                        throw $e; // Re-throw to stop processing
-                    }
-                }
-
-                \Log::info("Finished saving transactions", [
-                    'session_id' => $sessionId,
-                    'transactions_saved' => $session->transactions()->count(),
-                ]);
-
-                // Reload transactions from database to get IDs and any applied logic
-                $transactionsWithIds = $session->transactions()
-                    ->orderBy('transaction_date')
-                    ->get()
-                    ->map(function ($txn) {
-                        // Category should already be set from creation, but ensure it's populated
-                        $category = $txn->category;
-                        if (!$category) {
-                            $categoryData = TransactionCategory::getCategoryForDescription($txn->description, $txn->type);
-                            if ($categoryData) {
-                                $category = $categoryData['category'];
-                                $txn->update(['category' => $category]);
-                            }
-                        }
-
-                        return [
-                            'id' => $txn->id,
-                            'date' => $txn->transaction_date,
-                            'description' => $txn->description,
-                            'amount' => (float) $txn->amount,
-                            'type' => $txn->type,
-                            'original_type' => $txn->original_type,
-                            'was_corrected' => $txn->was_corrected ?? false,
-                            'is_mca_payment' => $txn->is_mca_payment ?? false,
-                            'mca_lender' => $txn->mca_lender ?? null,
-                            'category' => $category,
-                            'ending_balance' => $txn->ending_balance !== null ? (float) $txn->ending_balance : null,
-                            'beginning_balance' => $txn->beginning_balance !== null ? (float) $txn->beginning_balance : null,
-                        ];
-                    })
-                    ->toArray();
-
-                // Group transactions by month and calculate true revenue
-                // Pass session object to enable accurate negative days calculation using beginning_balance
-                $monthlyData = $this->groupTransactionsByMonth($transactionsWithIds, $session);
-
-                // Recalculate summary from actual saved transactions (not Python output)
-                $actualCredits = $session->transactions()->where('type', 'credit')->get();
-                $actualDebits = $session->transactions()->where('type', 'debit')->get();
-
-                $correctedSummary = [
-                    'total_transactions' => $session->transactions()->count(),
-                    'credit_count' => $actualCredits->count(),
-                    'debit_count' => $actualDebits->count(),
-                    'credit_total' => $actualCredits->sum('amount'),
-                    'debit_total' => $actualDebits->sum('amount'),
-                    'net_balance' => $actualCredits->sum('amount') - $actualDebits->sum('amount'),
-                    'returned_count' => $data['summary']['returned_count'] ?? 0,
-                    'returned_total' => $data['summary']['returned_total'] ?? 0,
-                ];
-
-                // Get MCA analysis from Python script output
-                $mcaAnalysis = $data['mca_analysis'] ?? [
-                    'total_mca_count' => 0,
-                    'total_mca_payments' => 0,
-                    'total_mca_amount' => 0,
-                    'lenders' => []
-                ];
-
-                $results[] = [
-                    'filename' => $filename,
-                    'session_id' => $sessionId,
-                    'success' => true,
-                    'summary' => $correctedSummary,
-                    'api_cost' => $data['api_cost'],
-                    'transactions' => $transactionsWithIds,
-                    'monthly_data' => $monthlyData,
-                    'mca_analysis' => $mcaAnalysis,
-                ];
-
-            } catch (\Exception $e) {
-                Log::error('Bank statement analysis failed', [
-                    'file' => $filename,
-                    'error' => $e->getMessage()
-                ]);
-
-                $results[] = [
-                    'filename' => $filename,
-                    'success' => false,
-                    'error' => $e->getMessage(),
-                ];
-            }
+            Log::info("Job dispatched to queue", [
+                'session_id' => $sessionId,
+                'filename' => $filename,
+                'batch_id' => $batchId,
+            ]);
         }
 
-        // Check if all failed
-        $allFailed = collect($results)->every(fn($r) => !$r['success']);
-        if ($allFailed) {
-            return back()->with('error', 'All files failed to process. ' . ($results[0]['error'] ?? ''));
-        }
+        $count = count($jobsDispatched);
+        $message = $count === 1 
+            ? "1 statement queued for processing. You'll see results in the history page shortly."
+            : "{$count} statements queued for parallel processing. Check the history page for results.";
 
-        // Store results in session for viewing
-        session()->put('analysis_results', $results);
-
-        // Redirect to results page (Post-Redirect-Get pattern)
-        return redirect()->route('bankstatement.view-results')->with('success', 'Analysis completed successfully!');
+        return redirect()->route('bankstatement.history')->with('success', $message);
     }
+
 
     /**
      * View analysis results (GET route after POST redirect).
@@ -1854,9 +1646,102 @@ class BankStatementController extends Controller
         $isFirstMonth = true;
         foreach ($monthlyGroups as &$month) {
             $month['true_revenue'] = $month['deposits'] - $month['adjustments'];
-            $month['average_daily'] = $month['days_in_month'] > 0
+
+            // Calculate average daily balance properly using ALL calendar days in the statement period
+            // Step 1: Extract statement period (min/max transaction dates)
+            $transactionDates = array_column($month['transactions'], 'date');
+            if (empty($transactionDates)) {
+                $month['average_daily_balance'] = null;
+                $month['average_daily_balance_method'] = 'no_transactions';
+                $month['balance_days_count'] = 0;
+                $month['statement_period_days'] = 0;
+            } else {
+                $periodStart = min($transactionDates);
+                $periodEnd = max($transactionDates);
+
+                // Step 2: Group transactions by date
+                $transactionsByDate = [];
+                $hasEndingBalances = false;
+                foreach ($month['transactions'] as $txn) {
+                    $date = $txn['date'] ?? null;
+                    if (!$date) continue;
+
+                    if (!isset($transactionsByDate[$date])) {
+                        $transactionsByDate[$date] = [];
+                    }
+                    $transactionsByDate[$date][] = $txn;
+
+                    // Check if we have ending balance data
+                    if (isset($txn['ending_balance']) && $txn['ending_balance'] !== null) {
+                        $hasEndingBalances = true;
+                    }
+                }
+
+                // Step 3: Build daily balance table for ALL calendar days in period
+                if ($hasEndingBalances) {
+                    $dailyBalances = [];
+                    $currentBalance = $openingBalance; // From session or first transaction
+
+                    // If no opening balance, try to get from first transaction
+                    if ($currentBalance === null && !empty($month['transactions'])) {
+                        $firstTxn = $month['transactions'][0];
+                        if (isset($firstTxn['beginning_balance'])) {
+                            $currentBalance = (float) $firstTxn['beginning_balance'];
+                        }
+                    }
+
+                    // Iterate through EVERY calendar day in the statement period
+                    $currentDate = new \DateTime($periodStart);
+                    $endDate = new \DateTime($periodEnd);
+
+                    while ($currentDate <= $endDate) {
+                        $dateStr = $currentDate->format('Y-m-d');
+
+                        if (isset($transactionsByDate[$dateStr])) {
+                            // Day has transactions - get last transaction's ending balance
+                            $dayTransactions = $transactionsByDate[$dateStr];
+                            $lastTxn = end($dayTransactions);
+
+                            if (isset($lastTxn['ending_balance']) && $lastTxn['ending_balance'] !== null) {
+                                $currentBalance = (float) $lastTxn['ending_balance'];
+                            }
+                        }
+
+                        // Store balance for this day (from transaction or carried forward)
+                        if ($currentBalance !== null) {
+                            $dailyBalances[$dateStr] = $currentBalance;
+                        }
+
+                        // Move to next day
+                        $currentDate->modify('+1 day');
+                    }
+
+                    // Step 4: Calculate ADB = sum of all daily balances / total calendar days
+                    if (count($dailyBalances) > 0) {
+                        $month['average_daily_balance'] = array_sum($dailyBalances) / count($dailyBalances);
+                        $month['average_daily_balance_method'] = 'actual_balances';
+                        $month['balance_days_count'] = count($dailyBalances);
+                        $month['statement_period_days'] = count($dailyBalances);
+                    } else {
+                        $month['average_daily_balance'] = null;
+                        $month['average_daily_balance_method'] = 'no_opening_balance';
+                        $month['balance_days_count'] = 0;
+                        $month['statement_period_days'] = 0;
+                    }
+                } else {
+                    // No ending balances available in statement
+                    $month['average_daily_balance'] = null;
+                    $month['average_daily_balance_method'] = 'no_balance_data';
+                    $month['balance_days_count'] = 0;
+                    $month['statement_period_days'] = 0;
+                }
+            }
+
+            // Keep the old average_daily for backward compatibility (this is average daily REVENUE, not balance)
+            $month['average_daily_revenue'] = $month['days_in_month'] > 0
                 ? $month['true_revenue'] / $month['days_in_month']
                 : 0;
+            $month['average_daily'] = $month['average_daily_revenue']; // Deprecated, use average_daily_revenue instead
 
             // Calculate negative days and NSF using the comprehensive calculator
             $calculator = new NsfAndNegativeDaysCalculator();
@@ -1929,8 +1814,10 @@ class BankStatementController extends Controller
             'nsf_count' => 0,
             'nsf_fee_count' => 0,
             'returned_item_count' => 0,
-            'average_daily' => 0,
+            'average_daily_revenue' => 0,
+            'average_daily_balance' => 0,
             'negative_days' => 0,
+            'balance_months_count' => 0, // How many months have balance data
         ];
 
         $monthCount = count($monthlyGroups);
@@ -1945,8 +1832,14 @@ class BankStatementController extends Controller
             $totals['nsf_count'] += $month['nsf_count']; // Unique NSF events
             $totals['nsf_fee_count'] += $month['nsf_fee_count'] ?? 0;
             $totals['returned_item_count'] += $month['returned_item_count'] ?? 0;
-            $totals['average_daily'] += $month['average_daily'];
+            $totals['average_daily_revenue'] += $month['average_daily_revenue'];
             $totals['negative_days'] += $month['negative_days'];
+
+            // Sum average daily balances (only for months that have balance data)
+            if (isset($month['average_daily_balance']) && $month['average_daily_balance'] !== null) {
+                $totals['average_daily_balance'] += $month['average_daily_balance'];
+                $totals['balance_months_count']++;
+            }
         }
 
         // Calculate averages
@@ -1956,7 +1849,11 @@ class BankStatementController extends Controller
             'true_revenue' => $monthCount > 0 ? $totals['true_revenue'] / $monthCount : 0,
             'debits' => $monthCount > 0 ? $totals['debits'] / $monthCount : 0,
             'deposit_count' => $monthCount > 0 ? $totals['deposit_count'] / $monthCount : 0,
-            'average_daily' => $monthCount > 0 ? $totals['average_daily'] / $monthCount : 0,
+            'average_daily_revenue' => $monthCount > 0 ? $totals['average_daily_revenue'] / $monthCount : 0,
+            'average_daily_balance' => $totals['balance_months_count'] > 0
+                ? $totals['average_daily_balance'] / $totals['balance_months_count']
+                : null,
+            'average_daily' => $monthCount > 0 ? $totals['average_daily_revenue'] / $monthCount : 0, // Deprecated
         ];
 
         return [

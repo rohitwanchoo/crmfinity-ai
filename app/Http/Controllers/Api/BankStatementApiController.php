@@ -3,6 +3,7 @@
 namespace App\Http\Controllers\Api;
 
 use App\Http\Controllers\Controller;
+use App\Jobs\ProcessBankStatement;
 use App\Models\AnalysisSession;
 use App\Models\AnalyzedTransaction;
 use App\Models\LearnedTransactionPattern;
@@ -64,8 +65,8 @@ class BankStatementApiController extends Controller
      */
     #[OA\Post(
         path: '/bank-statement/analyze',
-        summary: 'Analyze bank statement PDF(s)',
-        description: 'Upload one or more PDF bank statements for AI-powered analysis. Returns transaction data, monthly summaries, and MCA detection results.',
+        summary: 'Analyze bank statement PDF(s) asynchronously',
+        description: 'Upload one or more PDF bank statements for AI-powered analysis. Files are queued for parallel processing. Returns session IDs immediately. Use the sessions endpoint to retrieve results once processing completes.',
         tags: ['Bank Statement Analysis'],
         security: [['sanctumAuth' => []]],
         requestBody: new OA\RequestBody(
@@ -84,9 +85,9 @@ class BankStatementApiController extends Controller
                         new OA\Property(
                             property: 'model',
                             type: 'string',
-                            enum: ['gpt-4o', 'gpt-4o-mini'],
-                            default: 'gpt-4o',
-                            description: 'OpenAI model to use for analysis'
+                            enum: ['claude-opus-4-6', 'claude-sonnet-4-5', 'claude-haiku-4-5'],
+                            default: 'claude-haiku-4-5',
+                            description: 'Claude model to use for analysis'
                         )
                     ]
                 )
@@ -94,15 +95,24 @@ class BankStatementApiController extends Controller
         ),
         responses: [
             new OA\Response(
-                response: 200,
-                description: 'Analysis completed successfully',
+                response: 202,
+                description: 'Files queued for processing successfully',
                 content: new OA\JsonContent(
                     properties: [
                         new OA\Property(property: 'success', type: 'boolean', example: true),
+                        new OA\Property(property: 'message', type: 'string', example: '2 statements queued for parallel processing'),
+                        new OA\Property(property: 'batch_id', type: 'string', example: 'BATCH-ABC123DEF4567890'),
                         new OA\Property(
-                            property: 'results',
+                            property: 'sessions',
                             type: 'array',
-                            items: new OA\Items(ref: '#/components/schemas/AnalysisResult')
+                            items: new OA\Items(
+                                properties: [
+                                    new OA\Property(property: 'session_id', type: 'string', format: 'uuid'),
+                                    new OA\Property(property: 'filename', type: 'string'),
+                                    new OA\Property(property: 'status', type: 'string', example: 'queued')
+                                ],
+                                type: 'object'
+                            )
                         )
                     ]
                 )
@@ -114,7 +124,7 @@ class BankStatementApiController extends Controller
             ),
             new OA\Response(
                 response: 500,
-                description: 'Analysis failed',
+                description: 'Server error',
                 content: new OA\JsonContent(ref: '#/components/schemas/ErrorResponse')
             )
         ]
@@ -159,161 +169,74 @@ class BankStatementApiController extends Controller
         }
 
         $request->validate([
-            'model' => 'nullable|in:gpt-4o,gpt-4o-mini',
+            'model' => 'nullable|in:claude-opus-4-6,claude-sonnet-4-5,claude-haiku-4-5',
         ]);
 
-        $results = [];
-        $model = $request->input('model', 'gpt-4o');
-        $apiKey = config('services.openai.key') ?: env('OPENAI_API_KEY');
+        $defaultModel = config('services.anthropic.default_model', 'claude-haiku-4-5');
+        $model = $request->input('model', $defaultModel);
+        $apiKey = config('services.anthropic.api_key') ?: env('ANTHROPIC_API_KEY');
 
-        if (! $apiKey) {
+        if (!$apiKey) {
             return response()->json([
                 'success' => false,
-                'error' => 'OpenAI API key not configured',
+                'error' => 'Anthropic API key not configured. Please add ANTHROPIC_API_KEY to your .env file.',
             ], 500);
         }
 
+        // Generate a unique batch ID for all statements uploaded together
+        $batchId = 'BATCH-' . strtoupper(Str::random(16));
+
+        $uploadPath = storage_path('app/uploads');
+        if (!file_exists($uploadPath)) {
+            mkdir($uploadPath, 0755, true);
+        }
+
+        $jobsDispatched = [];
+
+        // Save files and dispatch jobs for parallel processing
         foreach ($statements as $file) {
             $filename = $file->getClientOriginalName();
             $sessionId = Str::uuid()->toString();
+            $savedPath = $uploadPath . '/' . $sessionId . '_' . $filename;
 
-            $uploadPath = storage_path('app/uploads');
-            if (! file_exists($uploadPath)) {
-                mkdir($uploadPath, 0755, true);
-            }
+            // Save the file
+            $file->move($uploadPath, $sessionId . '_' . $filename);
 
-            $savedPath = $uploadPath.'/'.$sessionId.'_'.$filename;
-            $file->move($uploadPath, $sessionId.'_'.$filename);
+            // Dispatch job to queue for parallel processing
+            ProcessBankStatement::dispatch(
+                $sessionId,
+                $batchId,
+                $filename,
+                $savedPath,
+                $model,
+                $apiKey,
+                auth()->id()
+            );
 
-            try {
-                // Get manual corrections for the AI prompt
-                $corrections = TransactionCorrection::select('description_pattern', 'correct_type')
-                    ->orderBy('usage_count', 'desc')
-                    ->limit(50)
-                    ->get()
-                    ->toArray();
+            $jobsDispatched[] = [
+                'session_id' => $sessionId,
+                'filename' => $filename,
+                'status' => 'queued',
+            ];
 
-                // Get learned patterns from historical analysis
-                $learnedPatterns = LearnedTransactionPattern::getPatternsForAI(100);
-
-                // Combine corrections and learned patterns for the AI
-                $allCorrections = array_merge($corrections, array_map(function ($p) {
-                    return [
-                        'description_pattern' => $p['pattern'],
-                        'correct_type' => $p['type'],
-                    ];
-                }, $learnedPatterns));
-
-                $correctionsJson = json_encode($allCorrections);
-
-                $scriptPath = storage_path('app/scripts/bank_statement_extractor.py');
-                $command = sprintf(
-                    'python3 %s %s %s %s %s 2>&1',
-                    escapeshellarg($scriptPath),
-                    escapeshellarg($savedPath),
-                    escapeshellarg($apiKey),
-                    escapeshellarg($model),
-                    escapeshellarg($correctionsJson)
-                );
-
-                $output = shell_exec($command);
-                $data = json_decode($output, true);
-
-                if (! $data || ! isset($data['success'])) {
-                    throw new \Exception('Failed to parse Python script output: '.($output ?: 'No output'));
-                }
-
-                if (! $data['success']) {
-                    throw new \Exception($data['error'] ?? 'Unknown error from Python script');
-                }
-
-                // Apply learned patterns to auto-correct transactions
-                $transactions = $data['transactions'];
-                $autoCorrected = LearnedTransactionPattern::applyToTransactions($transactions);
-
-                // Recalculate summary after corrections
-                $creditTxns = array_filter($transactions, fn($t) => $t['type'] === 'credit');
-                $debitTxns = array_filter($transactions, fn($t) => $t['type'] === 'debit');
-                $creditTotal = array_sum(array_column($creditTxns, 'amount'));
-                $debitTotal = array_sum(array_column($debitTxns, 'amount'));
-
-                $session = AnalysisSession::create([
-                    'session_id' => $sessionId,
-                    'user_id' => auth()->id(),
-                    'filename' => $filename,
-                    'pages' => $data['metadata']['pages'] ?? 1,
-                    'total_transactions' => count($transactions),
-                    'total_credits' => $creditTotal,
-                    'total_debits' => $debitTotal,
-                    'net_flow' => $creditTotal - $debitTotal,
-                    'high_confidence_count' => count($transactions),
-                    'medium_confidence_count' => 0,
-                    'low_confidence_count' => 0,
-                    'analysis_type' => 'openai',
-                    'model_used' => $model,
-                    'api_cost' => $data['api_cost']['total_cost'] ?? 0,
-                ]);
-
-                foreach ($transactions as $txn) {
-                    AnalyzedTransaction::create([
-                        'analysis_session_id' => $session->id,
-                        'transaction_date' => $txn['date'],
-                        'description' => $txn['description'],
-                        'amount' => $txn['amount'],
-                        'type' => $txn['type'],
-                        'original_type' => $txn['original_type'] ?? $txn['type'],
-                        'was_corrected' => $txn['auto_corrected'] ?? false,
-                        'confidence' => 1.0,
-                        'confidence_label' => 'high',
-                    ]);
-                }
-
-                // Learn from ALL transactions (store patterns for future use)
-                $patternsLearned = LearnedTransactionPattern::learnFromTransactions($transactions, auth()->id());
-
-                $monthlyData = $this->groupTransactionsByMonth($transactions);
-                $mcaAnalysis = $data['mca_analysis'] ?? $this->detectMcaPayments($transactions);
-
-                $results[] = [
-                    'filename' => $filename,
-                    'session_id' => $sessionId,
-                    'success' => true,
-                    'summary' => [
-                        'total_transactions' => count($transactions),
-                        'credit_count' => count($creditTxns),
-                        'debit_count' => count($debitTxns),
-                        'credit_total' => round($creditTotal, 2),
-                        'debit_total' => round($debitTotal, 2),
-                        'net_balance' => round($creditTotal - $debitTotal, 2),
-                    ],
-                    'api_cost' => $data['api_cost'],
-                    'transaction_count' => count($transactions),
-                    'monthly_data' => $monthlyData,
-                    'mca_analysis' => $mcaAnalysis,
-                    'learning' => [
-                        'patterns_learned' => $patternsLearned,
-                        'auto_corrected' => $autoCorrected,
-                        'total_patterns_in_db' => LearnedTransactionPattern::count(),
-                    ],
-                ];
-            } catch (\Exception $e) {
-                Log::error('Bank statement analysis failed', [
-                    'file' => $filename,
-                    'error' => $e->getMessage(),
-                ]);
-
-                $results[] = [
-                    'filename' => $filename,
-                    'success' => false,
-                    'error' => $e->getMessage(),
-                ];
-            }
+            Log::info("API: Job dispatched to queue", [
+                'session_id' => $sessionId,
+                'filename' => $filename,
+                'batch_id' => $batchId,
+            ]);
         }
+
+        $count = count($jobsDispatched);
+        $message = $count === 1
+            ? "1 statement queued for processing"
+            : "{$count} statements queued for parallel processing";
 
         return response()->json([
             'success' => true,
-            'results' => $results,
-        ]);
+            'message' => $message,
+            'batch_id' => $batchId,
+            'sessions' => $jobsDispatched,
+        ], 202);
     }
 
     /**
@@ -1336,9 +1259,127 @@ class BankStatementApiController extends Controller
             $debitsByMonth[$monthKey]['count']++;
         }
 
+        // Calculate average daily balance for each month (using ending balances if available)
+        $balancesByMonth = [];
+        $transactionsByMonthDate = [];
+        foreach ($transactions as $txn) {
+            $date = $txn['date'] ?? null;
+            if (!$date) continue;
+
+            $timestamp = strtotime($date);
+            if (!$timestamp) continue;
+
+            $monthKey = date('Y-m', $timestamp);
+
+            if (!isset($transactionsByMonthDate[$monthKey])) {
+                $transactionsByMonthDate[$monthKey] = [];
+            }
+            if (!isset($transactionsByMonthDate[$monthKey][$date])) {
+                $transactionsByMonthDate[$monthKey][$date] = [];
+            }
+            $transactionsByMonthDate[$monthKey][$date][] = $txn;
+        }
+
+        // Calculate average daily balance for each month using ALL calendar days
+        foreach ($transactionsByMonthDate as $monthKey => $dateGroups) {
+            // Step 1: Get statement period for this month
+            $monthDates = array_keys($dateGroups);
+            if (empty($monthDates)) {
+                $balancesByMonth[$monthKey] = [
+                    'average_daily_balance' => null,
+                    'method' => 'no_transactions',
+                    'days_count' => 0,
+                    'statement_period_days' => 0,
+                ];
+                continue;
+            }
+
+            $periodStart = min($monthDates);
+            $periodEnd = max($monthDates);
+
+            // Step 2: Check if we have ending balance data
+            $hasEndingBalances = false;
+            foreach ($dateGroups as $date => $dayTransactions) {
+                $lastTxn = end($dayTransactions);
+                if (isset($lastTxn['ending_balance']) && $lastTxn['ending_balance'] !== null) {
+                    $hasEndingBalances = true;
+                    break;
+                }
+            }
+
+            // Step 3: Build daily balance table for ALL calendar days in period
+            if ($hasEndingBalances) {
+                $dailyBalances = [];
+                $currentBalance = null;
+
+                // Try to get opening balance from first transaction
+                $firstDate = min($monthDates);
+                if (isset($dateGroups[$firstDate])) {
+                    $firstTxn = $dateGroups[$firstDate][0];
+                    if (isset($firstTxn['beginning_balance'])) {
+                        $currentBalance = (float) $firstTxn['beginning_balance'];
+                    }
+                }
+
+                // Iterate through EVERY calendar day in the statement period
+                $currentDate = new \DateTime($periodStart);
+                $endDate = new \DateTime($periodEnd);
+
+                while ($currentDate <= $endDate) {
+                    $dateStr = $currentDate->format('Y-m-d');
+
+                    if (isset($dateGroups[$dateStr])) {
+                        // Day has transactions - get last transaction's ending balance
+                        $dayTransactions = $dateGroups[$dateStr];
+                        $lastTxn = end($dayTransactions);
+
+                        if (isset($lastTxn['ending_balance']) && $lastTxn['ending_balance'] !== null) {
+                            $currentBalance = (float) $lastTxn['ending_balance'];
+                        }
+                    }
+
+                    // Store balance for this day (from transaction or carried forward)
+                    if ($currentBalance !== null) {
+                        $dailyBalances[$dateStr] = $currentBalance;
+                    }
+
+                    // Move to next day
+                    $currentDate->modify('+1 day');
+                }
+
+                // Step 4: Calculate ADB = sum of all daily balances / total calendar days
+                if (count($dailyBalances) > 0) {
+                    $balancesByMonth[$monthKey] = [
+                        'average_daily_balance' => array_sum($dailyBalances) / count($dailyBalances),
+                        'method' => 'actual_balances',
+                        'days_count' => count($dailyBalances),
+                        'statement_period_days' => count($dailyBalances),
+                    ];
+                } else {
+                    $balancesByMonth[$monthKey] = [
+                        'average_daily_balance' => null,
+                        'method' => 'no_opening_balance',
+                        'days_count' => 0,
+                        'statement_period_days' => 0,
+                    ];
+                }
+            } else {
+                $balancesByMonth[$monthKey] = [
+                    'average_daily_balance' => null,
+                    'method' => 'no_balance_data',
+                    'days_count' => 0,
+                    'statement_period_days' => 0,
+                ];
+            }
+        }
+
+        $totalAverageBalance = 0;
+        $balanceMonthsCount = 0;
+
         foreach ($monthlyBreakdown as $month) {
             $monthKey = $month['month_key'];
             $debits = $debitsByMonth[$monthKey] ?? ['amount' => 0, 'count' => 0];
+            $balanceInfo = $balancesByMonth[$monthKey] ?? ['average_daily_balance' => null, 'method' => 'no_data', 'days_count' => 0];
 
             $monthlyGroups[$monthKey] = [
                 'month_key' => $monthKey,
@@ -1354,7 +1395,11 @@ class BankStatementApiController extends Controller
                 'debit_count' => $debits['count'],
                 'days_in_month' => $month['calendar_days'],
                 'business_days' => $month['business_days'],
-                'average_daily' => $month['daily_true_revenue'],
+                'average_daily_revenue' => $month['daily_true_revenue'],
+                'average_daily' => $month['daily_true_revenue'], // Deprecated, use average_daily_revenue
+                'average_daily_balance' => $balanceInfo['average_daily_balance'],
+                'average_daily_balance_method' => $balanceInfo['method'],
+                'balance_days_count' => $balanceInfo['days_count'],
                 'revenue_ratio' => $month['revenue_ratio'],
                 // Include classification details for transparency
                 'excluded_transactions' => $month['excluded_transactions'] ?? [],
@@ -1366,6 +1411,12 @@ class BankStatementApiController extends Controller
             $totals['true_revenue'] += $month['true_revenue'];
             $totals['needs_review'] += $month['needs_review'];
             $totals['debits'] += $debits['amount'];
+
+            // Sum average daily balances for overall average
+            if ($balanceInfo['average_daily_balance'] !== null) {
+                $totalAverageBalance += $balanceInfo['average_daily_balance'];
+                $balanceMonthsCount++;
+            }
         }
 
         ksort($monthlyGroups);
@@ -1392,8 +1443,12 @@ class BankStatementApiController extends Controller
                 'adjustments' => $monthCount > 0 ? $totals['adjustments'] / $monthCount : 0,
                 'true_revenue' => $monthCount > 0 ? $totals['true_revenue'] / $monthCount : 0,
                 'debits' => $monthCount > 0 ? $totals['debits'] / $monthCount : 0,
+                'average_daily_balance' => $balanceMonthsCount > 0
+                    ? $totalAverageBalance / $balanceMonthsCount
+                    : null,
             ],
             'month_count' => $monthCount,
+            'balance_months_count' => $balanceMonthsCount,
             // New enhanced metrics
             'volatility' => $volatility,
             'mca_exposure' => $mcaPayments,
