@@ -12,8 +12,13 @@
             </svg>
         </button>
 
-        <!-- Debug indicator (remove after testing) -->
+        <!-- Debug indicators (remove after testing) -->
         <div x-show="sidebarOpen" class="lg:hidden text-xs bg-red-500 text-white px-2 py-1 rounded">OPEN</div>
+
+        <!-- Test if Alpine can see sidebar element -->
+        <div class="lg:hidden text-xs bg-blue-500 text-white px-2 py-1 rounded ml-2">
+            <span x-text="'Sidebar: ' + (document.getElementById('sidebar') ? 'EXISTS' : 'MISSING')"></span>
+        </div>
 
         <!-- Search Bar -->
         <div class="relative hidden md:block">
