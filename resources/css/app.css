@@ -18,12 +18,23 @@
 @layer components {
     /* Sidebar Styles */
     .sidebar {
-        @apply fixed left-0 top-0 h-full w-64 bg-sidebar-bg text-sidebar-text z-50 transition-transform duration-300 ease-in-out;
+        @apply fixed left-0 top-0 h-full w-64 bg-sidebar-bg text-sidebar-text transition-transform duration-300 ease-in-out;
         @apply shadow-sidebar;
+        z-index: 9999; /* Above everything on mobile */
+    }
+
+    /* Hide sidebar on mobile by default */
+    .sidebar {
+        @apply -translate-x-full lg:translate-x-0;
+    }
+
+    /* Show sidebar when open on mobile */
+    .sidebar.sidebar-open {
+        @apply translate-x-0 !important;
     }
 
     .sidebar-collapsed {
-        @apply -translate-x-full lg:translate-x-0 lg:w-20;
+        @apply lg:w-20;
     }
 
     .sidebar-logo {
@@ -66,24 +77,42 @@
     /* Top Header Styles */
     .top-header {
         @apply fixed top-0 right-0 h-16 bg-white border-b border-dashboard-border z-40;
-        @apply flex items-center justify-between px-6;
-        left: 16rem;
+        @apply flex items-center justify-between;
+        left: 0;
         transition: left 0.3s ease-in-out;
+        padding-left: 1rem;
+        padding-right: 1rem;
     }
 
-    .top-header.sidebar-collapsed {
-        @apply left-0 lg:left-20;
+    /* Desktop: add left margin for sidebar */
+    @media (min-width: 1024px) {
+        .top-header {
+            left: 16rem;
+            padding-left: 1.5rem;
+            padding-right: 1.5rem;
+        }
+
+        .top-header.sidebar-collapsed {
+            left: 5rem;
+        }
     }
 
     /* Main Content Area */
     .main-content {
         @apply pt-20 pb-6 px-6;
-        margin-left: 16rem;
+        margin-left: 0;
         transition: margin-left 0.3s ease-in-out;
     }
 
-    .main-content.sidebar-collapsed {
-        @apply ml-0 lg:ml-20;
+    /* Desktop: add left margin for sidebar */
+    @media (min-width: 1024px) {
+        .main-content {
+            margin-left: 16rem;
+        }
+
+        .main-content.sidebar-collapsed {
+            margin-left: 5rem;
+        }
     }
 
     /* Card Styles */
@@ -349,25 +378,9 @@
    MOBILE RESPONSIVE OVERRIDES
    ============================================ */
 
-@media (max-width: 1024px) {
-    /* Sidebar - Hide on tablet/mobile by default */
-    .sidebar {
-        @apply -translate-x-full;
-    }
-
-    .sidebar.sidebar-open {
-        @apply translate-x-0;
-    }
-
-    /* Header - Full width on mobile */
-    .top-header {
-        @apply left-0 !important;
-    }
-
-    /* Main Content - No left margin on mobile */
-    .main-content {
-        @apply ml-0 !important;
-    }
+/* Mobile overlay z-index */
+.fixed.inset-0.bg-black\/50 {
+    z-index: 9998; /* Just below sidebar */
 }
 
 @media (max-width: 640px) {

@@ -1,9 +1,9 @@
 <!-- Top Header -->
 <header class="top-header" id="topHeader">
     <!-- Left Side - Menu Toggle & Search -->
-    <div class="flex items-center gap-4">
+    <div class="flex items-center gap-2 sm:gap-4 flex-1">
         <!-- Mobile Menu Toggle -->
-        <button @click="$store.sidebar.toggle()" class="lg:hidden p-2 rounded-lg hover:bg-secondary-100 text-secondary-600">
+        <button @click="$store.sidebar.toggle()" class="lg:hidden p-2 rounded-lg hover:bg-secondary-100 text-secondary-600 flex-shrink-0">
             <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                 <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 6h16M4 12h16M4 18h16" />
             </svg>
@@ -19,11 +19,11 @@
     </div>
 
     <!-- Right Side - Actions -->
-    <div class="flex items-center gap-4">
+    <div class="flex items-center gap-2 sm:gap-4 flex-shrink-0">
         <!-- Notifications -->
-        <div x-data="{ open: false }" class="relative">
+        <div x-data="{ open: false }" class="relative hidden sm:block">
             <button @click="open = !open" class="relative p-2 rounded-lg hover:bg-secondary-100 text-secondary-600">
-                <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <svg class="w-5 h-5 sm:w-6 sm:h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                     <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 17h5l-1.405-1.405A2.032 2.032 0 0118 14.158V11a6.002 6.002 0 00-4-5.659V5a2 2 0 10-4 0v.341C7.67 6.165 6 8.388 6 11v3.159c0 .538-.214 1.055-.595 1.436L4 17h5m6 0v1a3 3 0 11-6 0v-1m6 0H9" />
                 </svg>
                 <span class="notification-badge">3</span>
@@ -85,27 +85,27 @@
         </div>
 
         <!-- Messages -->
-        <button class="relative p-2 rounded-lg hover:bg-secondary-100 text-secondary-600 hidden sm:block">
-            <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+        <button class="relative p-2 rounded-lg hover:bg-secondary-100 text-secondary-600 hidden md:block">
+            <svg class="w-5 h-5 sm:w-6 sm:h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                 <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3 8l7.89 5.26a2 2 0 002.22 0L21 8M5 19h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z" />
             </svg>
             <span class="notification-badge">5</span>
         </button>
 
         <!-- Divider -->
-        <div class="h-8 w-px bg-secondary-200 hidden sm:block"></div>
+        <div class="h-8 w-px bg-secondary-200 hidden md:block"></div>
 
         <!-- User Dropdown -->
         <div x-data="{ open: false }" class="relative">
-            <button @click="open = !open" class="flex items-center gap-3 p-1.5 rounded-lg hover:bg-secondary-100">
-                <div class="w-9 h-9 rounded-full bg-gradient-to-br from-primary-400 to-primary-600 flex items-center justify-center text-white font-semibold">
+            <button @click="open = !open" class="flex items-center gap-2 sm:gap-3 p-1 sm:p-1.5 rounded-lg hover:bg-secondary-100">
+                <div class="w-8 h-8 sm:w-9 sm:h-9 rounded-full bg-gradient-to-br from-primary-400 to-primary-600 flex items-center justify-center text-white font-semibold text-sm">
                     {{ strtoupper(substr(Auth::user()->name ?? Auth::user()->email, 0, 1)) }}
                 </div>
-                <div class="hidden sm:block text-left">
-                    <p class="text-sm font-medium text-secondary-800">{{ Auth::user()->name ?? Auth::user()->email }}</p>
-                    <p class="text-xs text-secondary-500">Administrator</p>
+                <div class="hidden md:block text-left">
+                    <p class="text-sm font-medium text-secondary-800 truncate max-w-[120px]">{{ Auth::user()->name ?? Auth::user()->email }}</p>
+                    <p class="text-xs text-secondary-500">Admin</p>
                 </div>
-                <svg class="w-4 h-4 text-secondary-400 hidden sm:block" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <svg class="w-4 h-4 text-secondary-400 hidden md:block" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                     <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7" />
                 </svg>
             </button>
