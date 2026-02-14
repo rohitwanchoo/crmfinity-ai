@@ -991,7 +991,8 @@ OUTPUT FORMAT - Return ONLY valid JSON:
 {{
   "statement_summary": {{
     "beginning_balance": 1234.56,
-    "ending_balance": 5678.90
+    "ending_balance": 5678.90,
+    "average_daily_balance": 3456.78
   }},
   "transactions": [
     {{"date": "YYYY-MM-DD", "description": "description text", "amount": 123.45, "type": "credit", "ending_balance": 1234.56}}
@@ -1004,6 +1005,7 @@ OUTPUT FORMAT - Return ONLY valid JSON:
 - statement_summary: (OPTIONAL) If the statement shows summary balances, include them here
 - statement_summary.beginning_balance: Opening/beginning/previous balance (can be negative)
 - statement_summary.ending_balance: Closing/ending/new balance (can be negative)
+- statement_summary.average_daily_balance: (OPTIONAL) Average daily balance for the statement period if explicitly mentioned in the statement (can be negative)
 """
 
     # Debug: log input text length

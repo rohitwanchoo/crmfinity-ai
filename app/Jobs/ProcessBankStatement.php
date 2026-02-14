@@ -143,6 +143,7 @@ class ProcessBankStatement implements ShouldQueue
                 'total_tokens' => $data['api_cost']['total_tokens'] ?? 0,
                 'beginning_balance' => $data['statement_summary']['beginning_balance'] ?? null,
                 'ending_balance' => $data['statement_summary']['ending_balance'] ?? null,
+                'average_daily_balance' => $data['statement_summary']['average_daily_balance'] ?? null,
             ]);
 
             // Log detailed API usage for tracking

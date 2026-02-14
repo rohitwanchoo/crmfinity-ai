@@ -147,7 +147,13 @@ class BankStatementAnalyzerService
             }
         }
 
-        $avgBalance = array_sum($balances) / count($balances);
+        // Use average daily balance from statement if available, otherwise calculate
+        if (isset($metadata['average_daily_balance']) && $metadata['average_daily_balance'] !== null) {
+            $avgBalance = $metadata['average_daily_balance'];
+        } else {
+            $avgBalance = array_sum($balances) / count($balances);
+        }
+
         $minBalance = min($balances);
         $maxBalance = max($balances);
 

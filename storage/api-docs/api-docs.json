@@ -478,8 +478,8 @@
                 "tags": [
                     "Bank Statement Analysis"
                 ],
-                "summary": "Analyze bank statement PDF(s)",
-                "description": "Upload one or more PDF bank statements for AI-powered analysis. Returns transaction data, monthly summaries, and MCA detection results.",
+                "summary": "Analyze bank statement PDF(s) asynchronously",
+                "description": "Upload one or more PDF bank statements for AI-powered analysis. Files are queued for parallel processing. Returns session IDs immediately. Use the sessions endpoint to retrieve results once processing completes.",
                 "operationId": "120c5d7ae7f23a887a3cba1ae3bed2b2",
                 "requestBody": {
                     "required": true,
@@ -499,12 +499,13 @@
                                         }
                                     },
                                     "model": {
-                                        "description": "OpenAI model to use for analysis",
+                                        "description": "Claude model to use for analysis",
                                         "type": "string",
-                                        "default": "gpt-4o",
+                                        "default": "claude-haiku-4-5",
                                         "enum": [
-                                            "gpt-4o",
-                                            "gpt-4o-mini"
+                                            "claude-opus-4-6",
+                                            "claude-sonnet-4-5",
+                                            "claude-haiku-4-5"
                                         ]
                                     }
                                 },
@@ -514,8 +515,8 @@
                     }
                 },
                 "responses": {
-                    "200": {
-                        "description": "Analysis completed successfully",
+                    "202": {
+                        "description": "Files queued for processing successfully",
                         "content": {
                             "application/json": {
                                 "schema": {
@@ -524,10 +525,31 @@
                                             "type": "boolean",
                                             "example": true
                                         },
-                                        "results": {
+                                        "message": {
+                                            "type": "string",
+                                            "example": "2 statements queued for parallel processing"
+                                        },
+                                        "batch_id": {
+                                            "type": "string",
+                                            "example": "BATCH-ABC123DEF4567890"
+                                        },
+                                        "sessions": {
                                             "type": "array",
                                             "items": {
-                                                "$ref": "#/components/schemas/AnalysisResult"
+                                                "properties": {
+                                                    "session_id": {
+                                                        "type": "string",
+                                                        "format": "uuid"
+                                                    },
+                                                    "filename": {
+                                                        "type": "string"
+                                                    },
+                                                    "status": {
+                                                        "type": "string",
+                                                        "example": "queued"
+                                                    }
+                                                },
+                                                "type": "object"
                                             }
                                         }
                                     },
@@ -547,7 +569,7 @@
                         }
                     },
                     "500": {
-                        "description": "Analysis failed",
+                        "description": "Server error",
                         "content": {
                             "application/json": {
                                 "schema": {

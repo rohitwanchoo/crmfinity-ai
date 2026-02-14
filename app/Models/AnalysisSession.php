@@ -37,6 +37,7 @@ class AnalysisSession extends Model
         'total_tokens',
         'beginning_balance',
         'ending_balance',
+        'average_daily_balance',
     ];
 
     protected $casts = [
@@ -48,6 +49,7 @@ class AnalysisSession extends Model
         'api_cost' => 'decimal:4',
         'beginning_balance' => 'decimal:2',
         'ending_balance' => 'decimal:2',
+        'average_daily_balance' => 'decimal:2',
         'pages' => 'integer',
         'total_transactions' => 'integer',
         'returned_count' => 'integer',

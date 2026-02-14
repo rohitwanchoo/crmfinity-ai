@@ -541,7 +541,7 @@
                                         <td class="px-4 py-3 text-sm text-right text-gray-900 dark:text-gray-100">${{ number_format($combinedTotals['deposits'], 2) }}</td>
                                         <td class="px-4 py-3 text-sm text-right text-orange-600 dark:text-orange-400">${{ number_format($combinedTotals['adjustments'], 2) }}</td>
                                         <td class="px-4 py-3 text-sm text-right text-green-600 dark:text-green-400">${{ number_format($combinedTotals['true_revenue'], 2) }}</td>
-                                        <td class="px-4 py-3 text-sm text-right text-gray-900 dark:text-gray-100">${{ number_format($combinedAverages['average_daily'], 2) }}</td>
+                                        <td class="px-4 py-3 text-sm text-right text-gray-900 dark:text-gray-100">${{ number_format($combinedAverages['average_daily'] ?? $combinedAverages['average_daily_revenue'] ?? 0, 2) }}</td>
                                         <td class="px-4 py-3 text-sm text-center {{ $combinedTotals['nsf_count'] > 0 ? 'text-red-600 dark:text-red-400' : 'text-gray-500 dark:text-gray-400' }}">{{ $combinedTotals['nsf_count'] }}</td>
                                         <td class="px-4 py-3 text-sm text-center text-gray-900 dark:text-gray-100">{{ $combinedTotals['deposit_count'] }}</td>
                                         <td class="px-4 py-3 text-sm text-center {{ $combinedTotals['negative_days'] > 0 ? 'text-red-600 dark:text-red-400' : 'text-gray-500 dark:text-gray-400' }}">{{ $combinedTotals['negative_days'] }}</td>
@@ -552,7 +552,7 @@
                                         <td class="px-4 py-3 text-sm text-right">${{ number_format($combinedAverages['deposits'], 2) }}</td>
                                         <td class="px-4 py-3 text-sm text-right">${{ number_format($combinedAverages['adjustments'], 2) }}</td>
                                         <td class="px-4 py-3 text-sm text-right">${{ number_format($combinedAverages['true_revenue'], 2) }}</td>
-                                        <td class="px-4 py-3 text-sm text-right">${{ number_format($combinedAverages['average_daily'], 2) }}</td>
+                                        <td class="px-4 py-3 text-sm text-right">${{ number_format($combinedAverages['average_daily'] ?? $combinedAverages['average_daily_revenue'] ?? 0, 2) }}</td>
                                         <td class="px-4 py-3 text-sm text-center">-</td>
                                         <td class="px-4 py-3 text-sm text-center">{{ number_format($combinedAverages['deposit_count'], 1) }}</td>
                                         <td class="px-4 py-3 text-sm text-center">{{ number_format($combinedAverages['negative_days'], 1) }}</td>
@@ -1485,7 +1485,7 @@
                                             $<span class="rev-value">{{ number_format($month['true_revenue'], 2) }}</span>
                                         </td>
                                         <td class="px-4 py-3 text-sm text-right text-gray-700 dark:text-gray-300 month-avg-{{ $result['session_id'] }}-{{ $month['month_key'] }}">
-                                            $<span class="avg-value">{{ number_format($month['average_daily'], 2) }}</span>
+                                            $<span class="avg-value">{{ number_format($month['average_daily'] ?? $month['average_daily_revenue'] ?? 0, 2) }}</span>
                                         </td>
                                         <td class="px-4 py-3 text-sm text-center {{ $month['nsf_count'] > 0 ? 'text-red-600 dark:text-red-400 font-semibold' : 'text-gray-500 dark:text-gray-400' }}">{{ $month['nsf_count'] }}</td>
                                         <td class="px-4 py-3 text-sm text-center {{ ($month['negative_days'] ?? 0) > 0 ? 'text-red-600 dark:text-red-400 font-semibold' : 'text-gray-500 dark:text-gray-400' }}">{{ $month['negative_days'] ?? 0 }}</td>
@@ -1505,7 +1505,7 @@
                                             $<span class="rev-value">{{ number_format($result['monthly_data']['totals']['true_revenue'], 2) }}</span>
                                         </td>
                                         <td class="px-4 py-3 text-sm text-right text-gray-900 dark:text-gray-100 total-avg-{{ $result['session_id'] }}">
-                                            $<span class="avg-value">{{ number_format($result['monthly_data']['totals']['average_daily'], 2) }}</span>
+                                            $<span class="avg-value">{{ number_format($result['monthly_data']['totals']['average_daily'] ?? $result['monthly_data']['totals']['average_daily_revenue'] ?? 0, 2) }}</span>
                                         </td>
                                         <td class="px-4 py-3 text-sm text-center {{ $result['monthly_data']['totals']['nsf_count'] > 0 ? 'text-red-600 dark:text-red-400' : 'text-gray-500 dark:text-gray-400' }}">{{ $result['monthly_data']['totals']['nsf_count'] }}</td>
                                         <td class="px-4 py-3 text-sm text-center {{ ($result['monthly_data']['totals']['negative_days'] ?? 0) > 0 ? 'text-red-600 dark:text-red-400' : 'text-gray-500 dark:text-gray-400' }}">{{ $result['monthly_data']['totals']['negative_days'] ?? 0 }}</td>
@@ -1522,7 +1522,7 @@
                                             $<span class="rev-value">{{ number_format($result['monthly_data']['averages']['true_revenue'], 2) }}</span>
                                         </td>
                                         <td class="px-4 py-3 text-sm text-right avg-avg-{{ $result['session_id'] }}">
-                                            $<span class="avg-value">{{ number_format($result['monthly_data']['averages']['average_daily'], 2) }}</span>
+                                            $<span class="avg-value">{{ number_format($result['monthly_data']['averages']['average_daily'] ?? $result['monthly_data']['averages']['average_daily_revenue'] ?? 0, 2) }}</span>
                                         </td>
                                         <td class="px-4 py-3 text-sm text-center">-</td>
                                         <td class="px-4 py-3 text-sm text-center">-</td>
@@ -2531,7 +2531,7 @@
                                             $<span class="rev-value">{{ number_format($month['true_revenue'], 2) }}</span>
                                         </td>
                                         <td class="px-4 py-3 text-sm text-right text-gray-700 dark:text-gray-300 combined-avg-{{ $month['month_key'] }}">
-                                            $<span class="avg-value">{{ number_format($month['average_daily'], 2) }}</span>
+                                            $<span class="avg-value">{{ number_format($month['average_daily'] ?? $month['average_daily_revenue'] ?? 0, 2) }}</span>
                                         </td>
                                         <td class="px-4 py-3 text-sm text-center {{ $month['nsf_count'] > 0 ? 'text-red-600 dark:text-red-400 font-semibold' : 'text-gray-500 dark:text-gray-400' }}">{{ $month['nsf_count'] }}</td>
                                         <td class="px-4 py-3 text-sm text-center text-gray-700 dark:text-gray-300">{{ $month['deposit_count'] }}</td>

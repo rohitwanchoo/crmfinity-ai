@@ -1647,17 +1647,41 @@ class BankStatementController extends Controller
         foreach ($monthlyGroups as &$month) {
             $month['true_revenue'] = $month['deposits'] - $month['adjustments'];
 
-            // Calculate average daily balance properly using ALL calendar days in the statement period
-            // Step 1: Extract statement period (min/max transaction dates)
-            $transactionDates = array_column($month['transactions'], 'date');
-            if (empty($transactionDates)) {
-                $month['average_daily_balance'] = null;
-                $month['average_daily_balance_method'] = 'no_transactions';
-                $month['balance_days_count'] = 0;
-                $month['statement_period_days'] = 0;
+            // Get opening balance for this month (needed for calculations)
+            $openingBalance = null;
+            if ($isFirstMonth && $session && $session->beginning_balance !== null) {
+                $openingBalance = (float) $session->beginning_balance;
+            } elseif (!empty($month['transactions'])) {
+                $firstTxn = $month['transactions'][0];
+                if (isset($firstTxn['beginning_balance'])) {
+                    $openingBalance = $firstTxn['beginning_balance'];
+                }
+            }
+
+            // Check if average daily balance is already available from the bank statement
+            // Only calculate if not provided in the statement
+            if ($session && $session->average_daily_balance !== null) {
+                // Use the average daily balance from the bank statement
+                $month['average_daily_balance'] = (float) $session->average_daily_balance;
+                $month['average_daily_balance_method'] = 'from_statement';
+                $month['balance_days_count'] = 0; // Not calculated
+                $month['statement_period_days'] = 0; // Not calculated
             } else {
-                $periodStart = min($transactionDates);
-                $periodEnd = max($transactionDates);
+                // Calculate average daily balance properly using ALL calendar days in the statement period
+                // Step 1: Extract statement period (min/max transaction dates)
+                $transactionDates = array_column($month['transactions'], 'date');
+                if (empty($transactionDates)) {
+                    $month['average_daily_balance'] = null;
+                    $month['average_daily_balance_method'] = 'no_transactions';
+                    $month['balance_days_count'] = 0;
+                    $month['statement_period_days'] = 0;
+                } else {
+                // Convert dates to strings for min/max comparison
+                $dateStrings = array_map(function($d) {
+                    return is_string($d) ? $d : (is_object($d) ? $d->format('Y-m-d') : (string)$d);
+                }, $transactionDates);
+                $periodStart = min($dateStrings);
+                $periodEnd = max($dateStrings);
 
                 // Step 2: Group transactions by date
                 $transactionsByDate = [];
@@ -1666,10 +1690,13 @@ class BankStatementController extends Controller
                     $date = $txn['date'] ?? null;
                     if (!$date) continue;
 
-                    if (!isset($transactionsByDate[$date])) {
-                        $transactionsByDate[$date] = [];
+                    // Convert date to string if it's a DateTime object
+                    $dateKey = is_string($date) ? $date : (is_object($date) ? $date->format('Y-m-d') : (string)$date);
+
+                    if (!isset($transactionsByDate[$dateKey])) {
+                        $transactionsByDate[$dateKey] = [];
                     }
-                    $transactionsByDate[$date][] = $txn;
+                    $transactionsByDate[$dateKey][] = $txn;
 
                     // Check if we have ending balance data
                     if (isset($txn['ending_balance']) && $txn['ending_balance'] !== null) {
@@ -1735,6 +1762,7 @@ class BankStatementController extends Controller
                     $month['balance_days_count'] = 0;
                     $month['statement_period_days'] = 0;
                 }
+                }
             }
 
             // Keep the old average_daily for backward compatibility (this is average daily REVENUE, not balance)
@@ -1746,20 +1774,9 @@ class BankStatementController extends Controller
             // Calculate negative days and NSF using the comprehensive calculator
             $calculator = new NsfAndNegativeDaysCalculator();
 
-            // Get opening balance for this month
-            $openingBalance = null;
-
-            // For the first month, use the session's beginning_balance if available
+            // Update isFirstMonth flag after processing first month
             if ($isFirstMonth && $session && $session->beginning_balance !== null) {
-                $openingBalance = (float) $session->beginning_balance;
                 $isFirstMonth = false;
-            }
-            // Otherwise check if first transaction has beginning_balance
-            elseif (!empty($month['transactions'])) {
-                $firstTxn = $month['transactions'][0];
-                if (isset($firstTxn['beginning_balance'])) {
-                    $openingBalance = $firstTxn['beginning_balance'];
-                }
             }
 
             // Calculate negative days
