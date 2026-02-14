@@ -122,8 +122,12 @@
         <script>
             // Function to show toast
             function showToast(message, type = 'success') {
-                // Set toast data
-                Alpine.store('toast', { message, type, show: true });
+                // Wait for Alpine to be ready
+                if (typeof Alpine === 'undefined' || !document.body.__x) {
+                    console.log('Alpine not ready, retrying...');
+                    setTimeout(() => showToast(message, type), 100);
+                    return;
+                }
 
                 // Update body data
                 document.body.__x.$data.toastMessage = message;
@@ -138,22 +142,33 @@
 
                 // Auto hide after 5 seconds
                 setTimeout(() => {
-                    document.body.__x.$data.showToast = false;
+                    if (document.body.__x && document.body.__x.$data) {
+                        document.body.__x.$data.showToast = false;
+                    }
                 }, 5000);
             }
 
+            // Wait for Alpine.js to initialize
+            document.addEventListener('alpine:init', function() {
+                console.log('Alpine initialized');
+            });
+
             // Check for flash messages on page load
             document.addEventListener('DOMContentLoaded', function() {
+                console.log('DOM loaded, checking for messages...');
+
                 @if(session('success'))
+                    console.log('Found success message');
                     setTimeout(() => {
                         showToast("{{ session('success') }}", 'success');
-                    }, 300);
+                    }, 500);
                 @endif
 
                 @if(session('info'))
+                    console.log('Found info message');
                     setTimeout(() => {
                         showToast("{{ session('info') }}", 'info');
-                    }, 300);
+                    }, 500);
                 @endif
 
                 // Check for completed analyses
