@@ -52,17 +52,40 @@
                       toastType = 'success';
                       showToast = true;
                       const audio = document.getElementById('notification-sound');
-                      if (audio) audio.play().catch(e => console.log('Audio failed:', e));
+                      if (audio) {
+                          audio.play().catch(e => {
+                              console.log('Audio autoplay blocked by browser:', e.message);
+                              console.log('User interaction required. Audio will play on next click.');
+                          });
+                      }
                       setTimeout(() => { showToast = false; }, 5000);
                   } else if (sessionInfo) {
                       toastMessage = sessionInfo;
                       toastType = 'info';
                       showToast = true;
                       const audio = document.getElementById('notification-sound');
-                      if (audio) audio.play().catch(e => console.log('Audio failed:', e));
+                      if (audio) {
+                          audio.play().catch(e => {
+                              console.log('Audio autoplay blocked:', e.message);
+                          });
+                      }
                       setTimeout(() => { showToast = false; }, 5000);
                   }
               }, 300);
+
+              // Enable audio on first user interaction
+              const enableAudio = () => {
+                  const audio = document.getElementById('notification-sound');
+                  if (audio) {
+                      audio.play().then(() => {
+                          audio.pause();
+                          audio.currentTime = 0;
+                          console.log('Audio unlocked! Notifications will now play sound.');
+                      }).catch(() => {});
+                  }
+                  document.removeEventListener('click', enableAudio);
+              };
+              document.addEventListener('click', enableAudio, { once: true });
           ">
 
         <!-- Toast Notification -->
