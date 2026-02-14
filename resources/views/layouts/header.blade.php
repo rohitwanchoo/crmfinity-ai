@@ -4,12 +4,16 @@
     <div class="flex items-center gap-2 sm:gap-4 flex-1">
         <!-- Mobile Menu Toggle -->
         <button @click="sidebarOpen = !sidebarOpen"
-                class="lg:hidden p-2 rounded-lg hover:bg-secondary-100 text-secondary-600 flex-shrink-0"
+                class="lg:hidden p-2 rounded-lg hover:bg-secondary-100 flex-shrink-0"
+                :class="sidebarOpen ? 'bg-primary-500 text-white' : 'text-secondary-600'"
                 type="button">
             <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                 <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 6h16M4 12h16M4 18h16" />
             </svg>
         </button>
+
+        <!-- Debug indicator (remove after testing) -->
+        <div x-show="sidebarOpen" class="lg:hidden text-xs bg-red-500 text-white px-2 py-1 rounded">OPEN</div>
 
         <!-- Search Bar -->
         <div class="relative hidden md:block">

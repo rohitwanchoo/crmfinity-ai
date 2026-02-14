@@ -1,9 +1,10 @@
 <!-- Sidebar -->
 <aside x-data="{ collapsed: false }"
-       :class="{ 'sidebar-collapsed': collapsed, 'sidebar-open': sidebarOpen }"
+       :class="sidebarOpen ? 'sidebar-open' : ''"
        class="sidebar"
        id="sidebar"
-       @click.away="if (window.innerWidth < 1024) sidebarOpen = false">
+       @click.away="if (window.innerWidth < 1024) sidebarOpen = false"
+       x-cloak>
 
     <!-- Logo -->
     <div class="sidebar-logo">
