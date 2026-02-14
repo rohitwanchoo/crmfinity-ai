@@ -35,12 +35,35 @@
             [x-cloak] { display: none !important; }
         </style>
     </head>
-    <body class="font-sans antialiased" x-data="{ sidebarOpen: false, showToast: false, toastMessage: '', toastType: 'success' }">
-        <!-- Test Toast Button (temporary for debugging) -->
-        <button @click="showToast = true; toastMessage = 'Test notification!'; toastType = 'success';"
-                style="position: fixed; bottom: 20px; right: 20px; z-index: 99999; background: #ef4444; color: white; padding: 12px 24px; border-radius: 8px; border: none; cursor: pointer; font-weight: bold;">
-            TEST TOAST
-        </button>
+    <body class="font-sans antialiased"
+          x-data="{
+              sidebarOpen: false,
+              showToast: false,
+              toastMessage: '',
+              toastType: 'success',
+              sessionSuccess: '{{ session("success") ? addslashes(session("success")) : "" }}',
+              sessionInfo: '{{ session("info") ? addslashes(session("info")) : "" }}'
+          }"
+          x-init="
+              // Show toast for session messages
+              setTimeout(() => {
+                  if (sessionSuccess) {
+                      toastMessage = sessionSuccess;
+                      toastType = 'success';
+                      showToast = true;
+                      const audio = document.getElementById('notification-sound');
+                      if (audio) audio.play().catch(e => console.log('Audio failed:', e));
+                      setTimeout(() => { showToast = false; }, 5000);
+                  } else if (sessionInfo) {
+                      toastMessage = sessionInfo;
+                      toastType = 'info';
+                      showToast = true;
+                      const audio = document.getElementById('notification-sound');
+                      if (audio) audio.play().catch(e => console.log('Audio failed:', e));
+                      setTimeout(() => { showToast = false; }, 5000);
+                  }
+              }, 300);
+          ">
 
         <!-- Toast Notification -->
         <div x-show="showToast"
@@ -123,27 +146,20 @@
 
         <!-- Toast Notification Script -->
         <script>
-            // Function to show toast
+            // Function to show toast (for completion notifications)
             function showToast(message, type = 'success') {
-                // Wait for Alpine to be ready
-                if (typeof Alpine === 'undefined' || !document.body.__x) {
-                    console.log('Alpine not ready, retrying...');
+                if (!document.body.__x) {
                     setTimeout(() => showToast(message, type), 100);
                     return;
                 }
 
-                // Update body data
                 document.body.__x.$data.toastMessage = message;
                 document.body.__x.$data.toastType = type;
                 document.body.__x.$data.showToast = true;
 
-                // Play notification sound
                 const audio = document.getElementById('notification-sound');
-                if (audio) {
-                    audio.play().catch(e => console.log('Audio play failed:', e));
-                }
+                if (audio) audio.play().catch(e => console.log('Audio failed:', e));
 
-                // Auto hide after 5 seconds
                 setTimeout(() => {
                     if (document.body.__x && document.body.__x.$data) {
                         document.body.__x.$data.showToast = false;
@@ -151,56 +167,9 @@
                 }, 5000);
             }
 
-            // Wait for Alpine.js to initialize
-            document.addEventListener('alpine:init', function() {
-                console.log('Alpine initialized');
-            });
-
-            // Check for flash messages on page load
+            // Check for completed analyses on page load
             document.addEventListener('DOMContentLoaded', function() {
-                console.log('DOM loaded, checking for messages...');
-
-                // Give Alpine time to initialize
                 setTimeout(() => {
-                    @if(session('success'))
-                        console.log('Showing success toast...');
-                        if (document.body.__x && document.body.__x.$data) {
-                            document.body.__x.$data.toastMessage = "{{ addslashes(session('success')) }}";
-                            document.body.__x.$data.toastType = 'success';
-                            document.body.__x.$data.showToast = true;
-
-                            // Play sound
-                            const audio = document.getElementById('notification-sound');
-                            if (audio) audio.play().catch(e => console.log('Audio failed:', e));
-
-                            // Auto hide
-                            setTimeout(() => {
-                                if (document.body.__x && document.body.__x.$data) {
-                                    document.body.__x.$data.showToast = false;
-                                }
-                            }, 5000);
-                        } else {
-                            console.error('Alpine data not found!');
-                        }
-                    @endif
-
-                    @if(session('info'))
-                        console.log('Showing info toast...');
-                        if (document.body.__x && document.body.__x.$data) {
-                            document.body.__x.$data.toastMessage = "{{ addslashes(session('info')) }}";
-                            document.body.__x.$data.toastType = 'info';
-                            document.body.__x.$data.showToast = true;
-
-                            const audio = document.getElementById('notification-sound');
-                            if (audio) audio.play().catch(e => console.log('Audio failed:', e));
-
-                            setTimeout(() => {
-                                if (document.body.__x && document.body.__x.$data) {
-                                    document.body.__x.$data.showToast = false;
-                                }
-                            }, 5000);
-                        }
-                    @endif
 
                 // Check for completed analyses
                 @if($unnotifiedAnalyses->count() > 0)
