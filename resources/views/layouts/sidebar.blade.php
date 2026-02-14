@@ -1,6 +1,7 @@
 <!-- Sidebar -->
 <aside x-data="{ collapsed: false }"
        :class="sidebarOpen ? 'sidebar-open' : ''"
+       :style="sidebarOpen ? 'transform: translateX(0) !important; display: block !important;' : ''"
        class="sidebar"
        id="sidebar"
        @click.away="if (window.innerWidth < 1024) sidebarOpen = false"
@@ -132,14 +133,14 @@
 </aside>
 
 <!-- Mobile Sidebar Overlay -->
-<div x-cloak
-     x-show="sidebarOpen"
+<div x-show="sidebarOpen"
+     @click="sidebarOpen = false"
+     style="position: fixed; top: 0; left: 0; right: 0; bottom: 0; background: rgba(0,0,0,0.7); z-index: 9998;"
+     class="lg:hidden"
      x-transition:enter="transition-opacity ease-linear duration-300"
      x-transition:enter-start="opacity-0"
      x-transition:enter-end="opacity-100"
      x-transition:leave="transition-opacity ease-linear duration-300"
      x-transition:leave-start="opacity-100"
-     x-transition:leave-end="opacity-0"
-     @click="sidebarOpen = false"
-     class="fixed inset-0 bg-black/50 z-40 lg:hidden">
+     x-transition:leave-end="opacity-0">
 </div>
