@@ -51,22 +51,97 @@
         .mca-view-btn {
             transition: all 0.2s ease-in-out;
         }
+
+        /* Mobile Responsive Improvements */
+        @media (max-width: 640px) {
+            /* Reduce table cell padding on mobile */
+            table td, table th {
+                padding-left: 0.5rem !important;
+                padding-right: 0.5rem !important;
+            }
+
+            /* Smaller font sizes for table headers on mobile */
+            table thead th {
+                font-size: 0.65rem !important;
+            }
+
+            /* Make metric cards more compact on mobile */
+            .metric-card {
+                padding: 0.75rem !important;
+            }
+
+            .metric-card .text-2xl {
+                font-size: 1.25rem !important;
+            }
+
+            .metric-card .text-sm {
+                font-size: 0.75rem !important;
+            }
+
+            /* Reduce section header padding on mobile */
+            .bg-green-600, .bg-blue-600, .bg-purple-600, .bg-orange-600 {
+                padding: 0.5rem 0.75rem !important;
+            }
+
+            /* Make buttons touch-friendly (min 44px height) */
+            button {
+                min-height: 44px;
+            }
+
+            /* Improve modal spacing on mobile */
+            .modal-content {
+                padding: 1rem !important;
+            }
+
+            /* Stack filter buttons vertically on very small screens */
+            @media (max-width: 380px) {
+                .filter-buttons {
+                    flex-direction: column !important;
+                }
+                .filter-buttons button {
+                    width: 100% !important;
+                }
+            }
+        }
+
+        /* Tablet improvements */
+        @media (min-width: 641px) and (max-width: 1024px) {
+            /* Slightly reduce padding on tablets */
+            table td, table th {
+                padding-left: 0.75rem !important;
+                padding-right: 0.75rem !important;
+            }
+        }
+
+        /* Improve horizontal scrolling for tables on mobile */
+        .overflow-x-auto {
+            -webkit-overflow-scrolling: touch;
+        }
+
+        /* Make transaction table rows more compact on mobile */
+        @media (max-width: 640px) {
+            tr td {
+                padding-top: 0.5rem !important;
+                padding-bottom: 0.5rem !important;
+            }
+        }
     </style>
 
     <x-slot name="header">
-        <h2 class="font-semibold text-xl text-gray-800 dark:text-gray-200 leading-tight">
+        <h2 class="font-semibold text-lg sm:text-xl text-gray-800 dark:text-gray-200 leading-tight">
             Analysis Results
         </h2>
     </x-slot>
 
-    <div class="py-4">
-        <div class="w-full px-2">
-            <div class="mb-6">
-                <a href="{{ route('bankstatement.index') }}" class="inline-flex items-center text-sm text-green-600 dark:text-green-400 hover:underline">
+    <div class="py-2 sm:py-4">
+        <div class="w-full px-2 sm:px-4 md:px-6">
+            <div class="mb-4 sm:mb-6">
+                <a href="{{ route('bankstatement.index') }}" class="inline-flex items-center text-xs sm:text-sm text-green-600 dark:text-green-400 hover:underline px-2 py-1">
                     <svg class="w-4 h-4 mr-1" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                         <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10 19l-7-7m0 0l7-7m-7 7h18"></path>
                     </svg>
-                    Back to Bank Statement Analyzer
+                    <span class="hidden sm:inline">Back to Bank Statement Analyzer</span>
+                    <span class="sm:hidden">Back</span>
                 </a>
             </div>
 
@@ -429,8 +504,8 @@
             @if(count($allSuccessfulResults) > 0)
             <!-- Combined Analysis Section -->
             <div class="mb-8 bg-white dark:bg-gray-800 overflow-hidden shadow-sm sm:rounded-lg border-2 border-green-500">
-                <div class="p-2">
-                    <div class="flex items-center justify-between mb-4">
+                <div class="p-2 sm:p-4">
+                    <div class="flex flex-col sm:flex-row sm:items-center sm:justify-between mb-4 gap-3">
                         <div class="flex items-center">
                             <div class="p-2 bg-green-100 dark:bg-green-900 rounded-lg mr-3">
                                 <svg class="w-6 h-6 text-green-600 dark:text-green-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -438,33 +513,35 @@
                                 </svg>
                             </div>
                             <div>
-                                <h3 class="text-xl font-bold text-gray-900 dark:text-gray-100">Combined Analysis Summary</h3>
-                                <p class="text-sm text-gray-500 dark:text-gray-400">{{ count($allSuccessfulResults) }} {{ Str::plural('file', count($allSuccessfulResults)) }} analyzed • {{ $monthCount }} {{ Str::plural('month', $monthCount) }} of data</p>
+                                <h3 class="text-lg sm:text-xl font-bold text-gray-900 dark:text-gray-100">Combined Analysis Summary</h3>
+                                <p class="text-xs sm:text-sm text-gray-500 dark:text-gray-400">{{ count($allSuccessfulResults) }} {{ Str::plural('file', count($allSuccessfulResults)) }} analyzed • {{ $monthCount }} {{ Str::plural('month', $monthCount) }} of data</p>
                             </div>
                         </div>
                         <!-- View Mode Toggle -->
-                        <div class="flex items-center gap-2 bg-gray-100 dark:bg-gray-700 rounded-lg p-1">
-                            <button onclick="toggleDashboardView('credit')" id="credit-view-btn" class="px-4 py-2 text-sm font-medium rounded-md transition-all duration-200 bg-white dark:bg-gray-800 text-green-600 dark:text-green-400 shadow-sm">
-                                <div class="flex items-center gap-2">
+                        <div class="filter-buttons flex items-center gap-2 bg-gray-100 dark:bg-gray-700 rounded-lg p-1">
+                            <button onclick="toggleDashboardView('credit')" id="credit-view-btn" class="px-3 sm:px-4 py-2 text-xs sm:text-sm font-medium rounded-md transition-all duration-200 bg-white dark:bg-gray-800 text-green-600 dark:text-green-400 shadow-sm">
+                                <div class="flex items-center gap-1 sm:gap-2">
                                     <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                                         <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M7 11l5-5m0 0l5 5m-5-5v12"></path>
                                     </svg>
-                                    Credit View
+                                    <span class="hidden sm:inline">Credit View</span>
+                                    <span class="sm:hidden">Credit</span>
                                 </div>
                             </button>
-                            <button onclick="toggleDashboardView('debit')" id="debit-view-btn" class="px-4 py-2 text-sm font-medium rounded-md transition-all duration-200 text-gray-600 dark:text-gray-400 hover:bg-gray-200 dark:hover:bg-gray-600">
-                                <div class="flex items-center gap-2">
+                            <button onclick="toggleDashboardView('debit')" id="debit-view-btn" class="px-3 sm:px-4 py-2 text-xs sm:text-sm font-medium rounded-md transition-all duration-200 text-gray-600 dark:text-gray-400 hover:bg-gray-200 dark:hover:bg-gray-600">
+                                <div class="flex items-center gap-1 sm:gap-2">
                                     <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                                         <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M17 13l-5 5m0 0l-5-5m5 5V6"></path>
                                     </svg>
-                                    Debit View
+                                    <span class="hidden sm:inline">Debit View</span>
+                                    <span class="sm:hidden">Debit</span>
                                 </div>
                             </button>
                         </div>
                     </div>
 
                     <!-- Combined Summary Stats -->
-                    <div class="grid grid-cols-2 md:grid-cols-6 gap-4 mb-6">
+                    <div class="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-4 mb-6">
                         <div class="metric-card bg-gray-50 dark:bg-gray-700 p-4 rounded-lg transition-all duration-300" data-metric-type="neutral">
                             <p class="text-sm text-gray-500 dark:text-gray-400">Total Transactions</p>
                             <p class="text-2xl font-bold text-gray-900 dark:text-gray-100">{{ number_format($combinedTotals['transactions']) }}</p>
@@ -697,7 +774,7 @@
                         </div>
 
                         <div class="p-4 bg-red-50 dark:bg-red-900/20 border-b dark:border-gray-700">
-                            <div class="grid grid-cols-2 md:grid-cols-4 gap-4">
+                            <div class="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-4">
                                 <div class="bg-white dark:bg-gray-800 p-3 rounded-lg border border-red-200 dark:border-red-800">
                                     <p class="text-xs text-gray-500 dark:text-gray-400">Active MCAs</p>
                                     <p id="combined-mca-active-count" class="text-2xl font-bold text-red-600 dark:text-red-400">{{ $combinedMca['total_mca_count'] }}</p>
@@ -1134,7 +1211,7 @@
                                 <label class="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">Payment Frequency</label>
 
                                 <!-- Radio Buttons for Payment Frequency -->
-                                <div class="grid grid-cols-2 gap-2 mb-3">
+                                <div class="grid grid-cols-1 sm:grid-cols-2 gap-2 mb-3">
                                     <label class="flex items-center p-2 border border-gray-300 dark:border-gray-600 rounded-lg cursor-pointer hover:bg-gray-50 dark:hover:bg-gray-700 transition">
                                         <input type="radio" name="term-type" value="daily" class="mr-2 text-blue-600 focus:ring-blue-500" onchange="switchTermType('daily')">
                                         <span class="text-sm text-gray-700 dark:text-gray-300">Daily</span>
@@ -1319,7 +1396,7 @@
                             Saved Offers
                             <span class="ml-2 px-2 py-0.5 bg-blue-100 dark:bg-blue-900 text-blue-600 dark:text-blue-400 text-xs rounded-full" id="saved-offers-count">0</span>
                         </h4>
-                        <div id="mca-saved-offers-list" class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+                        <div id="mca-saved-offers-list" class="grid grid-cols-1 sm:grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
                             <!-- Saved offers will be populated here -->
                         </div>
                     </div>
@@ -1550,7 +1627,7 @@
 
                         <!-- MCA Summary Cards -->
                         <div class="p-4 bg-red-50 dark:bg-red-900/20 border-b dark:border-gray-700">
-                            <div class="grid grid-cols-3 gap-4">
+                            <div class="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-4">
                                 <div class="bg-white dark:bg-gray-800 p-3 rounded-lg border border-red-200 dark:border-red-800">
                                     <p class="text-xs text-gray-500 dark:text-gray-400">Active MCAs</p>
                                     <p class="text-2xl font-bold text-red-600 dark:text-red-400">{{ $result['mca_analysis']['total_mca_count'] }}</p>
@@ -1737,7 +1814,7 @@
                                     <p class="text-sm font-medium {{ $warning['severity'] === 'error' ? 'text-red-900 dark:text-red-200' : 'text-orange-900 dark:text-orange-200' }}">
                                         {{ $warning['message'] }}
                                     </p>
-                                    <div class="mt-2 grid grid-cols-3 gap-3 text-xs">
+                                    <div class="mt-2 grid grid-cols-1 sm:grid-cols-3 gap-3 text-xs">
                                         <div>
                                             <span class="text-gray-500 dark:text-gray-400">Expected:</span>
                                             <span class="ml-1 font-semibold {{ $warning['severity'] === 'error' ? 'text-red-700 dark:text-red-300' : 'text-orange-700 dark:text-orange-300' }}">
@@ -1768,7 +1845,7 @@
                     @endif
 
                     <!-- Summary Stats -->
-                    <div class="grid grid-cols-2 md:grid-cols-5 gap-4 mb-6" data-session-id="{{ $result['session_id'] }}">
+                    <div class="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-5 gap-4 mb-6" data-session-id="{{ $result['session_id'] }}">
                         <div class="bg-gray-50 dark:bg-gray-700 p-4 rounded-lg">
                             <p class="text-sm text-gray-500 dark:text-gray-400">Total Transactions</p>
                             <p class="text-2xl font-bold text-gray-900 dark:text-gray-100">{{ $result['summary']['total_transactions'] }}</p>
@@ -1986,7 +2063,7 @@
                                                 <span class="text-xs font-semibold text-blue-900 dark:text-blue-200">Account ****{{ $acct }}</span>
                                                 <span class="text-xs text-gray-500 dark:text-gray-400">{{ $summary['credit_count'] + $summary['debit_count'] }} transactions</span>
                                             </div>
-                                            <div class="grid grid-cols-4 gap-3 text-xs">
+                                            <div class="grid grid-cols-2 sm:grid-cols-4 gap-3 text-xs">
                                                 <div>
                                                     <span class="text-gray-500 dark:text-gray-400">Credits:</span>
                                                     <p class="font-semibold text-green-600 dark:text-green-400">${{ number_format($summary['credits'], 2) }}</p>
@@ -2349,7 +2426,7 @@
 
                         <!-- Combined MCA Summary Cards -->
                         <div class="p-4 bg-red-50 dark:bg-red-900/20 border-b dark:border-gray-700">
-                            <div class="grid grid-cols-3 gap-4">
+                            <div class="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-4">
                                 <div class="bg-white dark:bg-gray-800 p-3 rounded-lg border border-red-200 dark:border-red-800">
                                     <p class="text-xs text-gray-500 dark:text-gray-400">Active MCAs</p>
                                     <p class="text-2xl font-bold text-red-600 dark:text-red-400">{{ $combinedMca['total_mca_count'] }}</p>
@@ -5915,7 +5992,7 @@
                             <span class="text-xs px-2 py-0.5 bg-blue-100 dark:bg-blue-900 text-blue-600 dark:text-blue-400 rounded">${offer.term_months}mo</span>
                         </div>
                         <div class="text-lg font-bold text-gray-900 dark:text-gray-100">${formatCurrency(parseFloat(offer.advance_amount))}</div>
-                        <div class="grid grid-cols-2 gap-2 text-xs">
+                        <div class="grid grid-cols-1 sm:grid-cols-2 gap-2 text-xs">
                             <div>
                                 <span class="text-gray-500">Factor:</span>
                                 <span class="font-medium text-gray-700 dark:text-gray-300">${parseFloat(offer.factor_rate).toFixed(2)}</span>
@@ -6189,7 +6266,7 @@
 
                         <div class="mb-4">
                             <label class="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">Select Category</label>
-                            <div id="category-grid-results" class="grid grid-cols-2 gap-2 max-h-96 overflow-y-auto">
+                            <div id="category-grid-results" class="grid grid-cols-1 sm:grid-cols-2 gap-2 max-h-96 overflow-y-auto">
                                 <!-- Categories will be loaded here -->
                             </div>
                         </div>

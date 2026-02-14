@@ -5,18 +5,20 @@
                 <h1 class="page-title">Dashboard</h1>
                 <p class="page-subtitle">Welcome back! Here's your MCA overview.</p>
             </div>
-            <div class="flex gap-3">
+            <div class="flex flex-col sm:flex-row gap-2 sm:gap-3">
                 <a href="{{ route('bankstatement.index') }}" class="btn btn-primary">
-                    <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <svg class="w-4 h-4 sm:w-5 sm:h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                         <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 17v-2m3 2v-4m3 4v-6m2 10H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
                     </svg>
-                    Analyze Statement
+                    <span class="hidden sm:inline">Analyze Statement</span>
+                    <span class="sm:hidden">Analyze</span>
                 </a>
                 <a href="{{ route('applications.create') }}" class="btn btn-outline">
-                    <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <svg class="w-4 h-4 sm:w-5 sm:h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                         <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 6v6m0 0v6m0-6h6m-6 0H6" />
                     </svg>
-                    New Application
+                    <span class="hidden sm:inline">New Application</span>
+                    <span class="sm:hidden">New App</span>
                 </a>
             </div>
         </div>

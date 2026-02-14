@@ -1,12 +1,12 @@
 <x-app-layout>
     <x-slot name="header">
-        <h2 class="font-semibold text-xl text-gray-800 dark:text-gray-200 leading-tight">
+        <h2 class="font-semibold text-lg sm:text-xl text-gray-800 dark:text-gray-200 leading-tight">
             Bank Statement Analyzer
         </h2>
     </x-slot>
 
-    <div class="py-12">
-        <div class="w-full sm:px-6 lg:px-8">
+    <div class="py-4 sm:py-12">
+        <div class="w-full px-2 sm:px-6 lg:px-8">
             @if(session('error'))
             <div class="mb-6 bg-red-100 border border-red-400 text-red-700 px-4 py-3 rounded">
                 {{ session('error') }}
@@ -15,8 +15,8 @@
 
             <!-- Stats Cards -->
             @if(isset($stats) && $stats['total_sessions'] > 0)
-            <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6 mb-6">
-                <div class="bg-white dark:bg-gray-800 p-6 rounded-lg shadow-sm">
+            <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 sm:gap-6 mb-6">
+                <div class="bg-white dark:bg-gray-800 p-4 sm:p-6 rounded-lg shadow-sm">
                     <div class="flex items-center">
                         <div class="p-3 bg-blue-100 dark:bg-blue-900 rounded-full">
                             <svg class="w-6 h-6 text-blue-600 dark:text-blue-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">

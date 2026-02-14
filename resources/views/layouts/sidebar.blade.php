@@ -1,8 +1,9 @@
 <!-- Sidebar -->
 <aside x-data="{ collapsed: false }"
-       :class="{ 'sidebar-collapsed': collapsed }"
+       :class="{ 'sidebar-collapsed': collapsed, 'sidebar-open': $store.sidebar.open }"
        class="sidebar"
-       id="sidebar">
+       id="sidebar"
+       @click.away="if (window.innerWidth < 1024) $store.sidebar.open = false">
 
     <!-- Logo -->
     <div class="sidebar-logo">
@@ -131,13 +132,13 @@
 
 <!-- Mobile Sidebar Overlay -->
 <div x-cloak
-     x-show="sidebarOpen"
+     x-show="$store.sidebar.open"
      x-transition:enter="transition-opacity ease-linear duration-300"
      x-transition:enter-start="opacity-0"
      x-transition:enter-end="opacity-100"
      x-transition:leave="transition-opacity ease-linear duration-300"
      x-transition:leave-start="opacity-100"
      x-transition:leave-end="opacity-0"
-     @click="sidebarOpen = false"
+     @click="$store.sidebar.open = false"
      class="fixed inset-0 bg-black/50 z-40 lg:hidden">
 </div>

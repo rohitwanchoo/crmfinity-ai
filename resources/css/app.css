@@ -344,3 +344,166 @@
         display: none;
     }
 }
+
+/* ============================================
+   MOBILE RESPONSIVE OVERRIDES
+   ============================================ */
+
+@media (max-width: 1024px) {
+    /* Sidebar - Hide on tablet/mobile by default */
+    .sidebar {
+        @apply -translate-x-full;
+    }
+
+    .sidebar.sidebar-open {
+        @apply translate-x-0;
+    }
+
+    /* Header - Full width on mobile */
+    .top-header {
+        @apply left-0 !important;
+    }
+
+    /* Main Content - No left margin on mobile */
+    .main-content {
+        @apply ml-0 !important;
+    }
+}
+
+@media (max-width: 640px) {
+    /* Reduce overall padding on mobile */
+    .main-content {
+        @apply pt-16 pb-4 px-3 !important;
+    }
+
+    /* Card padding reduction */
+    .card-header {
+        @apply px-4 py-3;
+    }
+
+    .card-body {
+        @apply p-4;
+    }
+
+    .card-footer {
+        @apply px-4 py-3;
+    }
+
+    .stat-card {
+        @apply p-4;
+    }
+
+    /* Stat card values - smaller on mobile */
+    .stat-card-value {
+        @apply text-xl;
+    }
+
+    .stat-card-icon {
+        @apply w-10 h-10;
+    }
+
+    /* Button adjustments for mobile */
+    .btn {
+        @apply px-3 py-2 text-xs;
+        min-height: 44px; /* Touch-friendly */
+    }
+
+    .btn-sm {
+        @apply px-2 py-1.5 text-xs;
+    }
+
+    .btn-lg {
+        @apply px-4 py-2.5 text-sm;
+    }
+
+    /* Form input adjustments */
+    .form-input,
+    .form-select {
+        @apply py-2 text-sm;
+    }
+
+    /* Table responsiveness */
+    .data-table th,
+    .data-table td {
+        @apply px-3 py-2;
+    }
+
+    .data-table thead {
+        @apply text-xs;
+    }
+
+    /* Page title - smaller on mobile */
+    .page-title {
+        @apply text-xl;
+    }
+
+    /* Dropdown menu - full width on very small screens */
+    .dropdown-menu {
+        @apply w-full right-0 left-0;
+    }
+
+    /* Alert - more compact */
+    .alert {
+        @apply p-3 text-sm;
+    }
+
+    /* Breadcrumb - smaller text */
+    .breadcrumb {
+        @apply text-xs;
+    }
+}
+
+/* Tablet-specific adjustments */
+@media (min-width: 641px) and (max-width: 1024px) {
+    .main-content {
+        @apply px-4;
+    }
+
+    .data-table th,
+    .data-table td {
+        @apply px-4 py-3;
+    }
+}
+
+/* Touch-friendly improvements for mobile */
+@media (hover: none) and (pointer: coarse) {
+    /* Increase tap target sizes */
+    button,
+    a,
+    .sidebar-link,
+    .dropdown-item {
+        min-height: 44px;
+        min-width: 44px;
+    }
+
+    /* Make interactive elements easier to tap */
+    .form-checkbox {
+        @apply w-5 h-5;
+    }
+}
+
+/* Improved table scrolling on mobile */
+.table-container {
+    -webkit-overflow-scrolling: touch;
+    @apply overflow-x-auto;
+}
+
+/* Make modals full-screen on mobile */
+@media (max-width: 640px) {
+    .modal-content,
+    [role="dialog"] {
+        @apply max-w-full w-full h-full m-0 rounded-none;
+    }
+}
+
+/* Hide text labels on very small screens */
+@media (max-width: 380px) {
+    .hide-text-xs {
+        font-size: 0;
+        line-height: 0;
+    }
+
+    .hide-text-xs svg {
+        margin: 0 auto;
+    }
+}
