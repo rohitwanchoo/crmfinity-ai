@@ -21,13 +21,6 @@
         </style>
     </head>
     <body class="font-sans antialiased" x-data="{ sidebarOpen: false }">
-        <!-- Simple Test Div -->
-        <div x-show="sidebarOpen"
-             style="position: fixed; top: 50%; left: 50%; transform: translate(-50%, -50%); background: red; color: white; padding: 40px; z-index: 999999; font-size: 24px; border: 5px solid yellow;">
-            TEST SIDEBAR STATE WORKING!<br>
-            <button @click="sidebarOpen = false" style="background: white; color: black; padding: 10px; margin-top: 10px;">CLOSE</button>
-        </div>
-
         <!-- Sidebar -->
         @include('layouts.sidebar')
 

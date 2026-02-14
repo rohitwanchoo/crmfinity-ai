@@ -1,16 +1,11 @@
 <!-- Sidebar -->
-<aside x-data="{ collapsed: false }"
-       x-show="sidebarOpen || window.innerWidth >= 1024"
-       x-transition:enter="transition ease-out duration-300"
-       x-transition:enter-start="-translate-x-full"
-       x-transition:enter-end="translate-x-0"
-       x-transition:leave="transition ease-in duration-200"
-       x-transition:leave-start="translate-x-0"
-       x-transition:leave-end="-translate-x-full"
-       class="sidebar"
-       style="position: fixed; left: 0; top: 0; height: 100vh; width: 16rem; background: #1f2937; color: white; z-index: 99999; overflow-y: auto;"
-       id="sidebar"
-       @click.away="if (window.innerWidth < 1024) sidebarOpen = false">
+<div x-show="sidebarOpen || window.innerWidth >= 1024"
+     style="position: fixed; left: 0; top: 0; bottom: 0; width: 260px; background-color: #1f2937; z-index: 99998; overflow-y: auto; padding: 20px;"
+     id="sidebar"
+     @click.away="if (window.innerWidth < 1024) sidebarOpen = false">
+
+    <div style="color: white;">
+        <h2 style="font-size: 20px; font-weight: bold; margin-bottom: 20px;">Menu</h2>
 
     <!-- Logo -->
     <div class="sidebar-logo">
@@ -134,8 +129,8 @@
                 <span x-show="!collapsed">Logout</span>
             </button>
         </form>
-    </nav>
-</aside>
+    </div>
+</div>
 
 <!-- Mobile Sidebar Overlay -->
 <div x-show="sidebarOpen"
