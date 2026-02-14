@@ -43,6 +43,7 @@ Route::middleware('auth')->group(function () {
         Route::post('/toggle-category', [BankStatementController::class, 'toggleCategory'])->name('toggle-category');
         Route::get('/categories', [BankStatementController::class, 'getCategories'])->name('categories');
         Route::post('/batch-classify', [BankStatementController::class, 'batchClassify'])->name('batch-classify');
+        Route::post('/mark-notified', [BankStatementController::class, 'markNotified'])->name('mark-notified');
         Route::get('/mca-lenders', [BankStatementController::class, 'getMcaLenders'])->name('mca-lenders');
         Route::get('/view-analysis', [BankStatementController::class, 'viewAnalysis'])->name('view-analysis');
         Route::get('/lenders', [BankStatementController::class, 'lenders'])->name('lenders');

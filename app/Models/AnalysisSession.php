@@ -38,6 +38,7 @@ class AnalysisSession extends Model
         'beginning_balance',
         'ending_balance',
         'average_daily_balance',
+        'notified_at',
     ];
 
     protected $casts = [
@@ -59,6 +60,7 @@ class AnalysisSession extends Model
         'input_tokens' => 'integer',
         'output_tokens' => 'integer',
         'total_tokens' => 'integer',
+        'notified_at' => 'datetime',
     ];
 
     protected static function boot()

@@ -1,3 +1,12 @@
+@php
+    // Check for completed analyses that haven't been notified yet
+    $unnotifiedAnalyses = \App\Models\AnalysisSession::where('user_id', Auth::id())
+        ->whereNull('notified_at')
+        ->whereNotNull('created_at')
+        ->where('created_at', '>', now()->subMinutes(30)) // Only last 30 minutes
+        ->orderBy('created_at', 'desc')
+        ->get();
+@endphp
 <!DOCTYPE html>
 <html lang="{{ str_replace('_', '-', app()->getLocale()) }}">
     <head>
@@ -145,6 +154,43 @@
                     setTimeout(() => {
                         showToast("{{ session('info') }}", 'info');
                     }, 300);
+                @endif
+
+                // Check for completed analyses
+                @if($unnotifiedAnalyses->count() > 0)
+                    const analyses = @json($unnotifiedAnalyses);
+                    const sessionIds = [];
+
+                    analyses.forEach((analysis, index) => {
+                        sessionIds.push(analysis.id);
+
+                        setTimeout(() => {
+                            const message = analyses.length === 1
+                                ? `Analysis complete for "${analysis.filename}"! Click to view results.`
+                                : `Analysis ${index + 1} of ${analyses.length} complete: "${analysis.filename}"`;
+
+                            showToast(message, 'success');
+
+                            // Add click handler to redirect to results
+                            const toastEl = document.querySelector('[x-show="showToast"]');
+                            if (toastEl) {
+                                toastEl.style.cursor = 'pointer';
+                                toastEl.onclick = function() {
+                                    window.location.href = `/bankstatement/results/${analysis.session_id}`;
+                                };
+                            }
+                        }, 500 + (index * 6000)); // Delay between notifications
+                    });
+
+                    // Mark analyses as notified
+                    fetch('/bankstatement/mark-notified', {
+                        method: 'POST',
+                        headers: {
+                            'Content-Type': 'application/json',
+                            'X-CSRF-TOKEN': document.querySelector('meta[name="csrf-token"]').content
+                        },
+                        body: JSON.stringify({ session_ids: sessionIds })
+                    }).catch(e => console.error('Failed to mark as notified:', e));
                 @endif
             });
 

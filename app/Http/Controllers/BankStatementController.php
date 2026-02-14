@@ -2021,4 +2021,24 @@ class BankStatementController extends Controller
             'is_favorite' => $offer->is_favorite,
         ]);
     }
+
+    /**
+     * Mark analyses as notified.
+     */
+    public function markNotified(Request $request)
+    {
+        $request->validate([
+            'session_ids' => 'required|array',
+            'session_ids.*' => 'required|integer',
+        ]);
+
+        AnalysisSession::whereIn('id', $request->session_ids)
+            ->where('user_id', Auth::id())
+            ->update(['notified_at' => now()]);
+
+        return response()->json([
+            'success' => true,
+            'message' => 'Marked as notified',
+        ]);
+    }
 }
