@@ -1,11 +1,17 @@
 @php
     // Check for completed analyses that haven't been notified yet
-    $unnotifiedAnalyses = \App\Models\AnalysisSession::where('user_id', Auth::id())
-        ->whereNull('notified_at')
-        ->whereNotNull('created_at')
-        ->where('created_at', '>', now()->subMinutes(30)) // Only last 30 minutes
-        ->orderBy('created_at', 'desc')
-        ->get();
+    try {
+        $unnotifiedAnalyses = \App\Models\AnalysisSession::where('user_id', Auth::id())
+            ->whereNull('notified_at')
+            ->whereNotNull('created_at')
+            ->where('created_at', '>', now()->subMinutes(30)) // Only last 30 minutes
+            ->orderBy('created_at', 'desc')
+            ->limit(10) // Limit to prevent too many
+            ->get();
+    } catch (\Exception $e) {
+        \Log::error('Failed to load unnotified analyses: ' . $e->getMessage());
+        $unnotifiedAnalyses = collect(); // Empty collection
+    }
 @endphp
 <!DOCTYPE html>
 <html lang="{{ str_replace('_', '-', app()->getLocale()) }}">
@@ -30,6 +36,12 @@
         </style>
     </head>
     <body class="font-sans antialiased" x-data="{ sidebarOpen: false, showToast: false, toastMessage: '', toastType: 'success' }">
+        <!-- Test Toast Button (temporary for debugging) -->
+        <button @click="showToast = true; toastMessage = 'Test notification!'; toastType = 'success';"
+                style="position: fixed; bottom: 20px; right: 20px; z-index: 99999; background: #ef4444; color: white; padding: 12px 24px; border-radius: 8px; border: none; cursor: pointer; font-weight: bold;">
+            TEST TOAST
+        </button>
+
         <!-- Toast Notification -->
         <div x-show="showToast"
              x-transition:enter="transition ease-out duration-300"
@@ -93,16 +105,7 @@
                 </div>
             @endisset
 
-            <!-- Flash Messages -->
-            @if (session('success'))
-                <div class="alert alert-success mb-6">
-                    <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
-                    </svg>
-                    <span>{{ session('success') }}</span>
-                </div>
-            @endif
-
+            <!-- Flash Messages - Hidden, using toast instead -->
             @if (session('error'))
                 <div class="alert alert-danger mb-6">
                     <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -157,19 +160,47 @@
             document.addEventListener('DOMContentLoaded', function() {
                 console.log('DOM loaded, checking for messages...');
 
-                @if(session('success'))
-                    console.log('Found success message');
-                    setTimeout(() => {
-                        showToast("{{ session('success') }}", 'success');
-                    }, 500);
-                @endif
+                // Give Alpine time to initialize
+                setTimeout(() => {
+                    @if(session('success'))
+                        console.log('Showing success toast...');
+                        if (document.body.__x && document.body.__x.$data) {
+                            document.body.__x.$data.toastMessage = "{{ addslashes(session('success')) }}";
+                            document.body.__x.$data.toastType = 'success';
+                            document.body.__x.$data.showToast = true;
 
-                @if(session('info'))
-                    console.log('Found info message');
-                    setTimeout(() => {
-                        showToast("{{ session('info') }}", 'info');
-                    }, 500);
-                @endif
+                            // Play sound
+                            const audio = document.getElementById('notification-sound');
+                            if (audio) audio.play().catch(e => console.log('Audio failed:', e));
+
+                            // Auto hide
+                            setTimeout(() => {
+                                if (document.body.__x && document.body.__x.$data) {
+                                    document.body.__x.$data.showToast = false;
+                                }
+                            }, 5000);
+                        } else {
+                            console.error('Alpine data not found!');
+                        }
+                    @endif
+
+                    @if(session('info'))
+                        console.log('Showing info toast...');
+                        if (document.body.__x && document.body.__x.$data) {
+                            document.body.__x.$data.toastMessage = "{{ addslashes(session('info')) }}";
+                            document.body.__x.$data.toastType = 'info';
+                            document.body.__x.$data.showToast = true;
+
+                            const audio = document.getElementById('notification-sound');
+                            if (audio) audio.play().catch(e => console.log('Audio failed:', e));
+
+                            setTimeout(() => {
+                                if (document.body.__x && document.body.__x.$data) {
+                                    document.body.__x.$data.showToast = false;
+                                }
+                            }, 5000);
+                        }
+                    @endif
 
                 // Check for completed analyses
                 @if($unnotifiedAnalyses->count() > 0)
