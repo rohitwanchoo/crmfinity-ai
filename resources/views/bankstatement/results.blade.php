@@ -1920,7 +1920,7 @@
                         </div>
 
                         @foreach($result['monthly_data']['months'] as $monthIndex => $month)
-                        <div x-data="{ open: {{ $monthIndex === 0 ? 'true' : 'false' }} }" class="border-b dark:border-gray-700 last:border-b-0">
+                        <div x-data="{ open: true }" class="border-b dark:border-gray-700 last:border-b-0">
                             <button @click="open = !open" class="w-full px-4 py-3 flex items-center justify-between bg-white dark:bg-gray-800 hover:bg-gray-50 dark:hover:bg-gray-750 transition">
                                 <div class="flex items-center gap-4">
                                     <span class="font-medium text-gray-900 dark:text-gray-100">{{ $month['month_name'] }}</span>
@@ -1981,12 +1981,12 @@
                                         $acctNum = null;
 
                                         // Extract account number from description
-                                        if (preg_match('/(?:ACCT|ACCOUNT|A\/C)[\s#:]*([X*]+)?(\d{4,})/i', $description, $m)) {
+                                        if (preg_match('/(?:ACCT|ACCOUNT|A\/C|CHK|CHECKING|SAV|SAVINGS)[\s#:]*([X*\.]+)?(\d{4,})/i', $description, $m)) {
                                             $acctNum = $m[2];
                                         } elseif (preg_match('/(?:ending in|ending|ends in)[\s:]*(\d{4,})/i', $description, $m)) {
                                             $acctNum = $m[1];
-                                        } elseif (preg_match('/[X*]{4,}(\d{4,})/', $description, $m)) {
-                                            $acctNum = $m[1];
+                                        } elseif (preg_match('/([X*\.]{3,})(\d{4,})/', $description, $m)) {
+                                            $acctNum = $m[2];
                                         }
 
                                         $key = $acctNum ?? 'unknown';
@@ -2019,71 +2019,237 @@
 
                                 <!-- Account Filter (if multiple accounts detected) -->
                                 @if($hasMultipleAccounts)
-                                <div class="px-4 py-3 bg-blue-50 dark:bg-blue-900/20 border-t border-b border-blue-200 dark:border-blue-800">
-                                    <div class="flex items-center justify-between mb-3">
-                                        <div class="flex items-center gap-2">
-                                            <svg class="w-5 h-5 text-blue-600 dark:text-blue-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                @php
+                                    // Count only accounts with transactions
+                                    $accountsWithTransactions = array_filter($accountGroups, function($txns) {
+                                        return count($txns) > 0;
+                                    });
+                                @endphp
+                                <div class="mb-4 border border-blue-300 dark:border-blue-700 rounded-lg overflow-hidden">
+                                    <div class="bg-blue-600 px-4 py-3">
+                                        <div class="flex items-center">
+                                            <svg class="w-5 h-5 text-white mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                                                 <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 11H5m14 0a2 2 0 012 2v6a2 2 0 01-2 2H5a2 2 0 01-2-2v-6a2 2 0 012-2m14 0V9a2 2 0 00-2-2M5 11V9a2 2 0 012-2m0 0V5a2 2 0 012-2h6a2 2 0 012 2v2M7 7h10"></path>
                                             </svg>
-                                            <span class="text-sm font-medium text-blue-900 dark:text-blue-200">Multiple Accounts Detected ({{ count($accountGroups) }})</span>
+                                            <span class="font-semibold text-white">Multiple Accounts Detected ({{ count($accountsWithTransactions) }})</span>
                                         </div>
                                     </div>
-                                    <div class="flex flex-wrap gap-2">
-                                        <button onclick="filterAccount_{{ $result['session_id'] }}_{{ $month['month_key'] }}('all')"
-                                                class="account-filter-btn-{{ $result['session_id'] }}-{{ $month['month_key'] }} px-3 py-1.5 rounded-md text-sm font-medium transition bg-blue-600 text-white"
-                                                data-account="all">
-                                            All Accounts ({{ count($month['transactions']) }})
-                                        </button>
-                                        @foreach(array_keys($accountGroups) as $acct)
-                                        @php
-                                            $summary = $accountSummaries[$acct];
-                                        @endphp
-                                        <button onclick="filterAccount_{{ $result['session_id'] }}_{{ $month['month_key'] }}('{{ $acct }}')"
-                                                class="account-filter-btn-{{ $result['session_id'] }}-{{ $month['month_key'] }} px-3 py-1.5 rounded-md text-sm font-medium transition bg-white dark:bg-gray-700 text-gray-700 dark:text-gray-300 border border-blue-300 dark:border-blue-700 hover:bg-blue-50 dark:hover:bg-blue-900/30"
-                                                data-account="{{ $acct }}">
-                                            @if($acct === 'unknown')
-                                                <span>No Account # ({{ count($accountGroups[$acct]) }})</span>
-                                            @else
-                                                <span class="font-mono">****{{ $acct }}</span>
-                                                <span class="ml-1 text-xs opacity-75">({{ count($accountGroups[$acct]) }})</span>
-                                            @endif
-                                        </button>
-                                        @endforeach
+                                    <div class="px-4 py-3 bg-blue-50 dark:bg-blue-900/20 border-b border-blue-200 dark:border-blue-800">
+                                        <div class="flex flex-wrap gap-2">
+                                            <button onclick="filterAccount_{{ $result['session_id'] }}_{{ $month['month_key'] }}('all')"
+                                                    class="account-filter-btn-{{ $result['session_id'] }}-{{ $month['month_key'] }} px-3 py-1.5 rounded-md text-sm font-medium transition bg-blue-600 text-white"
+                                                    data-account="all">
+                                                All Accounts ({{ count($month['transactions']) }})
+                                            </button>
+                                            @foreach(array_keys($accountGroups) as $acct)
+                                            @php
+                                                $summary = $accountSummaries[$acct];
+                                            @endphp
+                                            <button onclick="filterAccount_{{ $result['session_id'] }}_{{ $month['month_key'] }}('{{ $acct }}')"
+                                                    class="account-filter-btn-{{ $result['session_id'] }}-{{ $month['month_key'] }} px-3 py-1.5 rounded-md text-sm font-medium transition bg-white dark:bg-gray-700 text-gray-700 dark:text-gray-300 border border-blue-300 dark:border-blue-700 hover:bg-blue-50 dark:hover:bg-blue-900/30"
+                                                    data-account="{{ $acct }}">
+                                                @if($acct === 'unknown')
+                                                    <span>Other Transactions ({{ count($accountGroups[$acct]) }})</span>
+                                                @else
+                                                    <span class="font-mono">****{{ $acct }}</span>
+                                                    <span class="ml-1 text-xs opacity-75">({{ count($accountGroups[$acct]) }})</span>
+                                                @endif
+                                            </button>
+                                            @endforeach
+                                        </div>
                                     </div>
 
-                                    <!-- Per-Account Summaries -->
-                                    <div class="mt-3 space-y-2">
-                                        @foreach(array_keys($accountGroups) as $acct)
-                                        @if($acct !== 'unknown')
-                                        @php
-                                            $summary = $accountSummaries[$acct];
-                                        @endphp
-                                        <div class="account-summary-{{ $result['session_id'] }}-{{ $month['month_key'] }}-{{ $acct }} hidden bg-white dark:bg-gray-800 rounded-lg p-3 border border-blue-200 dark:border-blue-700">
-                                            <div class="flex items-center justify-between mb-2">
-                                                <span class="text-xs font-semibold text-blue-900 dark:text-blue-200">Account ****{{ $acct }}</span>
-                                                <span class="text-xs text-gray-500 dark:text-gray-400">{{ $summary['credit_count'] + $summary['debit_count'] }} transactions</span>
-                                            </div>
-                                            <div class="grid grid-cols-2 sm:grid-cols-4 gap-3 text-xs">
-                                                <div>
-                                                    <span class="text-gray-500 dark:text-gray-400">Credits:</span>
-                                                    <p class="font-semibold text-green-600 dark:text-green-400">${{ number_format($summary['credits'], 2) }}</p>
-                                                </div>
-                                                <div>
-                                                    <span class="text-gray-500 dark:text-gray-400">Debits:</span>
-                                                    <p class="font-semibold text-red-600 dark:text-red-400">${{ number_format($summary['debits'], 2) }}</p>
-                                                </div>
-                                                <div>
-                                                    <span class="text-gray-500 dark:text-gray-400">True Revenue:</span>
-                                                    <p class="font-semibold text-green-600 dark:text-green-400">${{ number_format($summary['true_revenue'], 2) }}</p>
-                                                </div>
-                                                <div>
-                                                    <span class="text-gray-500 dark:text-gray-400">Net:</span>
-                                                    <p class="font-semibold {{ ($summary['credits'] - $summary['debits']) >= 0 ? 'text-green-600 dark:text-green-400' : 'text-red-600 dark:text-red-400' }}">${{ number_format($summary['credits'] - $summary['debits'], 2) }}</p>
-                                                </div>
-                                            </div>
-                                        </div>
-                                        @endif
-                                        @endforeach
+                                    <!-- Per-Account Summaries Table -->
+                                    <div class="overflow-x-auto">
+                                        <table class="min-w-full divide-y divide-gray-200 dark:divide-gray-700">
+                                            <thead class="bg-gray-50 dark:bg-gray-700">
+                                                <tr>
+                                                    <th class="px-4 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase">Account</th>
+                                                    <th class="px-4 py-3 text-center text-xs font-medium text-gray-500 dark:text-gray-400 uppercase">Transactions</th>
+                                                    <th class="px-4 py-3 text-right text-xs font-medium text-gray-500 dark:text-gray-400 uppercase">Credits</th>
+                                                    <th class="px-4 py-3 text-center text-xs font-medium text-gray-500 dark:text-gray-400 uppercase">Count</th>
+                                                    <th class="px-4 py-3 text-right text-xs font-medium text-gray-500 dark:text-gray-400 uppercase">Debits</th>
+                                                    <th class="px-4 py-3 text-center text-xs font-medium text-gray-500 dark:text-gray-400 uppercase">Count</th>
+                                                    <th class="px-4 py-3 text-right text-xs font-medium text-gray-500 dark:text-gray-400 uppercase">True Revenue</th>
+                                                    <th class="px-4 py-3 text-right text-xs font-medium text-gray-500 dark:text-gray-400 uppercase">Net</th>
+                                                </tr>
+                                            </thead>
+                                            <tbody class="bg-white dark:bg-gray-800 divide-y divide-gray-200 dark:divide-gray-700">
+                                                @php
+                                                    // Sort accounts: numbered accounts first, then 'unknown' last
+                                                    $sortedAccounts = array_keys($accountGroups);
+                                                    usort($sortedAccounts, function($a, $b) {
+                                                        if ($a === 'unknown') return 1;
+                                                        if ($b === 'unknown') return -1;
+                                                        return strcmp($a, $b);
+                                                    });
+                                                @endphp
+                                                @foreach($sortedAccounts as $acct)
+                                                @php
+                                                    $summary = $accountSummaries[$acct];
+                                                @endphp
+                                                @if(count($accountGroups[$acct]) > 0)
+                                                <tr class="account-summary-{{ $result['session_id'] }}-{{ $month['month_key'] }}-{{ $acct }} hover:bg-gray-50 dark:hover:bg-gray-750">
+                                                    <td class="px-4 py-3 whitespace-nowrap">
+                                                        @if($acct === 'unknown')
+                                                            <span class="text-sm text-gray-500 dark:text-gray-400">Other Transactions</span>
+                                                        @else
+                                                            <div class="flex items-center">
+                                                                <svg class="w-4 h-4 text-blue-600 dark:text-blue-400 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                                                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3 10h18M7 15h1m4 0h1m-7 4h12a3 3 0 003-3V8a3 3 0 00-3-3H6a3 3 0 00-3 3v8a3 3 0 003 3z"></path>
+                                                                </svg>
+                                                                <span class="text-sm font-mono font-bold text-blue-900 dark:text-blue-100">****{{ $acct }}</span>
+                                                            </div>
+                                                        @endif
+                                                    </td>
+                                                    <td class="px-4 py-3 whitespace-nowrap text-center">
+                                                        <span class="inline-flex items-center px-2 py-1 rounded-full text-xs font-medium bg-blue-100 dark:bg-blue-800 text-blue-800 dark:text-blue-200">
+                                                            {{ $summary['credit_count'] + $summary['debit_count'] }}
+                                                        </span>
+                                                    </td>
+                                                    <td class="px-4 py-3 whitespace-nowrap text-right text-sm font-semibold text-green-600 dark:text-green-400">
+                                                        ${{ number_format($summary['credits'], 2) }}
+                                                    </td>
+                                                    <td class="px-4 py-3 whitespace-nowrap text-center">
+                                                        <span class="inline-flex items-center px-2 py-0.5 rounded text-xs bg-green-100 dark:bg-green-900 text-green-800 dark:text-green-200">
+                                                            {{ $summary['credit_count'] }}
+                                                        </span>
+                                                    </td>
+                                                    <td class="px-4 py-3 whitespace-nowrap text-right text-sm font-semibold text-red-600 dark:text-red-400">
+                                                        ${{ number_format($summary['debits'], 2) }}
+                                                    </td>
+                                                    <td class="px-4 py-3 whitespace-nowrap text-center">
+                                                        <span class="inline-flex items-center px-2 py-0.5 rounded text-xs bg-red-100 dark:bg-red-900 text-red-800 dark:text-red-200">
+                                                            {{ $summary['debit_count'] }}
+                                                        </span>
+                                                    </td>
+                                                    <td class="px-4 py-3 whitespace-nowrap text-right text-sm font-semibold text-green-600 dark:text-green-400">
+                                                        ${{ number_format($summary['true_revenue'], 2) }}
+                                                    </td>
+                                                    <td class="px-4 py-3 whitespace-nowrap text-right text-sm font-bold {{ ($summary['credits'] - $summary['debits']) >= 0 ? 'text-green-600 dark:text-green-400' : 'text-red-600 dark:text-red-400' }}">
+                                                        ${{ number_format($summary['credits'] - $summary['debits'], 2) }}
+                                                    </td>
+                                                </tr>
+                                                @endif
+                                                @endforeach
+                                            </tbody>
+                                        </table>
+                                    </div>
+                                </div>
+                                @endif
+
+                                <!-- Transfer Transactions Summary -->
+                                @php
+                                    // Filter transfer transactions and group by account number
+                                    $transferTransactions = array_filter($month['transactions'], function($txn) {
+                                        $category = $txn['category'] ?? null;
+                                        return in_array($category, ['internal_transfer', 'wire_transfer', 'ach_transfer']);
+                                    });
+
+                                    // Group transfers by account number
+                                    $transferSummary = [];
+                                    foreach ($transferTransactions as $txn) {
+                                        // Extract account number from description
+                                        $accountNumber = null;
+                                        $description = $txn['description'];
+                                        // Match patterns like: ...7072, ****1234, XXXX1234, Chk ...7072
+                                        if (preg_match('/(?:ACCT|ACCOUNT|A\/C|CHK|CHECKING|SAV|SAVINGS)[\s#:]*([X*\.]+)?(\d{4,})/i', $description, $matches)) {
+                                            $accountNumber = $matches[2];
+                                        } elseif (preg_match('/(?:ending in|ending|ends in)[\s:]*(\d{4,})/i', $description, $matches)) {
+                                            $accountNumber = $matches[1];
+                                        } elseif (preg_match('/([X*\.]{3,})(\d{4,})/', $description, $matches)) {
+                                            $accountNumber = $matches[2];
+                                        }
+
+                                        $acctKey = $accountNumber ?? 'Unknown';
+
+                                        if (!isset($transferSummary[$acctKey])) {
+                                            $transferSummary[$acctKey] = [
+                                                'account_number' => $accountNumber,
+                                                'total_credits' => 0,
+                                                'total_debits' => 0,
+                                                'credit_count' => 0,
+                                                'debit_count' => 0,
+                                            ];
+                                        }
+
+                                        if ($txn['type'] === 'credit') {
+                                            $transferSummary[$acctKey]['total_credits'] += $txn['amount'];
+                                            $transferSummary[$acctKey]['credit_count']++;
+                                        } else {
+                                            $transferSummary[$acctKey]['total_debits'] += $txn['amount'];
+                                            $transferSummary[$acctKey]['debit_count']++;
+                                        }
+                                    }
+                                @endphp
+
+                                @if(count($transferSummary) > 0)
+                                <div class="mb-6 border-2 border-blue-300 dark:border-blue-700 rounded-lg overflow-hidden">
+                                    <div class="bg-blue-600 px-4 py-3">
+                                        <h4 class="font-semibold text-white flex items-center">
+                                            <svg class="w-5 h-5 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 7h12m0 0l-4-4m4 4l-4 4m0 6H4m0 0l4 4m-4-4l4-4"></path>
+                                            </svg>
+                                            Transfer Account Summary
+                                            <span class="ml-2 text-sm font-normal opacity-90">({{ count($transferTransactions) }} transactions across {{ count($transferSummary) }} account(s))</span>
+                                        </h4>
+                                    </div>
+                                    <div class="overflow-x-auto">
+                                        <table class="min-w-full divide-y divide-gray-200 dark:divide-gray-700">
+                                            <thead class="bg-gray-50 dark:bg-gray-700">
+                                                <tr>
+                                                    <th class="px-4 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase">Account</th>
+                                                    <th class="px-4 py-3 text-right text-xs font-medium text-gray-500 dark:text-gray-400 uppercase">Credits (Incoming)</th>
+                                                    <th class="px-4 py-3 text-center text-xs font-medium text-gray-500 dark:text-gray-400 uppercase">Count</th>
+                                                    <th class="px-4 py-3 text-right text-xs font-medium text-gray-500 dark:text-gray-400 uppercase">Debits (Outgoing)</th>
+                                                    <th class="px-4 py-3 text-center text-xs font-medium text-gray-500 dark:text-gray-400 uppercase">Count</th>
+                                                    <th class="px-4 py-3 text-right text-xs font-medium text-gray-500 dark:text-gray-400 uppercase">Net Transfer</th>
+                                                </tr>
+                                            </thead>
+                                            <tbody class="bg-white dark:bg-gray-800 divide-y divide-gray-200 dark:divide-gray-700">
+                                                @php
+                                                    // Sort transfer summary: accounts with numbers first, then Unknown last
+                                                    $sortedTransfers = collect($transferSummary)->sortBy(function($item, $key) {
+                                                        return $key === 'Unknown' ? 'zzz' : $key;
+                                                    })->all();
+                                                @endphp
+                                                @foreach($sortedTransfers as $summary)
+                                                <tr class="hover:bg-gray-50 dark:hover:bg-gray-750">
+                                                    <td class="px-4 py-3 whitespace-nowrap">
+                                                        @if($summary['account_number'])
+                                                            <div class="flex items-center">
+                                                                <svg class="w-4 h-4 text-blue-600 dark:text-blue-400 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                                                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3 10h18M7 15h1m4 0h1m-7 4h12a3 3 0 003-3V8a3 3 0 00-3-3H6a3 3 0 00-3 3v8a3 3 0 003 3z"></path>
+                                                                </svg>
+                                                                <span class="text-sm font-mono font-bold text-blue-900 dark:text-blue-100">****{{ $summary['account_number'] }}</span>
+                                                            </div>
+                                                        @else
+                                                            <span class="text-sm text-gray-500 dark:text-gray-400 font-medium">Other Transactions</span>
+                                                        @endif
+                                                    </td>
+                                                    <td class="px-4 py-3 whitespace-nowrap text-right text-sm font-semibold text-green-600 dark:text-green-400">
+                                                        ${{ number_format($summary['total_credits'], 2) }}
+                                                    </td>
+                                                    <td class="px-4 py-3 whitespace-nowrap text-center">
+                                                        <span class="inline-flex items-center px-2 py-0.5 rounded-full text-xs bg-green-100 dark:bg-green-900 text-green-800 dark:text-green-200">
+                                                            {{ $summary['credit_count'] }} {{ $summary['credit_count'] === 1 ? 'deposit' : 'deposits' }}
+                                                        </span>
+                                                    </td>
+                                                    <td class="px-4 py-3 whitespace-nowrap text-right text-sm font-semibold text-red-600 dark:text-red-400">
+                                                        ${{ number_format($summary['total_debits'], 2) }}
+                                                    </td>
+                                                    <td class="px-4 py-3 whitespace-nowrap text-center">
+                                                        <span class="inline-flex items-center px-2 py-0.5 rounded-full text-xs bg-red-100 dark:bg-red-900 text-red-800 dark:text-red-200">
+                                                            {{ $summary['debit_count'] }} {{ $summary['debit_count'] === 1 ? 'transfer' : 'transfers' }}
+                                                        </span>
+                                                    </td>
+                                                    <td class="px-4 py-3 whitespace-nowrap text-right text-sm font-bold {{ ($summary['total_credits'] - $summary['total_debits']) >= 0 ? 'text-green-600 dark:text-green-400' : 'text-red-600 dark:text-red-400' }}">
+                                                        ${{ number_format($summary['total_credits'] - $summary['total_debits'], 2) }}
+                                                    </td>
+                                                </tr>
+                                                @endforeach
+                                            </tbody>
+                                        </table>
                                     </div>
                                 </div>
                                 @endif
@@ -2107,12 +2273,12 @@
                                                 // Extract account number for filtering
                                                 $txnAccountNum = null;
                                                 $description = $txn['description'];
-                                                if (preg_match('/(?:ACCT|ACCOUNT|A\/C)[\s#:]*([X*]+)?(\d{4,})/i', $description, $m)) {
+                                                if (preg_match('/(?:ACCT|ACCOUNT|A\/C|CHK|CHECKING|SAV|SAVINGS)[\s#:]*([X*\.]+)?(\d{4,})/i', $description, $m)) {
                                                     $txnAccountNum = $m[2];
                                                 } elseif (preg_match('/(?:ending in|ending|ends in)[\s:]*(\d{4,})/i', $description, $m)) {
                                                     $txnAccountNum = $m[1];
-                                                } elseif (preg_match('/[X*]{4,}(\d{4,})/', $description, $m)) {
-                                                    $txnAccountNum = $m[1];
+                                                } elseif (preg_match('/([X*\.]{3,})(\d{4,})/', $description, $m)) {
+                                                    $txnAccountNum = $m[2];
                                                 }
                                                 $txnAccountKey = $txnAccountNum ?? 'unknown';
                                             @endphp
@@ -2125,6 +2291,10 @@
                                                 $isMcaFunding = $txn['is_mca_funding'] ?? false;
                                                 $mcaFundingLenderName = $txn['mca_funding_lender_name'] ?? null;
                                                 $uniqueId = $result['session_id'] . '_' . $month['month_key'] . '_' . $txnIndex;
+
+                                                // Determine if this is a transfer category
+                                                $txnCategory = $txn['category'] ?? null;
+                                                $isTransfer = in_array($txnCategory, ['internal_transfer', 'wire_transfer', 'ach_transfer']);
                                             @endphp
                                             <tr class="hover:bg-gray-50 dark:hover:bg-gray-750 txn-row-{{ $uniqueId }} txn-account-{{ $result['session_id'] }}-{{ $month['month_key'] }}" data-month="{{ $month['month_key'] }}" data-session="{{ $result['session_id'] }}" data-transaction-id="{{ $txn['id'] ?? $uniqueId }}" data-account="{{ $txnAccountKey }}">
                                                 <td class="px-4 py-2 text-sm text-gray-900 dark:text-gray-100 whitespace-nowrap">{{ $txn['date'] }}</td>
@@ -2136,17 +2306,15 @@
                                                         $description = $txn['description'];
 
                                                         // Match patterns like: ACCT ****1234, ACCT XXXX1234, Account ending in 1234, etc.
-                                                        if (preg_match('/(?:ACCT|ACCOUNT|A\/C)[\s#:]*([X*]+)?(\d{4,})/i', $description, $matches)) {
+                                                        if (preg_match('/(?:ACCT|ACCOUNT|A\/C|CHK|CHECKING|SAV|SAVINGS)[\s#:]*([X*\.]+)?(\d{4,})/i', $description, $matches)) {
                                                             $accountNumber = $matches[2];
                                                         } elseif (preg_match('/(?:ending in|ending|ends in)[\s:]*(\d{4,})/i', $description, $matches)) {
                                                             $accountNumber = $matches[1];
-                                                        } elseif (preg_match('/[X*]{4,}(\d{4,})/', $description, $matches)) {
-                                                            $accountNumber = $matches[1];
+                                                        } elseif (preg_match('/([X*\.]{3,})(\d{4,})/', $description, $matches)) {
+                                                            $accountNumber = $matches[2];
                                                         }
 
-                                                        // Determine if this is a transfer category
-                                                        $txnCategory = $txn['category'] ?? null;
-                                                        $isTransfer = in_array($txnCategory, ['internal_transfer', 'wire_transfer', 'ach_transfer']);
+                                                        // Determine transfer direction
                                                         $transferDirection = null;
                                                         if ($isTransfer) {
                                                             if (preg_match('/(?:FROM|IN|INCOMING|RECEIVED|DEPOSIT)/i', $description)) {
@@ -6151,6 +6319,206 @@
                 });
             }
         }
+
+        // ============================================================================
+        // Similar MCA Transactions Modal Functions
+        // ============================================================================
+        let pendingMcaUpdate = null;
+        let similarTransactionsData = [];
+
+        window.showSimilarMcaModal = async function(description, type, lenderId, lenderName, isMca, sourceContext = null) {
+            console.log('showSimilarMcaModal called with:', { description, type, lenderId, lenderName, isMca });
+
+            // Get current session IDs from URL
+            const urlParams = new URLSearchParams(window.location.search);
+            const sessionIds = urlParams.getAll('sessions[]');
+
+            console.log('Session IDs from URL:', sessionIds);
+
+            // Show loading state
+            showToast('Scanning for similar transactions...', 'info');
+
+            try {
+                // Find similar transactions
+                const response = await fetch('{{ route("bankstatement.find-similar-transactions") }}', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                        'X-CSRF-TOKEN': '{{ csrf_token() }}',
+                        'Accept': 'application/json'
+                    },
+                    body: JSON.stringify({
+                        description: description,
+                        type: type,
+                        session_ids: sessionIds
+                    })
+                });
+
+                if (!response.ok) {
+                    throw new Error(`HTTP error! status: ${response.status}`);
+                }
+
+                const data = await response.json();
+                console.log('API response:', data);
+
+            if (data.success && data.count > 0) {
+                similarTransactionsData = data.matching_transactions;
+                pendingMcaUpdate = { description, type, lenderId, lenderName, isMca, sourceContext };
+
+                // Update modal title and subtitle
+                document.getElementById('similar-mca-lender-label').textContent =
+                    isMca ? lenderName : 'Not MCA';
+                document.getElementById('similar-count-total').textContent = data.count;
+
+                // Update action label in footer
+                const actionLabel = document.getElementById('similar-mca-action-label');
+                if (actionLabel) {
+                    actionLabel.textContent = isMca ? lenderName : 'Not MCA';
+                }
+
+                // Update subtitle with description
+                const subtitle = document.getElementById('similar-mca-subtitle');
+                if (subtitle) {
+                    subtitle.textContent = `Found ${data.count} transaction(s) matching: "${description.substring(0, 60)}${description.length > 60 ? '...' : ''}"`;
+                }
+
+                // Populate transaction list
+                const listContainer = document.getElementById('similar-transactions-list');
+                listContainer.innerHTML = data.matching_transactions.map((txn, index) => `
+                    <div class="flex items-center gap-3 p-3 bg-gray-50 dark:bg-gray-700 rounded-lg hover:bg-gray-100 dark:hover:bg-gray-600 transition-colors border border-transparent hover:border-red-200 dark:hover:border-red-800">
+                        <input type="checkbox"
+                               id="similar-txn-${txn.id}"
+                               value="${txn.id}"
+                               onchange="updateSelectedCount()"
+                               class="similar-txn-checkbox w-4 h-4 text-red-600 focus:ring-red-500 rounded">
+                        <div class="flex-1 text-sm">
+                            <div class="font-medium text-gray-900 dark:text-gray-100">
+                                <span class="text-red-600 dark:text-red-400 font-mono">${txn.date}</span>
+                                <span class="mx-2 text-gray-400">|</span>
+                                <span class="font-semibold">$${parseFloat(txn.amount).toLocaleString('en-US', {minimumFractionDigits: 2, maximumFractionDigits: 2})}</span>
+                            </div>
+                            <div class="text-gray-600 dark:text-gray-400 truncate mt-1" title="${txn.description}">
+                                ${txn.description}
+                            </div>
+                            ${txn.is_mca_payment ? `
+                                <div class="mt-1">
+                                    <span class="text-xs px-2 py-0.5 bg-orange-100 text-orange-800 dark:bg-orange-900 dark:text-orange-200 rounded">
+                                        Currently: ${txn.mca_lender_name || 'MCA'}
+                                    </span>
+                                </div>
+                            ` : ''}
+                        </div>
+                    </div>
+                `).join('');
+
+                // Show modal
+                document.getElementById('similar-mca-modal').classList.remove('hidden');
+                document.getElementById('select-all-similar').checked = true;
+                document.querySelectorAll('.similar-txn-checkbox').forEach(cb => cb.checked = true);
+                updateSelectedCount();
+
+                showToast(`Found ${data.count} similar transaction(s)`, 'success');
+                return { count: data.count };
+            } else {
+                // No similar transactions found
+                console.log('No similar transactions found');
+                showToast('No similar transactions found', 'info');
+                return { count: 0 };
+            }
+            } catch (error) {
+                console.error('Error in showSimilarMcaModal:', error);
+                showToast('Error searching for similar transactions: ' + error.message, 'error');
+                return { count: 0, error: error.message };
+            }
+        }
+
+        window.toggleAllSimilar = function() {
+            const selectAll = document.getElementById('select-all-similar');
+            document.querySelectorAll('.similar-txn-checkbox').forEach(checkbox => {
+                checkbox.checked = selectAll.checked;
+            });
+            window.updateSelectedCount();
+        }
+
+        window.updateSelectedCount = function() {
+            const selected = document.querySelectorAll('.similar-txn-checkbox:checked').length;
+            document.getElementById('similar-selected-count').textContent = selected;
+        }
+
+        window.closeSimilarMcaModal = function() {
+            document.getElementById('similar-mca-modal').classList.add('hidden');
+            pendingMcaUpdate = null;
+            similarTransactionsData = [];
+        }
+
+        window.confirmSimilarMcaUpdate = async function() {
+            if (!pendingMcaUpdate) return;
+
+            // Get selected transaction IDs
+            const selectedIds = Array.from(document.querySelectorAll('.similar-txn-checkbox:checked'))
+                .map(cb => parseInt(cb.value));
+
+            if (selectedIds.length === 0) {
+                alert('Please select at least one transaction');
+                return;
+            }
+
+            const { description, type, lenderId, lenderName, isMca } = pendingMcaUpdate;
+
+            // Close modal
+            closeSimilarMcaModal();
+
+            // Update transactions via API
+            const endpoint = type === 'debit'
+                ? '{{ route("bankstatement.toggle-mca") }}'
+                : '{{ route("bankstatement.toggle-revenue") }}';
+
+            const requestBody = type === 'debit' ? {
+                description: description,
+                amount: 0,
+                is_mca: isMca,
+                lender_id: lenderId,
+                lender_name: lenderName,
+                transaction_ids: selectedIds
+            } : {
+                transaction_id: 0,
+                description: description,
+                amount: 0,
+                current_classification: 'true_revenue',
+                is_mca_funding: isMca,
+                mca_lender_id: lenderId,
+                mca_lender_name: lenderName,
+                transaction_ids: selectedIds
+            };
+
+            try {
+                const response = await fetch(endpoint, {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                        'X-CSRF-TOKEN': '{{ csrf_token() }}',
+                        'Accept': 'application/json'
+                    },
+                    body: JSON.stringify(requestBody)
+                });
+
+                const data = await response.json();
+
+                if (data.success) {
+                    showNotificationResults(`✓ Updated ${selectedIds.length} transaction(s)`, 'success');
+
+                    // Reload page to reflect changes
+                    setTimeout(() => {
+                        window.location.reload();
+                    }, 1500);
+                } else {
+                    showNotificationResults(data.message || 'Failed to update transactions', 'error');
+                }
+            } catch (error) {
+                console.error('Error updating transactions:', error);
+                showNotificationResults('An error occurred while updating transactions', 'error');
+            }
+        }
     </script>
 
     <!-- Similar Transactions Modal -->
@@ -6557,11 +6925,31 @@
                             }
                         });
 
-                        // Show/hide account summaries
+                        // Show/hide account summaries with animation
                         const summaries = document.querySelectorAll('.account-summary-' + sessionId + '-' + monthKey + '-' + accountKey);
-                        document.querySelectorAll('[class*="account-summary-' + sessionId + '-' + monthKey + '-"]').forEach(s => s.classList.add('hidden'));
+                        const allSummaries = document.querySelectorAll('[class*="account-summary-' + sessionId + '-' + monthKey + '-"]');
+
+                        // Hide all summaries first
+                        allSummaries.forEach(s => {
+                            s.classList.add('hidden');
+                            s.style.opacity = '0';
+                        });
+
+                        // Show selected account summary with fade-in animation
                         if (accountKey !== 'all' && accountKey !== 'unknown') {
-                            summaries.forEach(s => s.classList.remove('hidden'));
+                            summaries.forEach(s => {
+                                s.classList.remove('hidden');
+                                // Trigger animation
+                                setTimeout(() => {
+                                    s.style.opacity = '1';
+                                    s.style.transform = 'translateY(0)';
+                                }, 10);
+
+                                // Scroll to summary
+                                setTimeout(() => {
+                                    s.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+                                }, 100);
+                            });
                         }
                     };
                 @endforeach
@@ -7134,203 +7522,10 @@
         */ // END OF COMMENTED OUT DUPLICATE CATEGORY FUNCTIONS
 
         // ============================================================================
-        // Similar MCA Transactions Modal Functions (NOT category-related)
-        let pendingMcaUpdate = null;
-        let similarTransactionsData = [];
-
-        window.showSimilarMcaModal = async function(description, type, lenderId, lenderName, isMca, sourceContext = null) {
-            console.log('showSimilarMcaModal called with:', { description, type, lenderId, lenderName, isMca });
-
-            // Get current session IDs from URL
-            const urlParams = new URLSearchParams(window.location.search);
-            const sessionIds = urlParams.getAll('sessions[]');
-
-            console.log('Session IDs from URL:', sessionIds);
-
-            // Show loading state
-            showToast('Scanning for similar transactions...', 'info');
-
-            try {
-                // Find similar transactions
-                const response = await fetch('{{ route("bankstatement.find-similar-transactions") }}', {
-                    method: 'POST',
-                    headers: {
-                        'Content-Type': 'application/json',
-                        'X-CSRF-TOKEN': '{{ csrf_token() }}',
-                        'Accept': 'application/json'
-                    },
-                    body: JSON.stringify({
-                        description: description,
-                        type: type,
-                        session_ids: sessionIds
-                    })
-                });
-
-                if (!response.ok) {
-                    throw new Error(`HTTP error! status: ${response.status}`);
-                }
-
-                const data = await response.json();
-                console.log('API response:', data);
-
-            if (data.success && data.count > 0) {
-                similarTransactionsData = data.matching_transactions;
-                pendingMcaUpdate = { description, type, lenderId, lenderName, isMca, sourceContext };
-
-                // Update modal title and subtitle
-                document.getElementById('similar-mca-lender-label').textContent =
-                    isMca ? lenderName : 'Not MCA';
-                document.getElementById('similar-count-total').textContent = data.count;
-
-                // Update action label in footer
-                const actionLabel = document.getElementById('similar-mca-action-label');
-                if (actionLabel) {
-                    actionLabel.textContent = isMca ? lenderName : 'Not MCA';
-                }
-
-                // Update subtitle with description
-                const subtitle = document.getElementById('similar-mca-subtitle');
-                if (subtitle) {
-                    subtitle.textContent = `Found ${data.count} transaction(s) matching: "${description.substring(0, 60)}${description.length > 60 ? '...' : ''}"`;
-                }
-
-                // Populate transaction list
-                const listContainer = document.getElementById('similar-transactions-list');
-                listContainer.innerHTML = data.matching_transactions.map((txn, index) => `
-                    <div class="flex items-center gap-3 p-3 bg-gray-50 dark:bg-gray-700 rounded-lg hover:bg-gray-100 dark:hover:bg-gray-600 transition-colors border border-transparent hover:border-red-200 dark:hover:border-red-800">
-                        <input type="checkbox"
-                               id="similar-txn-${txn.id}"
-                               value="${txn.id}"
-                               onchange="updateSelectedCount()"
-                               class="similar-txn-checkbox w-4 h-4 text-red-600 focus:ring-red-500 rounded">
-                        <div class="flex-1 text-sm">
-                            <div class="font-medium text-gray-900 dark:text-gray-100">
-                                <span class="text-red-600 dark:text-red-400 font-mono">${txn.date}</span>
-                                <span class="mx-2 text-gray-400">|</span>
-                                <span class="font-semibold">$${parseFloat(txn.amount).toLocaleString('en-US', {minimumFractionDigits: 2, maximumFractionDigits: 2})}</span>
-                            </div>
-                            <div class="text-gray-600 dark:text-gray-400 truncate mt-1" title="${txn.description}">
-                                ${txn.description}
-                            </div>
-                            ${txn.is_mca_payment ? `
-                                <div class="mt-1">
-                                    <span class="text-xs px-2 py-0.5 bg-orange-100 text-orange-800 dark:bg-orange-900 dark:text-orange-200 rounded">
-                                        Currently: ${txn.mca_lender_name || 'MCA'}
-                                    </span>
-                                </div>
-                            ` : ''}
-                        </div>
-                    </div>
-                `).join('');
-
-                // Show modal
-                document.getElementById('similar-mca-modal').classList.remove('hidden');
-                document.getElementById('select-all-similar').checked = true;
-                document.querySelectorAll('.similar-txn-checkbox').forEach(cb => cb.checked = true);
-                updateSelectedCount();
-
-                showToast(`Found ${data.count} similar transaction(s)`, 'success');
-                return { count: data.count };
-            } else {
-                // No similar transactions found
-                console.log('No similar transactions found');
-                showToast('No similar transactions found', 'info');
-                return { count: 0 };
-            }
-            } catch (error) {
-                console.error('Error in showSimilarMcaModal:', error);
-                showToast('Error searching for similar transactions: ' + error.message, 'error');
-                return { count: 0, error: error.message };
-            }
-        }
-
-        window.toggleAllSimilar = function() {
-            const selectAll = document.getElementById('select-all-similar');
-            document.querySelectorAll('.similar-txn-checkbox').forEach(checkbox => {
-                checkbox.checked = selectAll.checked;
-            });
-            window.updateSelectedCount();
-        }
-
-        window.updateSelectedCount = function() {
-            const selected = document.querySelectorAll('.similar-txn-checkbox:checked').length;
-            document.getElementById('similar-selected-count').textContent = selected;
-        }
-
-        window.closeSimilarMcaModal = function() {
-            document.getElementById('similar-mca-modal').classList.add('hidden');
-            pendingMcaUpdate = null;
-            similarTransactionsData = [];
-        }
-
-        window.confirmSimilarMcaUpdate = async function() {
-            if (!pendingMcaUpdate) return;
-
-            // Get selected transaction IDs
-            const selectedIds = Array.from(document.querySelectorAll('.similar-txn-checkbox:checked'))
-                .map(cb => parseInt(cb.value));
-
-            if (selectedIds.length === 0) {
-                alert('Please select at least one transaction');
-                return;
-            }
-
-            const { description, type, lenderId, lenderName, isMca } = pendingMcaUpdate;
-
-            // Close modal
-            closeSimilarMcaModal();
-
-            // Update transactions via API
-            const endpoint = type === 'debit'
-                ? '{{ route("bankstatement.toggle-mca") }}'
-                : '{{ route("bankstatement.toggle-revenue") }}';
-
-            const requestBody = type === 'debit' ? {
-                description: description,
-                amount: 0,
-                is_mca: isMca,
-                lender_id: lenderId,
-                lender_name: lenderName,
-                transaction_ids: selectedIds
-            } : {
-                transaction_id: 0,
-                description: description,
-                amount: 0,
-                current_classification: 'true_revenue',
-                is_mca_funding: isMca,
-                mca_lender_id: lenderId,
-                mca_lender_name: lenderName,
-                transaction_ids: selectedIds
-            };
-
-            try {
-                const response = await fetch(endpoint, {
-                    method: 'POST',
-                    headers: {
-                        'Content-Type': 'application/json',
-                        'X-CSRF-TOKEN': '{{ csrf_token() }}',
-                        'Accept': 'application/json'
-                    },
-                    body: JSON.stringify(requestBody)
-                });
-
-                const data = await response.json();
-
-                if (data.success) {
-                    showNotificationResults(`✓ Updated ${selectedIds.length} transaction(s)`, 'success');
-
-                    // Reload page to reflect changes
-                    setTimeout(() => {
-                        window.location.reload();
-                    }, 1500);
-                } else {
-                    showNotificationResults(data.message || 'Failed to update transactions', 'error');
-                }
-            } catch (error) {
-                console.error('Error updating transactions:', error);
-                showNotificationResults('An error occurred while updating transactions', 'error');
-            }
-        }
+        // Similar MCA Transactions Modal Functions
+        // NOTE: These functions have been MOVED to the first script section
+        // to ensure they are defined before being called
+        // ============================================================================
     </script>
 
     <!-- Chart.js for Category Distribution -->

@@ -120,9 +120,259 @@
                 </div>
             </div>
 
+            @php
+                // Group transactions by account number
+                $accountGroups = ['unknown' => []];
+                $accountSummaries = ['unknown' => ['credits' => 0, 'debits' => 0, 'credit_count' => 0, 'debit_count' => 0]];
+
+                foreach($transactions as $txn) {
+                    $description = $txn->description;
+                    $acctNum = null;
+
+                    // Extract account number from description
+                    if (preg_match('/(?:ACCT|ACCOUNT|A\/C|CHK|CHECKING|SAV|SAVINGS)[\s#:]*([X*\.]+)?(\d{4,})/i', $description, $m)) {
+                        $acctNum = $m[2];
+                    } elseif (preg_match('/(?:ending in|ending|ends in)[\s:]*(\d{4,})/i', $description, $m)) {
+                        $acctNum = $m[1];
+                    } elseif (preg_match('/([X*\.]{3,})(\d{4,})/', $description, $m)) {
+                        $acctNum = $m[2];
+                    }
+
+                    $key = $acctNum ?? 'unknown';
+
+                    if (!isset($accountGroups[$key])) {
+                        $accountGroups[$key] = [];
+                        $accountSummaries[$key] = ['credits' => 0, 'debits' => 0, 'credit_count' => 0, 'debit_count' => 0];
+                    }
+
+                    $accountGroups[$key][] = $txn;
+
+                    // Calculate summaries
+                    $amount = $txn->amount;
+                    if ($txn->type === 'credit') {
+                        $accountSummaries[$key]['credits'] += $amount;
+                        $accountSummaries[$key]['credit_count']++;
+                    } else {
+                        $accountSummaries[$key]['debits'] += $amount;
+                        $accountSummaries[$key]['debit_count']++;
+                    }
+                }
+
+                $hasMultipleAccounts = count($accountGroups) > 1;
+            @endphp
+
             <!-- Transactions Table -->
             <div class="bg-white dark:bg-gray-800 overflow-hidden shadow-sm sm:rounded-lg">
                 <div class="p-6">
+                    <!-- Account Summaries (if multiple accounts detected) -->
+                    @if($hasMultipleAccounts)
+                    @php
+                        // Count only accounts with transactions
+                        $accountsWithTransactions = array_filter($accountGroups, function($txns) {
+                            return count($txns) > 0;
+                        });
+                    @endphp
+                    <div class="mb-6 border border-blue-300 dark:border-blue-700 rounded-lg overflow-hidden">
+                        <div class="bg-blue-600 px-4 py-3">
+                            <div class="flex items-center">
+                                <svg class="w-5 h-5 text-white mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 11H5m14 0a2 2 0 012 2v6a2 2 0 01-2 2H5a2 2 0 01-2-2v-6a2 2 0 012-2m14 0V9a2 2 0 00-2-2M5 11V9a2 2 0 012-2m0 0V5a2 2 0 012-2h6a2 2 0 012 2v2M7 7h10"></path>
+                                </svg>
+                                <h3 class="font-semibold text-white">Multiple Accounts Detected ({{ count($accountsWithTransactions) }})</h3>
+                            </div>
+                        </div>
+
+                        <!-- Account Summary Table -->
+                        <div class="overflow-x-auto">
+                            <table class="min-w-full divide-y divide-gray-200 dark:divide-gray-700">
+                                <thead class="bg-gray-50 dark:bg-gray-700">
+                                    <tr>
+                                        <th class="px-4 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase">Account</th>
+                                        <th class="px-4 py-3 text-center text-xs font-medium text-gray-500 dark:text-gray-400 uppercase">Transactions</th>
+                                        <th class="px-4 py-3 text-right text-xs font-medium text-gray-500 dark:text-gray-400 uppercase">Credits</th>
+                                        <th class="px-4 py-3 text-center text-xs font-medium text-gray-500 dark:text-gray-400 uppercase">Count</th>
+                                        <th class="px-4 py-3 text-right text-xs font-medium text-gray-500 dark:text-gray-400 uppercase">Debits</th>
+                                        <th class="px-4 py-3 text-center text-xs font-medium text-gray-500 dark:text-gray-400 uppercase">Count</th>
+                                        <th class="px-4 py-3 text-right text-xs font-medium text-gray-500 dark:text-gray-400 uppercase">Net Balance</th>
+                                    </tr>
+                                </thead>
+                                <tbody class="bg-white dark:bg-gray-800 divide-y divide-gray-200 dark:divide-gray-700">
+                                    @php
+                                        // Sort accounts: numbered accounts first, then 'unknown' last
+                                        $sortedAccounts = array_keys($accountGroups);
+                                        usort($sortedAccounts, function($a, $b) {
+                                            if ($a === 'unknown') return 1;
+                                            if ($b === 'unknown') return -1;
+                                            return strcmp($a, $b);
+                                        });
+                                    @endphp
+                                    @foreach($sortedAccounts as $acct)
+                                    @php
+                                        $summary = $accountSummaries[$acct];
+                                    @endphp
+                                    @if(count($accountGroups[$acct]) > 0)
+                                    <tr class="hover:bg-gray-50 dark:hover:bg-gray-750">
+                                        <td class="px-4 py-3 whitespace-nowrap">
+                                            @if($acct === 'unknown')
+                                                <span class="text-sm text-gray-500 dark:text-gray-400">Other Transactions</span>
+                                            @else
+                                                <div class="flex items-center">
+                                                    <svg class="w-4 h-4 text-blue-600 dark:text-blue-400 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3 10h18M7 15h1m4 0h1m-7 4h12a3 3 0 003-3V8a3 3 0 00-3-3H6a3 3 0 00-3 3v8a3 3 0 003 3z"></path>
+                                                    </svg>
+                                                    <span class="text-sm font-mono font-bold text-blue-900 dark:text-blue-100">****{{ $acct }}</span>
+                                                </div>
+                                            @endif
+                                        </td>
+                                        <td class="px-4 py-3 whitespace-nowrap text-center">
+                                            <span class="inline-flex items-center px-2 py-1 rounded-full text-xs font-medium bg-blue-100 dark:bg-blue-800 text-blue-800 dark:text-blue-200">
+                                                {{ count($accountGroups[$acct]) }}
+                                            </span>
+                                        </td>
+                                        <td class="px-4 py-3 whitespace-nowrap text-right text-sm font-semibold text-green-600 dark:text-green-400">
+                                            ${{ number_format($summary['credits'], 2) }}
+                                        </td>
+                                        <td class="px-4 py-3 whitespace-nowrap text-center">
+                                            <span class="inline-flex items-center px-2 py-0.5 rounded text-xs bg-green-100 dark:bg-green-900 text-green-800 dark:text-green-200">
+                                                {{ $summary['credit_count'] }}
+                                            </span>
+                                        </td>
+                                        <td class="px-4 py-3 whitespace-nowrap text-right text-sm font-semibold text-red-600 dark:text-red-400">
+                                            ${{ number_format($summary['debits'], 2) }}
+                                        </td>
+                                        <td class="px-4 py-3 whitespace-nowrap text-center">
+                                            <span class="inline-flex items-center px-2 py-0.5 rounded text-xs bg-red-100 dark:bg-red-900 text-red-800 dark:text-red-200">
+                                                {{ $summary['debit_count'] }}
+                                            </span>
+                                        </td>
+                                        <td class="px-4 py-3 whitespace-nowrap text-right text-sm font-bold {{ ($summary['credits'] - $summary['debits']) >= 0 ? 'text-green-600 dark:text-green-400' : 'text-red-600 dark:text-red-400' }}">
+                                            ${{ number_format($summary['credits'] - $summary['debits'], 2) }}
+                                        </td>
+                                    </tr>
+                                    @endif
+                                    @endforeach
+                                </tbody>
+                            </table>
+                        </div>
+                    </div>
+                    @endif
+
+                    <!-- Transfer Account Summary -->
+                    @php
+                        // Filter transfer transactions and group by account number
+                        $transferTransactions = $transactions->filter(function($txn) {
+                            $category = $txn->category ?? null;
+                            return in_array($category, ['internal_transfer', 'wire_transfer', 'ach_transfer']);
+                        });
+
+                        // Group transfers by account number
+                        $transferSummary = [];
+                        foreach ($transferTransactions as $txn) {
+                            // Extract account number from description
+                            $accountNumber = null;
+                            $description = $txn->description;
+                            // Match patterns like: ...7072, ****1234, XXXX1234, Chk ...7072
+                            if (preg_match('/(?:ACCT|ACCOUNT|A\/C|CHK|CHECKING|SAV|SAVINGS)[\s#:]*([X*\.]+)?(\d{4,})/i', $description, $matches)) {
+                                $accountNumber = $matches[2];
+                            } elseif (preg_match('/(?:ending in|ending|ends in)[\s:]*(\d{4,})/i', $description, $matches)) {
+                                $accountNumber = $matches[1];
+                            } elseif (preg_match('/([X*\.]{3,})(\d{4,})/', $description, $matches)) {
+                                $accountNumber = $matches[2];
+                            }
+
+                            $acctKey = $accountNumber ?? 'Unknown';
+
+                            if (!isset($transferSummary[$acctKey])) {
+                                $transferSummary[$acctKey] = [
+                                    'account_number' => $accountNumber,
+                                    'total_credits' => 0,
+                                    'total_debits' => 0,
+                                    'credit_count' => 0,
+                                    'debit_count' => 0,
+                                ];
+                            }
+
+                            if ($txn->type === 'credit') {
+                                $transferSummary[$acctKey]['total_credits'] += $txn->amount;
+                                $transferSummary[$acctKey]['credit_count']++;
+                            } else {
+                                $transferSummary[$acctKey]['total_debits'] += $txn->amount;
+                                $transferSummary[$acctKey]['debit_count']++;
+                            }
+                        }
+                    @endphp
+
+                    @if(count($transferSummary) > 0)
+                    <div class="mb-6 border-2 border-blue-300 dark:border-blue-700 rounded-lg overflow-hidden">
+                        <div class="bg-blue-600 px-4 py-3">
+                            <h4 class="font-semibold text-white flex items-center">
+                                <svg class="w-5 h-5 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 7h12m0 0l-4-4m4 4l-4 4m0 6H4m0 0l4 4m-4-4l4-4"></path>
+                                </svg>
+                                Transfer Account Summary
+                                <span class="ml-2 text-sm font-normal opacity-90">({{ count($transferTransactions) }} transactions across {{ count($transferSummary) }} account(s))</span>
+                            </h4>
+                        </div>
+                        <div class="overflow-x-auto">
+                            <table class="min-w-full divide-y divide-gray-200 dark:divide-gray-700">
+                                <thead class="bg-gray-50 dark:bg-gray-700">
+                                    <tr>
+                                        <th class="px-4 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase">Account</th>
+                                        <th class="px-4 py-3 text-right text-xs font-medium text-gray-500 dark:text-gray-400 uppercase">Credits (Incoming)</th>
+                                        <th class="px-4 py-3 text-center text-xs font-medium text-gray-500 dark:text-gray-400 uppercase">Count</th>
+                                        <th class="px-4 py-3 text-right text-xs font-medium text-gray-500 dark:text-gray-400 uppercase">Debits (Outgoing)</th>
+                                        <th class="px-4 py-3 text-center text-xs font-medium text-gray-500 dark:text-gray-400 uppercase">Count</th>
+                                        <th class="px-4 py-3 text-right text-xs font-medium text-gray-500 dark:text-gray-400 uppercase">Net Transfer</th>
+                                    </tr>
+                                </thead>
+                                <tbody class="bg-white dark:bg-gray-800 divide-y divide-gray-200 dark:divide-gray-700">
+                                    @php
+                                        // Sort transfer summary: accounts with numbers first, then Unknown last
+                                        $sortedTransfers = collect($transferSummary)->sortBy(function($item, $key) {
+                                            return $key === 'Unknown' ? 'zzz' : $key;
+                                        })->all();
+                                    @endphp
+                                    @foreach($sortedTransfers as $summary)
+                                    <tr class="hover:bg-gray-50 dark:hover:bg-gray-750">
+                                        <td class="px-4 py-3 whitespace-nowrap">
+                                            @if($summary['account_number'])
+                                                <div class="flex items-center">
+                                                    <svg class="w-4 h-4 text-blue-600 dark:text-blue-400 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3 10h18M7 15h1m4 0h1m-7 4h12a3 3 0 003-3V8a3 3 0 00-3-3H6a3 3 0 00-3 3v8a3 3 0 003 3z"></path>
+                                                    </svg>
+                                                    <span class="text-sm font-mono font-bold text-blue-900 dark:text-blue-100">****{{ $summary['account_number'] }}</span>
+                                                </div>
+                                            @else
+                                                <span class="text-sm text-gray-500 dark:text-gray-400 font-medium">Other Transactions</span>
+                                            @endif
+                                        </td>
+                                        <td class="px-4 py-3 whitespace-nowrap text-right text-sm font-semibold text-green-600 dark:text-green-400">
+                                            ${{ number_format($summary['total_credits'], 2) }}
+                                        </td>
+                                        <td class="px-4 py-3 whitespace-nowrap text-center">
+                                            <span class="inline-flex items-center px-2 py-0.5 rounded-full text-xs bg-green-100 dark:bg-green-900 text-green-800 dark:text-green-200">
+                                                {{ $summary['credit_count'] }} {{ $summary['credit_count'] === 1 ? 'deposit' : 'deposits' }}
+                                            </span>
+                                        </td>
+                                        <td class="px-4 py-3 whitespace-nowrap text-right text-sm font-semibold text-red-600 dark:text-red-400">
+                                            ${{ number_format($summary['total_debits'], 2) }}
+                                        </td>
+                                        <td class="px-4 py-3 whitespace-nowrap text-center">
+                                            <span class="inline-flex items-center px-2 py-0.5 rounded-full text-xs bg-red-100 dark:bg-red-900 text-red-800 dark:text-red-200">
+                                                {{ $summary['debit_count'] }} {{ $summary['debit_count'] === 1 ? 'transfer' : 'transfers' }}
+                                            </span>
+                                        </td>
+                                        <td class="px-4 py-3 whitespace-nowrap text-right text-sm font-bold {{ ($summary['total_credits'] - $summary['total_debits']) >= 0 ? 'text-green-600 dark:text-green-400' : 'text-red-600 dark:text-red-400' }}">
+                                            ${{ number_format($summary['total_credits'] - $summary['total_debits'], 2) }}
+                                        </td>
+                                    </tr>
+                                    @endforeach
+                                </tbody>
+                            </table>
+                        </div>
+                    </div>
+                    @endif
+
                     <div class="flex items-center justify-between mb-4">
                         <h3 class="text-lg font-semibold text-gray-900 dark:text-gray-100">All Transactions</h3>
                         <div class="flex items-center gap-2">
@@ -150,7 +400,20 @@
                             </thead>
                             <tbody class="bg-white dark:bg-gray-800 divide-y divide-gray-200 dark:divide-gray-700">
                                 @foreach($transactions as $index => $txn)
-                                <tr class="hover:bg-gray-50 dark:hover:bg-gray-700" id="txn-row-{{ $txn->id }}" data-transaction-id="{{ $txn->id }}">
+                                @php
+                                    // Extract account number for filtering
+                                    $txnAccountNum = null;
+                                    $description = $txn->description;
+                                    if (preg_match('/(?:ACCT|ACCOUNT|A\/C|CHK|CHECKING|SAV|SAVINGS)[\s#:]*([X*\.]+)?(\d{4,})/i', $description, $m)) {
+                                        $txnAccountNum = $m[2];
+                                    } elseif (preg_match('/(?:ending in|ending|ends in)[\s:]*(\d{4,})/i', $description, $m)) {
+                                        $txnAccountNum = $m[1];
+                                    } elseif (preg_match('/([X*\.]{3,})(\d{4,})/', $description, $m)) {
+                                        $txnAccountNum = $m[2];
+                                    }
+                                    $txnAccountKey = $txnAccountNum ?? 'unknown';
+                                @endphp
+                                <tr class="hover:bg-gray-50 dark:hover:bg-gray-700 txn-account-session" id="txn-row-{{ $txn->id }}" data-transaction-id="{{ $txn->id }}" data-account="{{ $txnAccountKey }}">
                                     <td class="px-4 py-3 text-sm text-gray-500 dark:text-gray-400">{{ $index + 1 }}</td>
                                     <td class="px-4 py-3 text-sm text-gray-900 dark:text-gray-100 whitespace-nowrap">{{ $txn->transaction_date->format('Y-m-d') }}</td>
                                     <td class="px-4 py-3 text-sm text-gray-900 dark:text-gray-100">
@@ -167,13 +430,13 @@
                                             $accountNumber = null;
                                             $description = $txn->description;
 
-                                            // Match patterns like: ACCT ****1234, ACCT XXXX1234, Account ending in 1234, etc.
-                                            if (preg_match('/(?:ACCT|ACCOUNT|A\/C)[\s#:]*([X*]+)?(\d{4,})/i', $description, $matches)) {
+                                            // Match patterns like: ...7072, ****1234, XXXX1234, Chk ...7072
+                                            if (preg_match('/(?:ACCT|ACCOUNT|A\/C|CHK|CHECKING|SAV|SAVINGS)[\s#:]*([X*\.]+)?(\d{4,})/i', $description, $matches)) {
                                                 $accountNumber = $matches[2];
                                             } elseif (preg_match('/(?:ending in|ending|ends in)[\s:]*(\d{4,})/i', $description, $matches)) {
                                                 $accountNumber = $matches[1];
-                                            } elseif (preg_match('/[X*]{4,}(\d{4,})/', $description, $matches)) {
-                                                $accountNumber = $matches[1];
+                                            } elseif (preg_match('/([X*\.]{3,})(\d{4,})/', $description, $matches)) {
+                                                $accountNumber = $matches[2];
                                             }
 
                                             // Determine if this is a transfer category
@@ -707,6 +970,65 @@
                         // Neutral metrics - normal state
                         card.classList.remove('opacity-60', 'scale-95', 'scale-105', 'shadow-lg', 'ring-2', 'ring-green-500', 'ring-red-500', 'ring-opacity-50');
                     }
+                });
+            }
+        }
+
+        // ============================================================================
+        // Account Filtering Function
+        // ============================================================================
+        window.filterAccountSession = function(accountKey) {
+            console.log('filterAccountSession called with:', accountKey);
+
+            // Update button states
+            const buttons = document.querySelectorAll('.account-filter-btn-session');
+            console.log('Found buttons:', buttons.length);
+            buttons.forEach(btn => {
+                if (btn.dataset.account === accountKey) {
+                    btn.classList.remove('bg-white', 'dark:bg-gray-700', 'text-gray-700', 'dark:text-gray-300', 'border', 'border-blue-300', 'dark:border-blue-700');
+                    btn.classList.add('bg-blue-600', 'text-white');
+                } else {
+                    btn.classList.remove('bg-blue-600', 'text-white');
+                    btn.classList.add('bg-white', 'dark:bg-gray-700', 'text-gray-700', 'dark:text-gray-300', 'border', 'border-blue-300', 'dark:border-blue-700');
+                }
+            });
+
+            // Filter transaction rows
+            const rows = document.querySelectorAll('.txn-account-session');
+            console.log('Found transaction rows:', rows.length);
+            rows.forEach(row => {
+                console.log('Row account:', row.dataset.account, 'Filter:', accountKey);
+                if (accountKey === 'all') {
+                    row.style.display = '';
+                } else {
+                    row.style.display = row.dataset.account === accountKey ? '' : 'none';
+                }
+            });
+
+            // Show/hide account summaries with animation
+            const summaries = document.querySelectorAll('.account-summary-session-' + accountKey);
+            const allSummaries = document.querySelectorAll('[class*="account-summary-session-"]');
+
+            // Hide all summaries first
+            allSummaries.forEach(s => {
+                s.classList.add('hidden');
+                s.style.opacity = '0';
+            });
+
+            // Show selected account summary with fade-in animation
+            if (accountKey !== 'all' && accountKey !== 'unknown') {
+                summaries.forEach(s => {
+                    s.classList.remove('hidden');
+                    // Trigger animation
+                    setTimeout(() => {
+                        s.style.opacity = '1';
+                        s.style.transform = 'translateY(0)';
+                    }, 10);
+
+                    // Scroll to summary
+                    setTimeout(() => {
+                        s.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+                    }, 100);
                 });
             }
         }
