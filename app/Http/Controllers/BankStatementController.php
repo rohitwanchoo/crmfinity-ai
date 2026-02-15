@@ -1859,6 +1859,23 @@ class BankStatementController extends Controller
             }
         }
 
+        // Calculate average ledger balance (simple average of beginning and ending balances)
+        $averageLedgerBalance = null;
+        if ($session && $session->beginning_balance !== null && $session->ending_balance !== null) {
+            $averageLedgerBalance = ($session->beginning_balance + $session->ending_balance) / 2;
+        }
+
+        // For average daily balance, use session value directly if available (it's already the overall average)
+        // Otherwise calculate from monthly data
+        $overallAverageDailyBalance = null;
+        if ($session && $session->average_daily_balance !== null) {
+            // Use the session's average daily balance directly (don't recalculate from months)
+            $overallAverageDailyBalance = (float) $session->average_daily_balance;
+        } elseif ($totals['balance_months_count'] > 0) {
+            // Calculate from monthly averages only if no session-level value exists
+            $overallAverageDailyBalance = $totals['average_daily_balance'] / $totals['balance_months_count'];
+        }
+
         // Calculate averages
         $averages = [
             'deposits' => $monthCount > 0 ? $totals['deposits'] / $monthCount : 0,
@@ -1867,9 +1884,8 @@ class BankStatementController extends Controller
             'debits' => $monthCount > 0 ? $totals['debits'] / $monthCount : 0,
             'deposit_count' => $monthCount > 0 ? $totals['deposit_count'] / $monthCount : 0,
             'average_daily_revenue' => $monthCount > 0 ? $totals['average_daily_revenue'] / $monthCount : 0,
-            'average_daily_balance' => $totals['balance_months_count'] > 0
-                ? $totals['average_daily_balance'] / $totals['balance_months_count']
-                : null,
+            'average_daily_balance' => $overallAverageDailyBalance,
+            'average_ledger_balance' => $averageLedgerBalance,
             'average_daily' => $monthCount > 0 ? $totals['average_daily_revenue'] / $monthCount : 0, // Deprecated
         ];
 
@@ -1878,6 +1894,9 @@ class BankStatementController extends Controller
             'totals' => $totals,
             'averages' => $averages,
             'month_count' => $monthCount,
+            'beginning_balance' => $session ? $session->beginning_balance : null,
+            'ending_balance' => $session ? $session->ending_balance : null,
+            'average_ledger_balance' => $averageLedgerBalance,
         ];
     }
 

@@ -480,6 +480,27 @@
                 });
 
                 // Calculate averages
+                // Calculate average daily balance and ledger balance from results
+                $totalAverageDailyBalance = 0;
+                $balanceResultsCount = 0;
+                $totalBeginningBalance = 0;
+                $totalEndingBalance = 0;
+                $balanceSessionsCount = 0;
+
+                foreach ($allSuccessfulResults as $res) {
+                    // Get average daily balance from each result
+                    if (isset($res['monthly_data']['averages']['average_daily_balance']) && $res['monthly_data']['averages']['average_daily_balance'] !== null) {
+                        $totalAverageDailyBalance += $res['monthly_data']['averages']['average_daily_balance'];
+                        $balanceResultsCount++;
+                    }
+                    // Get beginning and ending balances for ledger balance calculation
+                    if (isset($res['monthly_data']['beginning_balance']) && $res['monthly_data']['ending_balance']) {
+                        $totalBeginningBalance += $res['monthly_data']['beginning_balance'];
+                        $totalEndingBalance += $res['monthly_data']['ending_balance'];
+                        $balanceSessionsCount++;
+                    }
+                }
+
                 $combinedAverages = [
                     'deposits' => $monthCount > 0 ? $combinedTotals['deposits'] / $monthCount : 0,
                     'adjustments' => $monthCount > 0 ? $combinedTotals['adjustments'] / $monthCount : 0,
@@ -488,6 +509,8 @@
                     'deposit_count' => $monthCount > 0 ? $combinedTotals['deposit_count'] / $monthCount : 0,
                     'negative_days' => $monthCount > 0 ? $combinedTotals['negative_days'] / $monthCount : 0,
                     'average_daily' => $monthCount > 0 ? $combinedTotals['true_revenue'] / ($monthCount * 30) : 0,
+                    'average_daily_balance' => $balanceResultsCount > 0 ? $totalAverageDailyBalance / $balanceResultsCount : null,
+                    'average_ledger_balance' => $balanceSessionsCount > 0 ? (($totalBeginningBalance + $totalEndingBalance) / 2) / $balanceSessionsCount : null,
                 ];
 
                 // Finalize MCA totals
@@ -541,7 +564,7 @@
                     </div>
 
                     <!-- Combined Summary Stats -->
-                    <div class="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-4 mb-6">
+                    <div class="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-8 gap-4 mb-6">
                         <div class="metric-card bg-gray-50 dark:bg-gray-700 p-4 rounded-lg transition-all duration-300" data-metric-type="neutral">
                             <p class="text-sm text-gray-500 dark:text-gray-400">Total Transactions</p>
                             <p class="text-2xl font-bold text-gray-900 dark:text-gray-100">{{ number_format($combinedTotals['transactions']) }}</p>
@@ -569,6 +592,20 @@
                             <p class="text-sm text-gray-500 dark:text-gray-400">NSF/OD Fees</p>
                             <p class="metric-value text-2xl font-bold {{ $combinedTotals['nsf_count'] > 0 ? 'text-red-600 dark:text-red-400' : 'text-gray-900 dark:text-gray-100' }}">{{ $combinedTotals['nsf_count'] }}</p>
                         </div>
+                        @if($combinedAverages['average_daily_balance'] !== null)
+                        <div class="metric-card bg-blue-50 dark:bg-blue-900/30 p-4 rounded-lg border-2 border-blue-300 dark:border-blue-700 transition-all duration-300" data-metric-type="neutral">
+                            <p class="text-sm text-blue-700 dark:text-blue-300 font-medium">Avg Daily Balance</p>
+                            <p class="text-2xl font-bold text-blue-600 dark:text-blue-400">${{ number_format($combinedAverages['average_daily_balance'], 2) }}</p>
+                            <p class="text-xs text-gray-500">From statements</p>
+                        </div>
+                        @endif
+                        @if($combinedAverages['average_ledger_balance'] !== null)
+                        <div class="metric-card bg-indigo-50 dark:bg-indigo-900/30 p-4 rounded-lg border-2 border-indigo-300 dark:border-indigo-700 transition-all duration-300" data-metric-type="neutral">
+                            <p class="text-sm text-indigo-700 dark:text-indigo-300 font-medium">Avg Ledger Balance</p>
+                            <p class="text-2xl font-bold text-indigo-600 dark:text-indigo-400">${{ number_format($combinedAverages['average_ledger_balance'], 2) }}</p>
+                            <p class="text-xs text-gray-500">Calculated</p>
+                        </div>
+                        @endif
                     </div>
 
                     <!-- Combined Monthly Breakdown Table -->
@@ -590,7 +627,7 @@
                                         <th class="px-4 py-3 text-right text-xs font-semibold text-gray-600 dark:text-gray-300 uppercase">Monthly Deposits</th>
                                         <th class="px-4 py-3 text-right text-xs font-semibold text-gray-600 dark:text-gray-300 uppercase">Adjustments</th>
                                         <th class="px-4 py-3 text-right text-xs font-semibold text-green-600 dark:text-green-400 uppercase">True Revenue</th>
-                                        <th class="px-4 py-3 text-right text-xs font-semibold text-gray-600 dark:text-gray-300 uppercase">Avg Daily</th>
+                                        <th class="px-4 py-3 text-right text-xs font-semibold text-blue-600 dark:text-blue-400 uppercase">Avg Daily Balance</th>
                                         <th class="px-4 py-3 text-center text-xs font-semibold text-gray-600 dark:text-gray-300 uppercase">NSF</th>
                                         <th class="px-4 py-3 text-center text-xs font-semibold text-gray-600 dark:text-gray-300 uppercase"># Deposits</th>
                                         <th class="px-4 py-3 text-center text-xs font-semibold text-red-600 dark:text-red-400 uppercase">Negative Days</th>
@@ -604,7 +641,13 @@
                                         <td class="px-4 py-3 text-sm text-right text-gray-700 dark:text-gray-300">${{ number_format($month['deposits'], 2) }}</td>
                                         <td class="px-4 py-3 text-sm text-right text-orange-600 dark:text-orange-400">${{ number_format($month['adjustments'], 2) }}</td>
                                         <td class="px-4 py-3 text-sm text-right font-semibold text-green-600 dark:text-green-400">${{ number_format($month['true_revenue'], 2) }}</td>
-                                        <td class="px-4 py-3 text-sm text-right text-gray-700 dark:text-gray-300">${{ number_format($month['average_daily'] ?? ($month['true_revenue'] / 30), 2) }}</td>
+                                        <td class="px-4 py-3 text-sm text-right text-blue-600 dark:text-blue-400 font-semibold">
+                                            @if(isset($month['average_daily_balance']) && $month['average_daily_balance'] !== null)
+                                                ${{ number_format($month['average_daily_balance'], 2) }}
+                                            @else
+                                                <span class="text-gray-400">N/A</span>
+                                            @endif
+                                        </td>
                                         <td class="px-4 py-3 text-sm text-center {{ $month['nsf_count'] > 0 ? 'text-red-600 dark:text-red-400 font-semibold' : 'text-gray-500 dark:text-gray-400' }}">{{ $month['nsf_count'] }}</td>
                                         <td class="px-4 py-3 text-sm text-center text-gray-700 dark:text-gray-300">{{ $month['deposit_count'] }}</td>
                                         <td class="px-4 py-3 text-sm text-center {{ ($month['negative_days'] ?? 0) > 0 ? 'text-red-600 dark:text-red-400 font-semibold' : 'text-gray-500 dark:text-gray-400' }}">{{ $month['negative_days'] ?? 0 }}</td>
@@ -618,7 +661,13 @@
                                         <td class="px-4 py-3 text-sm text-right text-gray-900 dark:text-gray-100">${{ number_format($combinedTotals['deposits'], 2) }}</td>
                                         <td class="px-4 py-3 text-sm text-right text-orange-600 dark:text-orange-400">${{ number_format($combinedTotals['adjustments'], 2) }}</td>
                                         <td class="px-4 py-3 text-sm text-right text-green-600 dark:text-green-400">${{ number_format($combinedTotals['true_revenue'], 2) }}</td>
-                                        <td class="px-4 py-3 text-sm text-right text-gray-900 dark:text-gray-100">${{ number_format($combinedAverages['average_daily'] ?? $combinedAverages['average_daily_revenue'] ?? 0, 2) }}</td>
+                                        <td class="px-4 py-3 text-sm text-right text-blue-600 dark:text-blue-400 font-semibold">
+                                            @if($combinedAverages['average_daily_balance'] !== null)
+                                                ${{ number_format($combinedAverages['average_daily_balance'], 2) }}
+                                            @else
+                                                <span class="text-gray-400">N/A</span>
+                                            @endif
+                                        </td>
                                         <td class="px-4 py-3 text-sm text-center {{ $combinedTotals['nsf_count'] > 0 ? 'text-red-600 dark:text-red-400' : 'text-gray-500 dark:text-gray-400' }}">{{ $combinedTotals['nsf_count'] }}</td>
                                         <td class="px-4 py-3 text-sm text-center text-gray-900 dark:text-gray-100">{{ $combinedTotals['deposit_count'] }}</td>
                                         <td class="px-4 py-3 text-sm text-center {{ $combinedTotals['negative_days'] > 0 ? 'text-red-600 dark:text-red-400' : 'text-gray-500 dark:text-gray-400' }}">{{ $combinedTotals['negative_days'] }}</td>
@@ -629,7 +678,13 @@
                                         <td class="px-4 py-3 text-sm text-right">${{ number_format($combinedAverages['deposits'], 2) }}</td>
                                         <td class="px-4 py-3 text-sm text-right">${{ number_format($combinedAverages['adjustments'], 2) }}</td>
                                         <td class="px-4 py-3 text-sm text-right">${{ number_format($combinedAverages['true_revenue'], 2) }}</td>
-                                        <td class="px-4 py-3 text-sm text-right">${{ number_format($combinedAverages['average_daily'] ?? $combinedAverages['average_daily_revenue'] ?? 0, 2) }}</td>
+                                        <td class="px-4 py-3 text-sm text-right text-blue-600 dark:text-blue-400">
+                                            @if($combinedAverages['average_daily_balance'] !== null)
+                                                ${{ number_format($combinedAverages['average_daily_balance'], 2) }}
+                                            @else
+                                                <span class="text-gray-400">N/A</span>
+                                            @endif
+                                        </td>
                                         <td class="px-4 py-3 text-sm text-center">-</td>
                                         <td class="px-4 py-3 text-sm text-center">{{ number_format($combinedAverages['deposit_count'], 1) }}</td>
                                         <td class="px-4 py-3 text-sm text-center">{{ number_format($combinedAverages['negative_days'], 1) }}</td>
@@ -1910,6 +1965,23 @@
                             <p class="text-2xl font-bold text-gray-900 dark:text-gray-100">${{ number_format($result['api_cost']['total_cost'], 4) }}</p>
                             <p class="text-xs text-gray-500">{{ number_format($result['api_cost']['total_tokens']) }} tokens</p>
                         </div>
+                        @if(isset($result['monthly_data']['averages']['average_daily_balance']) && $result['monthly_data']['averages']['average_daily_balance'] !== null)
+                        <div class="bg-blue-50 dark:bg-blue-900/30 p-4 rounded-lg border-2 border-blue-200 dark:border-blue-800">
+                            <p class="text-sm text-blue-700 dark:text-blue-300 font-medium">Avg Daily Balance</p>
+                            <p class="text-2xl font-bold text-blue-600 dark:text-blue-400">${{ number_format($result['monthly_data']['averages']['average_daily_balance'], 2) }}</p>
+                            <p class="text-xs text-gray-500">From statement data</p>
+                        </div>
+                        @endif
+                        @if(isset($result['monthly_data']['average_ledger_balance']) && $result['monthly_data']['average_ledger_balance'] !== null)
+                        <div class="bg-indigo-50 dark:bg-indigo-900/30 p-4 rounded-lg border-2 border-indigo-200 dark:border-indigo-800">
+                            <p class="text-sm text-indigo-700 dark:text-indigo-300 font-medium">Avg Ledger Balance</p>
+                            <p class="text-2xl font-bold text-indigo-600 dark:text-indigo-400">${{ number_format($result['monthly_data']['average_ledger_balance'], 2) }}</p>
+                            <p class="text-xs text-gray-500">
+                                Begin: ${{ number_format($result['monthly_data']['beginning_balance'], 2) }} |
+                                End: ${{ number_format($result['monthly_data']['ending_balance'], 2) }}
+                            </p>
+                        </div>
+                        @endif
                     </div>
 
                     <!-- Monthly Transaction Details (Collapsible) -->
@@ -1956,6 +2028,21 @@
                                         <p class="text-xs text-gray-500 dark:text-gray-400">Total Debits</p>
                                         <p class="text-lg font-semibold text-red-600 dark:text-red-400">${{ number_format($month['debits'], 2) }}</p>
                                     </div>
+                                    @if(isset($month['average_daily_balance']) && $month['average_daily_balance'] !== null)
+                                    <div class="bg-white dark:bg-gray-700 p-3 rounded-lg">
+                                        <p class="text-xs text-gray-500 dark:text-gray-400">Avg Daily Balance</p>
+                                        <p class="text-lg font-semibold text-blue-600 dark:text-blue-400">${{ number_format($month['average_daily_balance'], 2) }}</p>
+                                    </div>
+                                    @endif
+                                    @if(isset($month['beginning_balance']) && $month['beginning_balance'] !== null && isset($result['monthly_data']['ending_balance']) && $result['monthly_data']['ending_balance'] !== null)
+                                    @php
+                                        $avgLedger = ($month['beginning_balance'] + $result['monthly_data']['ending_balance']) / 2;
+                                    @endphp
+                                    <div class="bg-white dark:bg-gray-700 p-3 rounded-lg">
+                                        <p class="text-xs text-gray-500 dark:text-gray-400">Avg Ledger Balance</p>
+                                        <p class="text-lg font-semibold text-indigo-600 dark:text-indigo-400">${{ number_format($avgLedger, 2) }}</p>
+                                    </div>
+                                    @endif
                                 </div>
 
                                 <!-- Adjustment Items (if any) -->

@@ -76,7 +76,7 @@
             </div>
 
             <!-- Summary Cards -->
-            <div class="grid grid-cols-2 md:grid-cols-6 gap-4 mb-6">
+            <div class="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-8 gap-4 mb-6">
                 <div class="metric-card bg-white dark:bg-gray-800 p-4 rounded-lg shadow-sm transition-all duration-300" data-metric-type="neutral">
                     <p class="text-sm text-gray-500 dark:text-gray-400">File</p>
                     <p class="text-sm font-semibold text-gray-900 dark:text-gray-100 truncate" title="{{ $session->filename }}">{{ $session->filename }}</p>
@@ -101,6 +101,23 @@
                         ${{ number_format($session->net_flow, 2) }}
                     </p>
                 </div>
+                @if($session->average_daily_balance !== null)
+                <div class="metric-card bg-white dark:bg-gray-800 p-4 rounded-lg shadow-sm transition-all duration-300 border-2 border-blue-200 dark:border-blue-800" data-metric-type="neutral">
+                    <p class="text-sm text-blue-600 dark:text-blue-400 font-medium">Avg Daily Balance</p>
+                    <p class="text-2xl font-bold text-blue-600 dark:text-blue-400">${{ number_format($session->average_daily_balance, 2) }}</p>
+                    <p class="text-xs text-gray-500">From statement</p>
+                </div>
+                @endif
+                @if($session->beginning_balance !== null && $session->ending_balance !== null)
+                @php
+                    $avgLedgerBalance = ($session->beginning_balance + $session->ending_balance) / 2;
+                @endphp
+                <div class="metric-card bg-white dark:bg-gray-800 p-4 rounded-lg shadow-sm transition-all duration-300 border-2 border-indigo-200 dark:border-indigo-800" data-metric-type="neutral">
+                    <p class="text-sm text-indigo-600 dark:text-indigo-400 font-medium">Avg Ledger Balance</p>
+                    <p class="text-2xl font-bold text-indigo-600 dark:text-indigo-400">${{ number_format($avgLedgerBalance, 2) }}</p>
+                    <p class="text-xs text-gray-500">Calculated</p>
+                </div>
+                @endif
                 <div class="metric-card bg-white dark:bg-gray-800 p-4 rounded-lg shadow-sm transition-all duration-300" data-metric-type="neutral">
                     <p class="text-sm text-gray-500 dark:text-gray-400">API Cost</p>
                     <p class="text-2xl font-bold text-gray-900 dark:text-gray-100">${{ number_format($session->api_cost ?? 0, 4) }}</p>
