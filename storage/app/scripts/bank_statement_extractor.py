@@ -2118,6 +2118,27 @@ def _extract_statement_summary(pdf_text: str) -> Dict:
             except ValueError:
                 pass
 
+    # ── CNBank / Community Bank NA summary row ───────────────────────────────
+    # The account summary line has the form:
+    #   ****0558  $212,364.95  $2,075,861.24  $0.00  $2,185,818.64  $2.50  $102,405.05
+    # Column order: acct#  beginning  deposits  interest  withdrawals  fees  ending
+    # We extract the first dollar amount as beginning balance (if not already found)
+    # and the last dollar amount as ending balance (if not already found).
+    if 'beginning_balance' not in result or 'ending_balance' not in result:
+        _cnbank_row_re = re.compile(r'^\*{4}\d+\s+', re.I)
+        _dollar_re = re.compile(r'\$([\d,]+\.\d{2})')
+        for line in pdf_text.split('\n'):
+            line = line.strip()
+            if not _cnbank_row_re.match(line):
+                continue
+            amounts = [float(m.replace(',', '')) for m in _dollar_re.findall(line)]
+            if len(amounts) >= 2:
+                if 'beginning_balance' not in result:
+                    result['beginning_balance'] = amounts[0]
+                if 'ending_balance' not in result:
+                    result['ending_balance'] = amounts[-1]
+                break
+
     return result
 
 
