@@ -76,7 +76,7 @@ class ProcessBankStatement implements ShouldQueue
             $scriptPath = storage_path('app/scripts/bank_statement_extractor.py');
             $stderrFile = storage_path('logs/python_stderr_' . $this->sessionId . '.log');
             $command = sprintf(
-                '/var/www/html/crmfinity-ai/venv/bin/python3 %s %s %s %s %s 2>%s',
+                '/var/www/html/crmfinity_underwriting/crmfinity-ai/venv/bin/python3 %s %s %s %s %s 2>%s',
                 escapeshellarg($scriptPath),
                 escapeshellarg($this->savedPath),
                 escapeshellarg($this->apiKey),

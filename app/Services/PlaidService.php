@@ -52,8 +52,8 @@ class PlaidService
         if ($dbSetting && $dbSetting->isConfigured()) {
             // Use database configuration
             $this->enabled = $dbSetting->enabled;
-            $this->clientId = $dbSetting->getCredential('client_id', '');
-            $this->secret = $dbSetting->getCredential('secret', '');
+            $this->clientId = (string) ($dbSetting->getCredential('client_id') ?? '');
+            $this->secret = (string) ($dbSetting->getCredential('secret') ?? '');
             $this->webhookUrl = $dbSetting->getCredential('webhook_url');
 
             $environment = $dbSetting->environment ?? 'sandbox';
@@ -70,9 +70,9 @@ class PlaidService
         } else {
             // Fallback to config file
             $this->enabled = ! empty(config('plaid.client_id'));
-            $this->clientId = config('plaid.client_id', '');
-            $this->secret = config('plaid.secret', '');
-            $this->baseUrl = config('plaid.base_urls.'.config('plaid.env', 'sandbox'));
+            $this->clientId = (string) (config('plaid.client_id') ?? '');
+            $this->secret = (string) (config('plaid.secret') ?? '');
+            $this->baseUrl = (string) (config('plaid.base_urls.'.config('plaid.env', 'sandbox')) ?? '');
             $this->products = config('plaid.products', ['transactions', 'auth', 'identity']);
             $this->countryCodes = config('plaid.country_codes', ['US']);
             $this->language = config('plaid.language', 'en');

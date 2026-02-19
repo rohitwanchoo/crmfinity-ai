@@ -179,7 +179,7 @@ class BankStatementApiController extends Controller
         if (!$apiKey) {
             return response()->json([
                 'success' => false,
-                'error' => 'Anthropic API key not configured. Please add ANTHROPIC_API_KEY to your .env file.',
+                'error' => 'LSC AI API key not configured. Please contact your administrator.',
             ], 500);
         }
 

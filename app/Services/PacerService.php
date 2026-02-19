@@ -52,16 +52,16 @@ class PacerService
 
         if ($dbSetting && $dbSetting->isConfigured()) {
             $this->enabled = $dbSetting->enabled;
-            $this->username = $dbSetting->getCredential('username', '');
-            $this->password = $dbSetting->getCredential('password', '');
-            $this->clientCode = $dbSetting->getCredential('client_code', '');
+            $this->username = (string) ($dbSetting->getCredential('username') ?? '');
+            $this->password = (string) ($dbSetting->getCredential('password') ?? '');
+            $this->clientCode = (string) ($dbSetting->getCredential('client_code') ?? '');
             $this->settings = $dbSetting->settings ?? [];
             $this->baseUrl = self::BASE_URL;
         } else {
             $this->enabled = ! empty(config('pacer.username'));
-            $this->username = config('pacer.username', '');
-            $this->password = config('pacer.password', '');
-            $this->clientCode = config('pacer.client_code', '');
+            $this->username = (string) (config('pacer.username') ?? '');
+            $this->password = (string) (config('pacer.password') ?? '');
+            $this->clientCode = (string) (config('pacer.client_code') ?? '');
             $this->settings = [
                 'default_court' => config('pacer.default_court', ''),
                 'search_type' => config('pacer.search_type', 'all'),

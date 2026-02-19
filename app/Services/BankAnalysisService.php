@@ -224,7 +224,7 @@ class BankAnalysisService
     protected function extractPDFText(string $filePath): array
     {
         $scriptPath = storage_path('app/scripts/extract_pdf_text.py');
-        $command = '/var/www/html/crmfinity-ai/venv/bin/python3 ' . escapeshellarg($scriptPath) . ' ' . escapeshellarg($filePath) . ' false 2>&1';
+        $command = '/var/www/html/crmfinity_underwriting/crmfinity-ai/venv/bin/python3 ' . escapeshellarg($scriptPath) . ' ' . escapeshellarg($filePath) . ' false 2>&1';
         $output = shell_exec($command);
 
         return json_decode($output, true) ?? ['success' => false, 'error' => 'Failed to parse PDF output'];
@@ -290,7 +290,7 @@ class BankAnalysisService
             $scriptPath = storage_path('app/scripts/parse_transactions_ai.py');
             $outputFile = storage_path('app/uploads/output_' . Str::random(10) . '.json');
 
-            $command = 'timeout 320 /var/www/html/crmfinity-ai/venv/bin/python3 ' . escapeshellarg($scriptPath) . ' ' . escapeshellarg($tempFile) . ' ' . escapeshellarg($apiKey);
+            $command = 'timeout 320 /var/www/html/crmfinity_underwriting/crmfinity-ai/venv/bin/python3 ' . escapeshellarg($scriptPath) . ' ' . escapeshellarg($tempFile) . ' ' . escapeshellarg($apiKey);
             $command .= ' ' . escapeshellarg($patternsFile);
             $command .= ' ' . escapeshellarg($outputFile);
             $command .= ' 2>&1';

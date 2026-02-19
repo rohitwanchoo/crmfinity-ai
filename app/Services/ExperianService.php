@@ -47,11 +47,11 @@ class ExperianService
 
         if ($dbSetting && $dbSetting->isConfigured()) {
             $this->enabled = $dbSetting->enabled;
-            $this->clientId = $dbSetting->getCredential('client_id', '');
-            $this->clientSecret = $dbSetting->getCredential('client_secret', '');
-            $this->username = $dbSetting->getCredential('username', '');
-            $this->password = $dbSetting->getCredential('password', '');
-            $this->subscriberCode = $dbSetting->getCredential('subscriber_code', '');
+            $this->clientId = (string) ($dbSetting->getCredential('client_id') ?? '');
+            $this->clientSecret = (string) ($dbSetting->getCredential('client_secret') ?? '');
+            $this->username = (string) ($dbSetting->getCredential('username') ?? '');
+            $this->password = (string) ($dbSetting->getCredential('password') ?? '');
+            $this->subscriberCode = (string) ($dbSetting->getCredential('subscriber_code') ?? '');
 
             $environment = $dbSetting->environment ?? 'sandbox';
             $baseUrls = [
@@ -61,13 +61,13 @@ class ExperianService
             $this->baseUrl = $baseUrls[$environment] ?? $baseUrls['sandbox'];
         } else {
             $this->enabled = ! empty(config('experian.client_id'));
-            $this->clientId = config('experian.client_id', '');
-            $this->clientSecret = config('experian.client_secret', '');
-            $this->username = config('experian.username', '');
-            $this->password = config('experian.password', '');
-            $this->subscriberCode = config('experian.subscriber_code', '');
+            $this->clientId = (string) (config('experian.client_id') ?? '');
+            $this->clientSecret = (string) (config('experian.client_secret') ?? '');
+            $this->username = (string) (config('experian.username') ?? '');
+            $this->password = (string) (config('experian.password') ?? '');
+            $this->subscriberCode = (string) (config('experian.subscriber_code') ?? '');
             $env = config('experian.env', 'sandbox');
-            $this->baseUrl = config("experian.base_urls.{$env}");
+            $this->baseUrl = (string) (config("experian.base_urls.{$env}") ?? '');
         }
     }
 

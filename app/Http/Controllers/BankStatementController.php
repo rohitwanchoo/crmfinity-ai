@@ -9,6 +9,7 @@ use App\Models\AnalysisSession;
 use App\Models\AnalyzedTransaction;
 use App\Models\RevenueClassification;
 use App\Models\McaPattern;
+use App\Models\McaLenderGuideline;
 use App\Models\TransactionCategory;
 use App\Services\NsfAndNegativeDaysCalculator;
 use App\Jobs\ProcessBankStatement;
@@ -1147,7 +1148,10 @@ class BankStatementController extends Controller
      */
     public function lenders()
     {
-        // Get detected entries from database
+        // Load all guidelines keyed by lender_id (source of truth for lender list)
+        $guidelines = McaLenderGuideline::all()->keyBy('lender_id');
+
+        // Get detected pattern stats keyed by lender_id
         $detectedEntries = McaPattern::select('lender_id', 'lender_name')
             ->selectRaw('COUNT(*) as pattern_count')
             ->selectRaw('SUM(usage_count) as total_usage')
@@ -1157,59 +1161,43 @@ class BankStatementController extends Controller
             ->get()
             ->keyBy('lender_id');
 
-        // Get all known lenders and debt collectors
-        $knownLenders = McaPattern::getKnownLenders();
         $knownDebtCollectors = McaPattern::getKnownDebtCollectors();
 
-        // Build complete lenders list (all known + any detected that aren't in known list)
-        $lenders = collect();
-        foreach ($knownLenders as $id => $name) {
-            if ($detectedEntries->has($id)) {
-                $lenders->push($detectedEntries->get($id));
-            } else {
-                $lenders->push((object) [
-                    'lender_id' => $id,
-                    'lender_name' => $name,
-                    'pattern_count' => 0,
-                    'total_usage' => 0,
-                    'last_used' => null,
-                ]);
-            }
-        }
-        // Add any detected lenders not in the known list
-        foreach ($detectedEntries as $id => $entry) {
-            if (!isset($knownLenders[$id]) && !isset($knownDebtCollectors[$id])) {
-                $lenders->push($entry);
-            }
-        }
-        $lenders = $lenders->sortBy('lender_name')->values();
+        // Build lenders list from guidelines (all 282+) merged with pattern stats
+        $lenders = $guidelines->map(function ($guideline) use ($detectedEntries) {
+            $detected = $detectedEntries->get($guideline->lender_id);
+            return (object) [
+                'lender_id'     => $guideline->lender_id,
+                'lender_name'   => $guideline->lender_name,
+                'pattern_count' => $detected ? $detected->pattern_count : 0,
+                'total_usage'   => $detected ? $detected->total_usage : 0,
+                'last_used'     => $detected ? $detected->last_used : null,
+            ];
+        })->sortBy('lender_name')->values();
 
-        // Build complete debt collectors list
+        // Build debt collectors list
         $debtCollectors = collect();
         foreach ($knownDebtCollectors as $id => $name) {
-            if ($detectedEntries->has($id)) {
-                $debtCollectors->push($detectedEntries->get($id));
-            } else {
-                $debtCollectors->push((object) [
-                    'lender_id' => $id,
-                    'lender_name' => $name,
-                    'pattern_count' => 0,
-                    'total_usage' => 0,
-                    'last_used' => null,
-                ]);
-            }
+            $detected = $detectedEntries->get($id);
+            $debtCollectors->push((object) [
+                'lender_id'     => $id,
+                'lender_name'   => $name,
+                'pattern_count' => $detected ? $detected->pattern_count : 0,
+                'total_usage'   => $detected ? $detected->total_usage : 0,
+                'last_used'     => $detected ? $detected->last_used : null,
+            ]);
         }
         $debtCollectors = $debtCollectors->sortBy('lender_name')->values();
 
         $stats = [
-            'total_lenders' => $lenders->count(),
-            'total_debt_collectors' => $debtCollectors->count(),
-            'total_patterns' => McaPattern::where('is_mca', true)->count(),
-            'total_usage' => McaPattern::where('is_mca', true)->sum('usage_count'),
-            'total_with_guidelines' => $lenders->where('pattern_count', '>', 0)->count(),
+            'total_lenders'          => $lenders->count(),
+            'total_debt_collectors'  => $debtCollectors->count(),
+            'total_patterns'         => McaPattern::where('is_mca', true)->count(),
+            'total_usage'            => McaPattern::where('is_mca', true)->sum('usage_count'),
+            'total_with_guidelines'  => $guidelines->count(),
         ];
 
-        return view('bankstatement.lenders', compact('lenders', 'debtCollectors', 'stats'));
+        return view('bankstatement.lenders', compact('lenders', 'debtCollectors', 'stats', 'guidelines'));
     }
 
     /**

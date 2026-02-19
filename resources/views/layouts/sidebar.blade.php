@@ -5,14 +5,19 @@
      @click.away="if (window.innerWidth < 1024) sidebarOpen = false">
 
     <!-- Logo -->
-    <div style="padding: 1.5rem; border-bottom: 1px solid rgba(255,255,255,0.1);">
+    <div style="padding: 1.25rem 1.5rem; border-bottom: 1px solid rgba(255,255,255,0.1);">
         <a href="{{ route('bankstatement.index') }}" style="display: flex; align-items: center; gap: 0.75rem; text-decoration: none;">
-            <div style="width: 2.5rem; height: 2.5rem; background: linear-gradient(135deg, rgb(34, 197, 94), rgb(22, 163, 74)); border-radius: 0.75rem; display: flex; align-items: center; justify-content: center;">
-                <svg style="width: 1.5rem; height: 1.5rem; color: white;" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 10V3L4 14h7v7l9-11h-7z" />
+            <!-- Logo Icon -->
+            <div style="width: 2.5rem; height: 2.5rem; background: linear-gradient(135deg, #22c55e, #16a34a); border-radius: 0.625rem; display: flex; align-items: center; justify-content: center; flex-shrink: 0; box-shadow: 0 2px 8px rgba(34,197,94,0.4);">
+                <svg style="width: 1.375rem; height: 1.375rem; color: white;" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2.5" d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z" />
                 </svg>
             </div>
-            <span style="font-size: 1.25rem; font-weight: bold; color: white;">{{ config('app.name', 'CRMfinity') }}</span>
+            <!-- Logo Text -->
+            <div style="display: flex; flex-direction: column; line-height: 1.1;">
+                <span style="font-size: 1.0625rem; font-weight: 800; color: white; letter-spacing: -0.01em;">CRMFinity <span style="color: #4ade80;">AI</span></span>
+                <span style="font-size: 0.625rem; font-weight: 500; color: rgba(255,255,255,0.5); text-transform: uppercase; letter-spacing: 0.08em;">Smart Underwriting</span>
+            </div>
         </a>
     </div>
 

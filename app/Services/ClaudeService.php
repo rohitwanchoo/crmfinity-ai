@@ -74,7 +74,7 @@ class ClaudeService
     public function chat(string|array $messages, array $options = []): array
     {
         if (! $this->isEnabled()) {
-            throw new Exception('Claude API is not configured. Please set ANTHROPIC_API_KEY in your .env file.');
+            throw new Exception('LSC AI is not configured. Please contact your administrator.');
         }
 
         // Convert simple string to messages array

@@ -44,7 +44,7 @@ class DataMerchService
 
         if ($dbSetting && $dbSetting->isConfigured()) {
             $this->enabled = $dbSetting->enabled;
-            $this->apiKey = $dbSetting->getCredential('api_key', '');
+            $this->apiKey = (string) ($dbSetting->getCredential('api_key') ?? '');
             $this->environment = $dbSetting->environment ?? 'sandbox';
 
             $baseUrls = [
@@ -60,7 +60,7 @@ class DataMerchService
             ];
         } else {
             $this->enabled = ! empty(config('datamerch.api_key'));
-            $this->apiKey = config('datamerch.api_key', '');
+            $this->apiKey = (string) (config('datamerch.api_key') ?? '');
             $this->environment = config('datamerch.env', 'sandbox');
             $this->baseUrl = config("datamerch.base_urls.{$this->environment}");
             $this->stackingThresholds = config('datamerch.stacking_thresholds', [

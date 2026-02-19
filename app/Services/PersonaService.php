@@ -45,16 +45,16 @@ class PersonaService
 
         if ($dbSetting && $dbSetting->isConfigured()) {
             $this->enabled = $dbSetting->enabled;
-            $this->apiKey = $dbSetting->getCredential('api_key', '');
-            $this->templateId = $dbSetting->getCredential('template_id', '');
-            $this->webhookSecret = $dbSetting->getCredential('webhook_secret', '');
-            $this->apiVersion = $dbSetting->getSetting('api_version', '2023-01-05');
+            $this->apiKey = (string) ($dbSetting->getCredential('api_key') ?? '');
+            $this->templateId = (string) ($dbSetting->getCredential('template_id') ?? '');
+            $this->webhookSecret = (string) ($dbSetting->getCredential('webhook_secret') ?? '');
+            $this->apiVersion = (string) ($dbSetting->getSetting('api_version') ?? '2023-01-05');
         } else {
             $this->enabled = ! empty(config('persona.api_key'));
-            $this->apiKey = config('persona.api_key', '');
-            $this->templateId = config('persona.template_id', '');
-            $this->apiVersion = config('persona.api_version', '2023-01-05');
-            $this->webhookSecret = config('persona.webhook_secret', '');
+            $this->apiKey = (string) (config('persona.api_key') ?? '');
+            $this->templateId = (string) (config('persona.template_id') ?? '');
+            $this->apiVersion = (string) (config('persona.api_version') ?? '2023-01-05');
+            $this->webhookSecret = (string) (config('persona.webhook_secret') ?? '');
         }
     }
 

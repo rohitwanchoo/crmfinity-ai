@@ -40,12 +40,12 @@ class UCCService
 
         if ($dbSetting && $dbSetting->isConfigured()) {
             $this->enabled = $dbSetting->enabled;
-            $this->apiKey = $dbSetting->getCredential('api_key', '');
-            $this->apiUrl = $dbSetting->getCredential('api_url', 'https://api.uccfilings.com');
+            $this->apiKey = (string) ($dbSetting->getCredential('api_key') ?? '');
+            $this->apiUrl = (string) ($dbSetting->getCredential('api_url') ?? 'https://api.uccfilings.com');
         } else {
             $this->enabled = ! empty(config('ucc.api_key'));
-            $this->apiKey = config('ucc.api_key', '');
-            $this->apiUrl = config('ucc.api_url', 'https://api.uccfilings.com');
+            $this->apiKey = (string) (config('ucc.api_key') ?? '');
+            $this->apiUrl = (string) (config('ucc.api_url') ?? 'https://api.uccfilings.com');
         }
     }
 
