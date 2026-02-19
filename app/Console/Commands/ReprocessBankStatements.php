@@ -137,7 +137,7 @@ class ReprocessBankStatements extends Command
         $model = $session->model_used ?? 'gpt-4o';
 
         $command = sprintf(
-            'python3 %s %s %s %s %s 2>&1',
+            '/var/www/html/crmfinity-ai/venv/bin/python3 %s %s %s %s %s 2>&1',
             escapeshellarg($scriptPath),
             escapeshellarg($pdfPath),
             escapeshellarg($apiKey),

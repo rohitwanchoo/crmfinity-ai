@@ -12,7 +12,7 @@ return new class extends Migration
             $table->id();
             $table->string('offer_id')->unique();
             $table->string('session_uuid'); // Links to analysis session
-            $table->integer('user_id')->nullable();
+            $table->unsignedBigInteger('user_id')->nullable();
             $table->foreign('user_id')->references('id')->on('users')->onDelete('set null');
 
             // Revenue inputs

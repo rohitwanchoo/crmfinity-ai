@@ -104,11 +104,173 @@
                 </div>
             </div>
 
+            <!-- Lender Guidelines Panel -->
+            @if($guideline)
+            <div class="bg-white dark:bg-gray-800 overflow-hidden shadow-sm sm:rounded-lg mb-6">
+                <div class="p-6">
+                    <div class="flex items-center justify-between mb-4 pb-2 border-b border-gray-200 dark:border-gray-700">
+                        <h3 class="text-base font-semibold text-gray-900 dark:text-gray-100">Lender Guidelines</h3>
+                        <div class="flex items-center gap-3">
+                            @if($guideline->status === 'ACTIVE')
+                                <span class="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-green-100 text-green-800 dark:bg-green-900 dark:text-green-200">ACTIVE</span>
+                            @else
+                                <span class="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-red-100 text-red-800 dark:bg-red-900 dark:text-red-200">INACTIVE</span>
+                            @endif
+                            @if($guideline->white_label)
+                                <span class="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-purple-100 text-purple-800 dark:bg-purple-900 dark:text-purple-200">White Label</span>
+                            @endif
+                            <a href="{{ route('bankstatement.lenders.edit', $lender['id']) }}"
+                               class="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-md text-xs font-medium bg-purple-600 text-white hover:bg-purple-700 transition-colors">
+                                <svg class="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z"/></svg>
+                                Edit Guidelines
+                            </a>
+                        </div>
+                    </div>
+
+                    <div class="grid grid-cols-1 md:grid-cols-3 gap-6">
+
+                        {{-- Financial Criteria --}}
+                        <div>
+                            <h4 class="text-xs font-semibold text-gray-500 dark:text-gray-400 uppercase tracking-wider mb-3">Financial Criteria</h4>
+                            <dl class="space-y-2 text-sm">
+                                @if($guideline->min_credit_score)
+                                    <div class="flex justify-between"><dt class="text-gray-500 dark:text-gray-400">Min Credit Score</dt><dd class="font-medium text-gray-900 dark:text-gray-100">{{ $guideline->min_credit_score }}</dd></div>
+                                @endif
+                                @if($guideline->min_time_in_business)
+                                    <div class="flex justify-between"><dt class="text-gray-500 dark:text-gray-400">Min Time in Business</dt><dd class="font-medium text-gray-900 dark:text-gray-100">{{ $guideline->min_time_in_business }} months</dd></div>
+                                @endif
+                                @if($guideline->min_monthly_deposits)
+                                    <div class="flex justify-between"><dt class="text-gray-500 dark:text-gray-400">Min Monthly Deposits</dt><dd class="font-medium text-gray-900 dark:text-gray-100">${{ number_format($guideline->min_monthly_deposits) }}</dd></div>
+                                @endif
+                                @if($guideline->min_loan_amount || $guideline->max_loan_amount)
+                                    <div class="flex justify-between"><dt class="text-gray-500 dark:text-gray-400">Loan Amount</dt>
+                                    <dd class="font-medium text-gray-900 dark:text-gray-100">
+                                        {{ $guideline->min_loan_amount ? '$'.number_format($guideline->min_loan_amount) : '—' }}
+                                        –
+                                        {{ $guideline->max_loan_amount ? '$'.number_format($guideline->max_loan_amount) : '—' }}
+                                    </dd></div>
+                                @endif
+                                @if($guideline->max_negative_days !== null)
+                                    <div class="flex justify-between"><dt class="text-gray-500 dark:text-gray-400">Max Negative Days</dt><dd class="font-medium text-gray-900 dark:text-gray-100">{{ $guideline->max_negative_days }}</dd></div>
+                                @endif
+                                @if($guideline->max_nsfs !== null)
+                                    <div class="flex justify-between"><dt class="text-gray-500 dark:text-gray-400">Max NSFs/Month</dt><dd class="font-medium text-gray-900 dark:text-gray-100">{{ $guideline->max_nsfs }}</dd></div>
+                                @endif
+                                @if($guideline->max_positions !== null)
+                                    <div class="flex justify-between"><dt class="text-gray-500 dark:text-gray-400">Max Positions</dt><dd class="font-medium text-gray-900 dark:text-gray-100">{{ $guideline->max_positions }}</dd></div>
+                                @endif
+                                @if($guideline->min_avg_daily_balance)
+                                    <div class="flex justify-between"><dt class="text-gray-500 dark:text-gray-400">Min Avg Daily Balance</dt><dd class="font-medium text-gray-900 dark:text-gray-100">${{ number_format($guideline->min_avg_daily_balance) }}</dd></div>
+                                @endif
+                            </dl>
+                        </div>
+
+                        {{-- Funding Terms + Business Type --}}
+                        <div>
+                            <h4 class="text-xs font-semibold text-gray-500 dark:text-gray-400 uppercase tracking-wider mb-3">Funding Terms</h4>
+                            <dl class="space-y-2 text-sm">
+                                @if($guideline->product_type)
+                                    <div class="flex justify-between"><dt class="text-gray-500 dark:text-gray-400">Product</dt><dd class="font-medium text-gray-900 dark:text-gray-100">{{ $guideline->product_type }}</dd></div>
+                                @endif
+                                @if($guideline->factor_rate)
+                                    <div class="flex justify-between"><dt class="text-gray-500 dark:text-gray-400">Factor Rate</dt><dd class="font-medium text-gray-900 dark:text-gray-100">{{ $guideline->factor_rate }}</dd></div>
+                                @endif
+                                @if($guideline->max_term)
+                                    <div class="flex justify-between"><dt class="text-gray-500 dark:text-gray-400">Max Term</dt><dd class="font-medium text-gray-900 dark:text-gray-100">{{ $guideline->max_term }}</dd></div>
+                                @endif
+                                @if($guideline->funding_speed)
+                                    <div class="flex justify-between"><dt class="text-gray-500 dark:text-gray-400">Funding Speed</dt><dd class="font-medium text-gray-900 dark:text-gray-100">{{ $guideline->funding_speed }}</dd></div>
+                                @endif
+                                @if($guideline->payment_frequency)
+                                    <div class="flex justify-between"><dt class="text-gray-500 dark:text-gray-400">Payment</dt><dd class="font-medium text-gray-900 dark:text-gray-100">{{ $guideline->payment_frequency }}</dd></div>
+                                @endif
+                                @if($guideline->bonus_available !== null)
+                                    <div class="flex justify-between"><dt class="text-gray-500 dark:text-gray-400">Bonus</dt>
+                                    <dd class="font-medium text-gray-900 dark:text-gray-100">
+                                        {{ $guideline->bonus_available ? 'YES' : 'NO' }}
+                                        @if($guideline->bonus_details) — {{ $guideline->bonus_details }} @endif
+                                    </dd></div>
+                                @endif
+                            </dl>
+
+                            <h4 class="text-xs font-semibold text-gray-500 dark:text-gray-400 uppercase tracking-wider mb-3 mt-5">Business Types</h4>
+                            <dl class="space-y-2 text-sm">
+                                @foreach([
+                                    ['Sole Proprietors',    $guideline->sole_proprietors],
+                                    ['Home-Based',         $guideline->home_based_business],
+                                    ['Consolidations',     $guideline->consolidation_deals],
+                                    ['Non-Profits',        $guideline->non_profits],
+                                ] as [$label, $val])
+                                @if($val)
+                                <div class="flex justify-between">
+                                    <dt class="text-gray-500 dark:text-gray-400">{{ $label }}</dt>
+                                    <dd class="font-medium {{ $val === 'YES' ? 'text-green-600 dark:text-green-400' : ($val === 'NO' ? 'text-red-600 dark:text-red-400' : 'text-yellow-600 dark:text-yellow-400') }}">{{ $val }}</dd>
+                                </div>
+                                @endif
+                                @endforeach
+                            </dl>
+                        </div>
+
+                        {{-- Special Circumstances + Restrictions --}}
+                        <div>
+                            <h4 class="text-xs font-semibold text-gray-500 dark:text-gray-400 uppercase tracking-wider mb-3">Special Circumstances</h4>
+                            <dl class="space-y-2 text-sm">
+                                @foreach([
+                                    ['Bankruptcy',       $guideline->bankruptcy],
+                                    ['Tax Lien',         $guideline->tax_lien],
+                                    ['Prior Default',    $guideline->prior_default],
+                                    ['Criminal History', $guideline->criminal_history],
+                                ] as [$label, $val])
+                                @if($val)
+                                <div class="flex justify-between">
+                                    <dt class="text-gray-500 dark:text-gray-400">{{ $label }}</dt>
+                                    <dd class="font-medium {{ $val === 'NO' ? 'text-red-600 dark:text-red-400' : ($val === 'YES' ? 'text-green-600 dark:text-green-400' : 'text-yellow-600 dark:text-yellow-400') }}">{{ $val }}</dd>
+                                </div>
+                                @endif
+                                @endforeach
+                            </dl>
+
+                            @if(!empty($guideline->restricted_states))
+                            <h4 class="text-xs font-semibold text-gray-500 dark:text-gray-400 uppercase tracking-wider mb-2 mt-5">Restricted States</h4>
+                            <div class="flex flex-wrap gap-1">
+                                @foreach($guideline->restricted_states as $state)
+                                <span class="inline-flex items-center px-2 py-0.5 rounded text-xs font-medium bg-red-100 text-red-800 dark:bg-red-900 dark:text-red-200">{{ $state }}</span>
+                                @endforeach
+                            </div>
+                            @endif
+
+                            @if(!empty($guideline->excluded_industries))
+                            <h4 class="text-xs font-semibold text-gray-500 dark:text-gray-400 uppercase tracking-wider mb-2 mt-5">Excluded Industries</h4>
+                            <div class="flex flex-wrap gap-1">
+                                @foreach($guideline->excluded_industries as $industry)
+                                <span class="inline-flex items-center px-2 py-0.5 rounded text-xs font-medium bg-orange-100 text-orange-800 dark:bg-orange-900 dark:text-orange-200">{{ $industry }}</span>
+                                @endforeach
+                            </div>
+                            @endif
+
+                            @if($guideline->notes)
+                            <h4 class="text-xs font-semibold text-gray-500 dark:text-gray-400 uppercase tracking-wider mb-2 mt-5">Notes</h4>
+                            <p class="text-sm text-gray-700 dark:text-gray-300">{{ $guideline->notes }}</p>
+                            @endif
+                        </div>
+
+                    </div>
+                </div>
+            </div>
+            @endif
+
             <!-- Patterns Table -->
             <div class="bg-white dark:bg-gray-800 overflow-hidden shadow-sm sm:rounded-lg">
                 <div class="p-6">
                     <div class="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4 mb-6">
                         <h3 class="text-lg font-semibold text-gray-900 dark:text-gray-100">Learned Patterns</h3>
+                        @if($patterns->isEmpty())
+                        <a href="{{ route('bankstatement.lenders.pattern.create', $lender['id']) }}"
+                           class="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-md text-sm font-medium bg-purple-600 text-white hover:bg-purple-700 transition-colors">
+                            <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4v16m8-8H4"/></svg>
+                            Add Pattern
+                        </a>
+                        @endif
 
                         <!-- Search Pattern -->
                         <div class="sm:max-w-md">
@@ -128,6 +290,22 @@
                         </div>
                     </div>
 
+                    @if($patterns->isEmpty())
+                    <!-- Empty patterns state -->
+                    <div class="text-center py-16">
+                        <svg class="w-16 h-16 text-gray-300 dark:text-gray-600 mb-4 mx-auto" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2" />
+                        </svg>
+                        <h3 class="text-lg font-medium text-gray-900 dark:text-gray-100 mb-2">No patterns yet</h3>
+                        <p class="text-gray-500 dark:text-gray-400 mb-6">This lender has no learned transaction patterns. Patterns are detected automatically when bank statements are analyzed, or you can add one manually.</p>
+                        <a href="{{ route('bankstatement.lenders.pattern.create', $lender['id']) }}"
+                           class="inline-flex items-center gap-2 px-4 py-2 bg-purple-600 text-white rounded-md text-sm font-medium hover:bg-purple-700 transition-colors">
+                            <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4v16m8-8H4"/></svg>
+                            Add Pattern Manually
+                        </a>
+                    </div>
+                    @else
+
                     <!-- Results Count -->
                     <div class="mb-4">
                         <p class="text-sm text-gray-600 dark:text-gray-400">
@@ -135,7 +313,7 @@
                         </p>
                     </div>
 
-                    <!-- No Results Message -->
+                    <!-- No Results Message (from search filter) -->
                     <div id="noResults" class="hidden text-center py-12">
                         <div class="flex flex-col items-center">
                             <svg class="w-16 h-16 text-gray-300 dark:text-gray-600 mb-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -217,6 +395,7 @@
                             </tbody>
                         </table>
                     </div>
+                    @endif {{-- end @else (patterns not empty) --}}
                 </div>
             </div>
 

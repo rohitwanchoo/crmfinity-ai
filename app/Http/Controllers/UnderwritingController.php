@@ -67,7 +67,7 @@ class UnderwritingController extends Controller
                 try {
                     // Extract text from PDF using Python script
                     $scriptPath = storage_path('app/scripts/extract_pdf_text.py');
-                    $command = 'python3 '.escapeshellarg($scriptPath).' '.escapeshellarg($filePath).' true 2>&1';
+                    $command = '/var/www/html/crmfinity-ai/venv/bin/python3 '.escapeshellarg($scriptPath).' '.escapeshellarg($filePath).' true 2>&1';
                     $output = shell_exec($command);
                     $result = json_decode($output, true);
 

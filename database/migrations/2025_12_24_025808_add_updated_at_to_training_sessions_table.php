@@ -11,9 +11,11 @@ return new class extends Migration
      */
     public function up(): void
     {
-        Schema::table('training_sessions', function (Blueprint $table) {
-            $table->timestamp('updated_at')->nullable()->after('created_at');
-        });
+        if (!Schema::hasColumn('training_sessions', 'updated_at')) {
+            Schema::table('training_sessions', function (Blueprint $table) {
+                $table->timestamp('updated_at')->nullable()->after('created_at');
+            });
+        }
     }
 
     /**

@@ -31,7 +31,7 @@ class TableExtractionService
 
             file_put_contents($tempScript, $pythonScript);
 
-            $result = Process::timeout(120)->run("python3 {$tempScript}");
+            $result = Process::timeout(120)->run("/var/www/html/crmfinity-ai/venv/bin/python3 {$tempScript}");
 
             // Clean up temp script
             @unlink($tempScript);

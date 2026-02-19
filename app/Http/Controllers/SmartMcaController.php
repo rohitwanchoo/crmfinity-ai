@@ -70,7 +70,7 @@ class SmartMcaController extends Controller
                 // Step 1: Extract text from PDF using PyMuPDF
                 // Enable layout-preserving mode (true) to maintain column structure for better accuracy
                 $scriptPath = storage_path('app/scripts/extract_pdf_text.py');
-                $command = 'python3 '.escapeshellarg($scriptPath).' '.escapeshellarg($filePath).' true 2>&1';
+                $command = '/var/www/html/crmfinity-ai/venv/bin/python3 '.escapeshellarg($scriptPath).' '.escapeshellarg($filePath).' true 2>&1';
                 $output = shell_exec($command);
                 $result = json_decode($output, true);
 
@@ -1396,7 +1396,7 @@ PROMPT;
         try {
             $scriptPath = storage_path('app/scripts/parse_transactions_openai.py');
 
-            $command = 'timeout 300 python3 ' . escapeshellarg($scriptPath)
+            $command = 'timeout 300 /var/www/html/crmfinity-ai/venv/bin/python3 ' . escapeshellarg($scriptPath)
                 . ' ' . escapeshellarg($tempFile)
                 . ' ' . escapeshellarg($openaiKey)
                 . ' ' . escapeshellarg($patternsFile)
@@ -1517,7 +1517,7 @@ PROMPT;
         try {
             $scriptPath = storage_path('app/scripts/parse_transactions_ai.py');
 
-            $command = 'timeout 300 python3 ' . escapeshellarg($scriptPath)
+            $command = 'timeout 300 /var/www/html/crmfinity-ai/venv/bin/python3 ' . escapeshellarg($scriptPath)
                 . ' ' . escapeshellarg($tempFile)
                 . ' ' . escapeshellarg($anthropicKey)
                 . ' ' . escapeshellarg($patternsFile)

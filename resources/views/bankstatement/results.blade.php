@@ -636,9 +636,9 @@
                                 </thead>
                                 <tbody class="bg-white dark:bg-gray-800 divide-y divide-gray-200 dark:divide-gray-700">
                                     @foreach($combinedMonths as $month)
-                                    <tr class="hover:bg-gray-50 dark:hover:bg-gray-700">
+                                    <tr class="hover:bg-gray-50 dark:hover:bg-gray-700" id="combined-month-row-{{ $month['month_key'] }}">
                                         <td class="px-4 py-3 text-sm font-medium text-gray-900 dark:text-gray-100">{{ $month['month_name'] }}</td>
-                                        <td class="px-4 py-3 text-sm text-right text-gray-700 dark:text-gray-300">${{ number_format($month['deposits'], 2) }}</td>
+                                        <td class="px-4 py-3 text-sm text-right text-gray-700 dark:text-gray-300 combined-dep-{{ $month['month_key'] }}">${{ number_format($month['deposits'], 2) }}</td>
                                         <td class="px-4 py-3 text-sm text-right text-orange-600 dark:text-orange-400">${{ number_format($month['adjustments'], 2) }}</td>
                                         <td class="px-4 py-3 text-sm text-right font-semibold text-green-600 dark:text-green-400">${{ number_format($month['true_revenue'], 2) }}</td>
                                         <td class="px-4 py-3 text-sm text-right text-blue-600 dark:text-blue-400 font-semibold">
@@ -651,14 +651,14 @@
                                         <td class="px-4 py-3 text-sm text-center {{ $month['nsf_count'] > 0 ? 'text-red-600 dark:text-red-400 font-semibold' : 'text-gray-500 dark:text-gray-400' }}">{{ $month['nsf_count'] }}</td>
                                         <td class="px-4 py-3 text-sm text-center text-gray-700 dark:text-gray-300">{{ $month['deposit_count'] }}</td>
                                         <td class="px-4 py-3 text-sm text-center {{ ($month['negative_days'] ?? 0) > 0 ? 'text-red-600 dark:text-red-400 font-semibold' : 'text-gray-500 dark:text-gray-400' }}">{{ $month['negative_days'] ?? 0 }}</td>
-                                        <td class="px-4 py-3 text-sm text-right text-red-600 dark:text-red-400">${{ number_format($month['debits'], 2) }}</td>
+                                        <td class="px-4 py-3 text-sm text-right text-red-600 dark:text-red-400 combined-deb-{{ $month['month_key'] }}">${{ number_format($month['debits'], 2) }}</td>
                                     </tr>
                                     @endforeach
                                 </tbody>
                                 <tfoot class="bg-gray-100 dark:bg-gray-700">
-                                    <tr class="font-semibold">
+                                    <tr class="font-semibold" id="combined-total-row">
                                         <td class="px-4 py-3 text-sm text-gray-900 dark:text-gray-100">Total</td>
-                                        <td class="px-4 py-3 text-sm text-right text-gray-900 dark:text-gray-100">${{ number_format($combinedTotals['deposits'], 2) }}</td>
+                                        <td class="px-4 py-3 text-sm text-right text-gray-900 dark:text-gray-100 combined-total-dep">${{ number_format($combinedTotals['deposits'], 2) }}</td>
                                         <td class="px-4 py-3 text-sm text-right text-orange-600 dark:text-orange-400">${{ number_format($combinedTotals['adjustments'], 2) }}</td>
                                         <td class="px-4 py-3 text-sm text-right text-green-600 dark:text-green-400">${{ number_format($combinedTotals['true_revenue'], 2) }}</td>
                                         <td class="px-4 py-3 text-sm text-right text-blue-600 dark:text-blue-400 font-semibold">
@@ -671,11 +671,11 @@
                                         <td class="px-4 py-3 text-sm text-center {{ $combinedTotals['nsf_count'] > 0 ? 'text-red-600 dark:text-red-400' : 'text-gray-500 dark:text-gray-400' }}">{{ $combinedTotals['nsf_count'] }}</td>
                                         <td class="px-4 py-3 text-sm text-center text-gray-900 dark:text-gray-100">{{ $combinedTotals['deposit_count'] }}</td>
                                         <td class="px-4 py-3 text-sm text-center {{ $combinedTotals['negative_days'] > 0 ? 'text-red-600 dark:text-red-400' : 'text-gray-500 dark:text-gray-400' }}">{{ $combinedTotals['negative_days'] }}</td>
-                                        <td class="px-4 py-3 text-sm text-right text-red-600 dark:text-red-400">${{ number_format($combinedTotals['debits'], 2) }}</td>
+                                        <td class="px-4 py-3 text-sm text-right text-red-600 dark:text-red-400 combined-total-deb">${{ number_format($combinedTotals['debits'], 2) }}</td>
                                     </tr>
-                                    <tr class="text-gray-600 dark:text-gray-400">
+                                    <tr class="text-gray-600 dark:text-gray-400" id="combined-avg-row">
                                         <td class="px-4 py-3 text-sm">Monthly Average</td>
-                                        <td class="px-4 py-3 text-sm text-right">${{ number_format($combinedAverages['deposits'], 2) }}</td>
+                                        <td class="px-4 py-3 text-sm text-right combined-avg-dep">${{ number_format($combinedAverages['deposits'], 2) }}</td>
                                         <td class="px-4 py-3 text-sm text-right">${{ number_format($combinedAverages['adjustments'], 2) }}</td>
                                         <td class="px-4 py-3 text-sm text-right">${{ number_format($combinedAverages['true_revenue'], 2) }}</td>
                                         <td class="px-4 py-3 text-sm text-right text-blue-600 dark:text-blue-400">
@@ -688,7 +688,7 @@
                                         <td class="px-4 py-3 text-sm text-center">-</td>
                                         <td class="px-4 py-3 text-sm text-center">{{ number_format($combinedAverages['deposit_count'], 1) }}</td>
                                         <td class="px-4 py-3 text-sm text-center">{{ number_format($combinedAverages['negative_days'], 1) }}</td>
-                                        <td class="px-4 py-3 text-sm text-right">${{ number_format($combinedAverages['debits'], 2) }}</td>
+                                        <td class="px-4 py-3 text-sm text-right combined-avg-deb">${{ number_format($combinedAverages['debits'], 2) }}</td>
                                     </tr>
                                 </tfoot>
                             </table>
@@ -4640,96 +4640,148 @@
         function updateMonthlySummaryAfterTypeToggle(sessionId, monthKey, amount, oldType, newType) {
             console.log('Updating monthly summary:', { sessionId, monthKey, amount, oldType, newType });
 
-            // Find the monthly summary section by looking for the grid container
-            // The structure is: Month button -> Expandable div -> Summary grid (first grid after button)
-            const monthCards = document.querySelectorAll(`[data-month="${monthKey}"][data-session="${sessionId}"]`);
-            if (monthCards.length === 0) {
-                console.log('No month card found');
-                return;
-            }
+            const creditToDebit = oldType === 'credit' && newType === 'debit';
+            const fmt = (n) => n.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
 
-            // Find the summary grid - it's in the expandable section
-            // Look for parent container and find the summary cards grid
-            const firstCard = monthCards[0];
-            const monthContainer = firstCard.closest('.border-b');
-            if (!monthContainer) {
-                console.log('Month container not found');
-                return;
-            }
-
-            // Find the summary grid with the 4 cards (Deposits, Adjustments, True Revenue, Total Debits)
-            const summaryGrid = monthContainer.querySelector('.grid.grid-cols-2.md\\:grid-cols-4');
-            if (!summaryGrid) {
-                console.log('Summary grid not found');
-                return;
-            }
-
-            // Get the summary card elements
-            const cards = summaryGrid.querySelectorAll('.bg-white.dark\\:bg-gray-700');
-            if (cards.length < 4) {
-                console.log('Not enough summary cards found');
-                return;
-            }
-
-            // Cards order: [0] = Deposits, [1] = Adjustments, [2] = True Revenue, [3] = Total Debits
-            const depositsElement = cards[0].querySelector('p.text-lg');
-            const adjustmentsElement = cards[1].querySelector('p.text-lg');
-            const trueRevenueElement = cards[2].querySelector('p.text-lg');
-            const debitsElement = cards[3].querySelector('p.text-lg');
-
-            if (!depositsElement || !debitsElement || !trueRevenueElement || !adjustmentsElement) {
-                console.log('Could not find all required elements');
-                return;
-            }
-
-            // Parse current values
-            let currentDeposits = parseFloat(depositsElement.textContent.replace(/[$,]/g, '')) || 0;
-            let currentDebits = parseFloat(debitsElement.textContent.replace(/[$,]/g, '')) || 0;
-            let currentAdjustments = parseFloat(adjustmentsElement.textContent.replace(/[$,]/g, '')) || 0;
-
-            // Update values based on the toggle
-            if (oldType === 'credit' && newType === 'debit') {
-                currentDeposits -= amount;
-                currentDebits += amount;
-            } else if (oldType === 'debit' && newType === 'credit') {
-                currentDebits -= amount;
-                currentDeposits += amount;
-            }
-
-            // Calculate new true revenue (deposits - adjustments)
-            const newTrueRevenue = currentDeposits - currentAdjustments;
-
-            // Update the display
-            depositsElement.textContent = '$' + currentDeposits.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
-            debitsElement.textContent = '$' + currentDebits.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
-            trueRevenueElement.textContent = '$' + newTrueRevenue.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
-
-            // Also update the header true revenue display
-            const headerRevenueElement = monthContainer.querySelector(`.header-rev-${sessionId}-${monthKey}`);
-            if (headerRevenueElement) {
-                headerRevenueElement.textContent = '$' + newTrueRevenue.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
-            }
-
-            // Update any elements with specific classes for this month
-            const cardRevElements = document.querySelectorAll(`.card-rev-${sessionId}-${monthKey}`);
-            cardRevElements.forEach(el => {
-                el.textContent = '$' + newTrueRevenue.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
-            });
-
-            // Update the monthlyData object to keep data in sync
+            // --- Always update: monthlyData JS object ---
             const sessionData = monthlyData[sessionId];
             if (sessionData && sessionData.totals) {
-                if (oldType === 'credit' && newType === 'debit') {
+                if (creditToDebit) {
                     sessionData.totals.deposits -= amount;
                     sessionData.totals.debits += amount;
-                } else if (oldType === 'debit' && newType === 'credit') {
+                    sessionData.totals.true_revenue -= amount;
+                } else {
                     sessionData.totals.debits -= amount;
                     sessionData.totals.deposits += amount;
+                    sessionData.totals.true_revenue += amount;
                 }
             }
 
-            // Update the Combined Analysis Summary dashboard
+            // Update per-month entry in monthlyData JS object
+            if (sessionData && sessionData.months) {
+                const monthEntry = sessionData.months.find(m => m.month_key === monthKey);
+                if (monthEntry) {
+                    if (creditToDebit) {
+                        monthEntry.deposits -= amount;
+                        monthEntry.debits += amount;
+                        monthEntry.true_revenue -= amount;
+                    } else {
+                        monthEntry.deposits += amount;
+                        monthEntry.debits -= amount;
+                        monthEntry.true_revenue += amount;
+                    }
+                }
+            }
+
+            // --- Always update: Monthly Bank Details table ---
+            const monthTableRow = document.getElementById(`month-row-${sessionId}-${monthKey}`);
+            if (monthTableRow) {
+                const depositCell = monthTableRow.querySelector('td:nth-child(2)');
+                if (depositCell) {
+                    let val = parseFloat(depositCell.textContent.replace(/[$,]/g, '')) || 0;
+                    depositCell.textContent = '$' + fmt(creditToDebit ? val - amount : val + amount);
+                }
+                const debitCell = monthTableRow.querySelector('td:nth-child(9)');
+                if (debitCell) {
+                    let val = parseFloat(debitCell.textContent.replace(/[$,]/g, '')) || 0;
+                    debitCell.textContent = '$' + fmt(creditToDebit ? val + amount : val - amount);
+                }
+                const revSpan = monthTableRow.querySelector('.rev-value');
+                if (revSpan) {
+                    let val = parseFloat(revSpan.textContent.replace(/[$,]/g, '')) || 0;
+                    revSpan.textContent = fmt(creditToDebit ? val - amount : val + amount);
+                }
+            }
+
+            const totalTableRow = document.getElementById(`total-row-${sessionId}`);
+            if (totalTableRow) {
+                const depositCell = totalTableRow.querySelector('td:nth-child(2)');
+                if (depositCell) {
+                    let val = parseFloat(depositCell.textContent.replace(/[$,]/g, '')) || 0;
+                    depositCell.textContent = '$' + fmt(creditToDebit ? val - amount : val + amount);
+                }
+                const debitCell = totalTableRow.querySelector('td:nth-child(9)');
+                if (debitCell) {
+                    let val = parseFloat(debitCell.textContent.replace(/[$,]/g, '')) || 0;
+                    debitCell.textContent = '$' + fmt(creditToDebit ? val + amount : val - amount);
+                }
+                const revSpan = totalTableRow.querySelector('.rev-value');
+                if (revSpan) {
+                    let val = parseFloat(revSpan.textContent.replace(/[$,]/g, '')) || 0;
+                    revSpan.textContent = fmt(creditToDebit ? val - amount : val + amount);
+                }
+            }
+
+            const avgTableRow = document.getElementById(`avg-row-${sessionId}`);
+            if (avgTableRow && sessionData && sessionData.months) {
+                const monthCount = sessionData.months.length || 1;
+                const avgChange = amount / monthCount;
+                const depositCell = avgTableRow.querySelector('td:nth-child(2)');
+                if (depositCell) {
+                    let val = parseFloat(depositCell.textContent.replace(/[$,]/g, '')) || 0;
+                    depositCell.textContent = '$' + fmt(creditToDebit ? val - avgChange : val + avgChange);
+                }
+                const debitCell = avgTableRow.querySelector('td:nth-child(9)');
+                if (debitCell) {
+                    let val = parseFloat(debitCell.textContent.replace(/[$,]/g, '')) || 0;
+                    debitCell.textContent = '$' + fmt(creditToDebit ? val + avgChange : val - avgChange);
+                }
+                const revSpan = avgTableRow.querySelector('.rev-value');
+                if (revSpan) {
+                    let val = parseFloat(revSpan.textContent.replace(/[$,]/g, '')) || 0;
+                    revSpan.textContent = fmt(creditToDebit ? val - avgChange : val + avgChange);
+                }
+            }
+
+            // --- Always update: Combined Analysis Summary (cards + metrics at top) ---
             updateCombinedSummary();
+
+            // --- Optional update: expandable per-month cards (only if visible in DOM) ---
+            const monthCards = document.querySelectorAll(`[data-month="${monthKey}"][data-session="${sessionId}"]`);
+            if (monthCards.length > 0) {
+                const firstCard = monthCards[0];
+                const monthContainer = firstCard.closest('.border-b');
+                if (monthContainer) {
+                    const summaryGrid = monthContainer.querySelector('.grid.grid-cols-2.md\\:grid-cols-4');
+                    if (summaryGrid) {
+                        const cards = summaryGrid.querySelectorAll('.bg-white.dark\\:bg-gray-700');
+                        if (cards.length >= 4) {
+                            const depositsElement = cards[0].querySelector('p.text-lg');
+                            const adjustmentsElement = cards[1].querySelector('p.text-lg');
+                            const trueRevenueElement = cards[2].querySelector('p.text-lg');
+                            const debitsElement = cards[3].querySelector('p.text-lg');
+
+                            if (depositsElement && debitsElement && trueRevenueElement && adjustmentsElement) {
+                                let currentDeposits = parseFloat(depositsElement.textContent.replace(/[$,]/g, '')) || 0;
+                                let currentDebits = parseFloat(debitsElement.textContent.replace(/[$,]/g, '')) || 0;
+                                let currentAdjustments = parseFloat(adjustmentsElement.textContent.replace(/[$,]/g, '')) || 0;
+
+                                if (creditToDebit) {
+                                    currentDeposits -= amount;
+                                    currentDebits += amount;
+                                } else {
+                                    currentDebits -= amount;
+                                    currentDeposits += amount;
+                                }
+
+                                const newTrueRevenue = currentDeposits - currentAdjustments;
+                                depositsElement.textContent = '$' + fmt(currentDeposits);
+                                debitsElement.textContent = '$' + fmt(currentDebits);
+                                trueRevenueElement.textContent = '$' + fmt(newTrueRevenue);
+
+                                const headerRevenueElement = monthContainer.querySelector(`.header-rev-${sessionId}-${monthKey}`);
+                                if (headerRevenueElement) {
+                                    headerRevenueElement.textContent = '$' + fmt(newTrueRevenue);
+                                }
+
+                                document.querySelectorAll(`.card-rev-${sessionId}-${monthKey}`).forEach(el => {
+                                    el.textContent = '$' + fmt(newTrueRevenue);
+                                });
+                            }
+                        }
+                    }
+                }
+            }
 
             console.log('Monthly summary updated successfully');
         }
@@ -4956,12 +5008,16 @@
                         const key = month.month_key;
                         if (!combinedMonths[key]) {
                             combinedMonths[key] = {
+                                deposits: 0,
+                                debits: 0,
                                 adjustments: 0,
                                 true_revenue: 0,
                                 average_daily: 0,
                                 days_in_month: month.days_in_month
                             };
                         }
+                        combinedMonths[key].deposits += month.deposits;
+                        combinedMonths[key].debits += month.debits;
                         combinedMonths[key].adjustments += month.adjustments;
                         combinedMonths[key].true_revenue += month.true_revenue;
                     });
@@ -4981,7 +5037,28 @@
 
                 const avgCell = document.querySelector(`.combined-avg-${monthKey} .avg-value`);
                 if (avgCell) avgCell.textContent = formatNumber(month.average_daily);
+
+                const depCell = document.querySelector(`.combined-dep-${monthKey}`);
+                if (depCell) depCell.textContent = '$' + formatNumber(month.deposits);
+
+                const debCell = document.querySelector(`.combined-deb-${monthKey}`);
+                if (debCell) debCell.textContent = '$' + formatNumber(month.debits);
             });
+
+            // Update combined total row deposits and debits
+            const combinedTotalDep = document.querySelector('.combined-total-dep');
+            if (combinedTotalDep) combinedTotalDep.textContent = '$' + formatNumber(combinedTotals.deposits);
+
+            const combinedTotalDeb = document.querySelector('.combined-total-deb');
+            if (combinedTotalDeb) combinedTotalDeb.textContent = '$' + formatNumber(combinedTotals.debits);
+
+            // Update combined average row deposits and debits
+            const monthCount = Object.keys(combinedMonths).length || 1;
+            const combinedAvgDep = document.querySelector('.combined-avg-dep');
+            if (combinedAvgDep) combinedAvgDep.textContent = '$' + formatNumber(combinedTotals.deposits / monthCount);
+
+            const combinedAvgDeb = document.querySelector('.combined-avg-deb');
+            if (combinedAvgDeb) combinedAvgDeb.textContent = '$' + formatNumber(combinedTotals.debits / monthCount);
         }
 
         let currentMcaContext = null;

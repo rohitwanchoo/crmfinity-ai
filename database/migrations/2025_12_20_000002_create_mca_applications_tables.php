@@ -12,7 +12,7 @@ return new class extends Migration
         Schema::create('mca_applications', function (Blueprint $table) {
             $table->id();
             $table->string('application_id')->unique();
-            $table->integer('user_id');
+            $table->unsignedBigInteger('user_id');
             $table->foreign('user_id')->references('id')->on('users')->onDelete('cascade');
 
             // Application Status
@@ -129,7 +129,7 @@ return new class extends Migration
         Schema::create('application_notes', function (Blueprint $table) {
             $table->id();
             $table->foreignId('application_id')->constrained('mca_applications')->onDelete('cascade');
-            $table->integer('user_id')->nullable();
+            $table->unsignedBigInteger('user_id')->nullable();
             $table->string('type')->default('note'); // note, status_change, verification, system
             $table->text('content');
             $table->json('metadata')->nullable();

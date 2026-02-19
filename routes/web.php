@@ -49,6 +49,8 @@ Route::middleware('auth')->group(function () {
         Route::get('/lenders', [BankStatementController::class, 'lenders'])->name('lenders');
         Route::get('/lenders/create', [BankStatementController::class, 'createLender'])->name('lenders.create');
         Route::post('/lenders', [BankStatementController::class, 'storeLender'])->name('lenders.store');
+        Route::get('/lenders/{lenderId}/edit', [BankStatementController::class, 'editLender'])->name('lenders.edit');
+        Route::put('/lenders/{lenderId}', [BankStatementController::class, 'updateLender'])->name('lenders.update');
         Route::get('/lenders/{lenderId}', [BankStatementController::class, 'lenderDetail'])->name('lender-detail');
         Route::get('/lenders/{lenderId}/pattern/create', [BankStatementController::class, 'createPattern'])->name('lenders.pattern.create');
         Route::post('/lenders/{lenderId}/pattern', [BankStatementController::class, 'storePattern'])->name('lenders.pattern.store');

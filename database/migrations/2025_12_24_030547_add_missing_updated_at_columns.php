@@ -11,17 +11,13 @@ return new class extends Migration
      */
     public function up(): void
     {
-        Schema::table('ground_truth_transactions', function (Blueprint $table) {
-            $table->timestamp('updated_at')->nullable()->after('created_at');
-        });
-
-        Schema::table('training_metrics', function (Blueprint $table) {
-            $table->timestamp('updated_at')->nullable()->after('created_at');
-        });
-
-        Schema::table('prediction_log', function (Blueprint $table) {
-            $table->timestamp('updated_at')->nullable()->after('created_at');
-        });
+        foreach (['ground_truth_transactions', 'training_metrics', 'prediction_log'] as $tableName) {
+            if (!Schema::hasColumn($tableName, 'updated_at')) {
+                Schema::table($tableName, function (Blueprint $table) {
+                    $table->timestamp('updated_at')->nullable()->after('created_at');
+                });
+            }
+        }
     }
 
     /**

@@ -14,7 +14,7 @@ return new class extends Migration
         // Plaid Items (bank connections)
         Schema::create('plaid_items', function (Blueprint $table) {
             $table->id();
-            $table->integer('user_id');
+            $table->unsignedBigInteger('user_id');
             $table->foreign('user_id')->references('id')->on('users')->onDelete('cascade');
             $table->string('plaid_item_id')->unique();
             $table->text('access_token'); // encrypted
