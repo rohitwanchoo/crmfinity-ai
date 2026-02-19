@@ -1503,27 +1503,569 @@ def _extract_flfcu(pdf_path: str) -> Tuple[List[Dict], bool]:
         return [], False
 
 
+# ─── Strategy 7: Huntington National Bank ─────────────────────────────────────
+#
+# Statement layout (pdfplumber text):
+#   Identifier  : "THE HUNTINGTON NATIONAL BANK" or "Huntington Unlimited" on page 1
+#
+#   Sections (credit):
+#     "Deposits (+) Account:..."        → two-col: MM/DD AMOUNT SERIAL TYPE
+#     "Other Credits (+) Account:..."   → single-col: MM/DD AMOUNT DESCRIPTION
+#     "Electronic Deposits ..."         → single-col (if separate section)
+#     "Wire Transfer Credits ..."       → single-col (if separate section)
+#
+#   Sections (debit):
+#     "Checks(-) Account:..."           → two-col: MM/DD AMOUNT CHECK#[*]
+#     "Other Debits (-) Account:..."    → single-col: MM/DD AMOUNT DESCRIPTION
+#     "Electronic Withdrawals ..."      → single-col (if separate section)
+#     "Service ChargeDetail Account:..."→ single-col: MM/DD AMOUNT DESCRIPTION
+#
+#   Stop sections:
+#     "Balance Activity Account:..."    → daily balance table, stop
+#     "Service ChargeSummary ..."       → summary only, stop
+
+# Matches each entry in a two-column Deposits or Checks row.
+# Deposits can have serial number OR just a type label (e.g. "Brch/ATM"):
+#   MM/DD  AMOUNT  [SERIAL]  [TYPE]   ← serial is optional
+# Checks always have a check number:
+#   MM/DD  AMOUNT  CHECK#[*]
+# We capture just date + amount; the ref token (serial/check) is grabbed separately.
+_HUNTINGTON_ENTRY_RE = re.compile(
+    r'(\d{2}/\d{2})\s+([\d,]+\.\d{2})'
+)
+# Separate regex to grab the optional serial/check number right after the amount
+_HUNTINGTON_REF_RE = re.compile(
+    r'(\d{2}/\d{2})\s+([\d,]+\.\d{2})\s+(\d+\*?)'
+)
+
+# Matches a single-column transaction line:
+#   MM/DD  AMOUNT  DESCRIPTION...
+_HUNTINGTON_SINGLE_RE = re.compile(
+    r'^(\d{2}/\d{2})\s+([\d,]+\.\d{2})\s+(.+)$'
+)
+
+# Section header regexes matched against the START of each stripped line
+_HUNTINGTON_CREDIT_TWO_COL_RE = re.compile(r'^Deposits\s*\(\+\)', re.I)
+_HUNTINGTON_CREDIT_ONE_COL_RE = re.compile(
+    r'^(?:Other\s*Credits?\s*\(\+\)|Electronic\s*Deposits?|Wire\s*Transfer\s*Credits?)', re.I)
+_HUNTINGTON_DEBIT_TWO_COL_RE  = re.compile(r'^Checks\s*\(', re.I)
+_HUNTINGTON_DEBIT_ONE_COL_RE  = re.compile(
+    r'^(?:Other\s*Debits?\s*\(-\)|Electronic\s*Withdrawals?|Service\s*Charge\s*Detail)', re.I)
+_HUNTINGTON_STOP_RE           = re.compile(
+    r'^(?:Balance\s*Activity|Service\s*Charge\s*Summary)', re.I)
+_HUNTINGTON_HEADER_ROW_RE     = re.compile(r'^Date\s+Amount', re.I)
+_HUNTINGTON_FOOTNOTE_RE       = re.compile(
+    r'^\(\*\)|\bInvestments are\b|\bThe Huntington National\b|'
+    r'\bStatementPeriod\b|\bDocusign\b', re.I)
+# Lines in the "Waives and Discounts (+)" column of Service Charge Detail —
+# these are fee waivers/credits, NOT debits.  Skip them when parsing debit sections.
+_HUNTINGTON_WAIVER_RE         = re.compile(r'WAIVER|DISCOUNT|GRACE', re.I)
+
+
+def _extract_huntington(pdf_path: str) -> Tuple[List[Dict], bool]:
+    """
+    Strategy 7: Huntington National Bank statement parser.
+
+    Two-column sections (Deposits, Checks): use findall to capture every
+    MM/DD AMOUNT SERIAL entry on a line (1 or 2 per line).
+    Single-column sections (Other Credits/Debits, Service Charges): each line
+    starting with MM/DD is one transaction; continuation lines are skipped.
+    """
+    transactions: List[Dict] = []
+    try:
+        with pdfplumber.open(pdf_path) as pdf:
+            if not pdf.pages:
+                return [], False
+
+            first_text = pdf.pages[0].extract_text() or ''
+            first_squished = first_text.upper().replace(' ', '')
+
+            # Guard: only activate for Huntington statements
+            if ('HUNTINGTONNATIONALBANK' not in first_squished and
+                    'HUNTINGTONUNLIMITED' not in first_squished and
+                    'HUNTINGTONBUSINESS' not in first_squished):
+                return [], False
+
+            statement_year = _detect_year(first_text)
+            current_type: Optional[str] = None   # 'credit' or 'debit'
+            is_two_col: bool = False              # True for Deposits / Checks sections
+            stop_parsing: bool = False
+            # Track waived (date, amount) pairs so we can remove the matching charge
+            waived_pairs: List[Tuple] = []
+
+            for page in pdf.pages:
+                if stop_parsing:
+                    break
+                text = page.extract_text()
+                if not text:
+                    continue
+
+                for line in text.split('\n'):
+                    stripped = line.strip()
+                    if not stripped:
+                        continue
+
+                    # ── Stop sections ──────────────────────────────────────
+                    if _HUNTINGTON_STOP_RE.match(stripped):
+                        stop_parsing = True
+                        break
+
+                    # ── Section header detection ────────────────────────────
+                    if _HUNTINGTON_CREDIT_TWO_COL_RE.match(stripped):
+                        current_type = 'credit'
+                        is_two_col = True
+                        continue
+                    if _HUNTINGTON_CREDIT_ONE_COL_RE.match(stripped):
+                        current_type = 'credit'
+                        is_two_col = False
+                        continue
+                    if _HUNTINGTON_DEBIT_TWO_COL_RE.match(stripped):
+                        current_type = 'debit'
+                        is_two_col = True
+                        continue
+                    if _HUNTINGTON_DEBIT_ONE_COL_RE.match(stripped):
+                        current_type = 'debit'
+                        is_two_col = False
+                        continue
+
+                    if current_type is None:
+                        continue
+
+                    # ── Skip header / footnote rows ─────────────────────────
+                    if _HUNTINGTON_HEADER_ROW_RE.match(stripped):
+                        continue
+                    if _HUNTINGTON_FOOTNOTE_RE.search(stripped):
+                        continue
+
+                    # ── Parse transaction lines ─────────────────────────────
+                    if is_two_col:
+                        # Deposits: MM/DD AMOUNT [SERIAL] [TYPE]  (serial optional for Brch/ATM)
+                        # Checks:   MM/DD AMOUNT CHECK#[*]
+                        # Build a ref map (date+amount → check#) for check descriptions
+                        refs = {(d, a): r for d, a, r in _HUNTINGTON_REF_RE.findall(stripped)}
+                        entries = _HUNTINGTON_ENTRY_RE.findall(stripped)
+                        for date_str, amount_str in entries:
+                            parsed_date = _det_parse_date(date_str, statement_year)
+                            if not parsed_date:
+                                continue
+                            try:
+                                amount = round(_det_parse_amount(amount_str), 2)
+                            except ValueError:
+                                continue
+                            ref = refs.get((date_str, amount_str), '')
+                            if current_type == 'debit':
+                                desc = f"Check #{ref.rstrip('*')}" if ref else 'Check'
+                            else:
+                                desc = 'Deposit'
+                            transactions.append({
+                                'date': parsed_date,
+                                'description': desc,
+                                'amount': amount,
+                                'type': current_type,
+                            })
+                    else:
+                        # Single-column: MM/DD AMOUNT DESCRIPTION
+                        # Continuation lines (timestamps, extra text) skip automatically
+                        m = _HUNTINGTON_SINGLE_RE.match(stripped)
+                        if not m:
+                            continue
+                        date_str, amount_str, description = m.groups()
+                        # Skip "Waives and Discounts (+)" lines that pdfplumber merges
+                        # into the same column as "Service Charge (-)" entries.
+                        # Also record the (date, amount) so we can cancel the
+                        # corresponding charge entry (both net to $0 per bank totals).
+                        if current_type == 'debit' and _HUNTINGTON_WAIVER_RE.search(description):
+                            waived_date = _det_parse_date(date_str, statement_year)
+                            if waived_date:
+                                try:
+                                    waived_pairs.append((waived_date, round(_det_parse_amount(amount_str), 2)))
+                                except ValueError:
+                                    pass
+                            continue
+                        parsed_date = _det_parse_date(date_str, statement_year)
+                        if not parsed_date:
+                            continue
+                        try:
+                            amount = round(_det_parse_amount(amount_str), 2)
+                        except ValueError:
+                            continue
+                        transactions.append({
+                            'date': parsed_date,
+                            'description': description.strip(),
+                            'amount': amount,
+                            'type': current_type,
+                        })
+
+        # Remove debit entries that were cancelled by fee waivers.
+        # The bank's statement totals already net waivers out, so both
+        # the original charge and its waiver should be excluded.
+        for waived_date, waived_amount in waived_pairs:
+            for i, t in enumerate(transactions):
+                if (t['type'] == 'debit' and
+                        t['date'] == waived_date and
+                        t['amount'] == waived_amount):
+                    transactions.pop(i)
+                    break  # only remove one matching charge per waiver
+
+        return transactions, len(transactions) >= 2
+
+    except Exception as e:
+        print(f"Strategy 7 (Huntington) failed: {e}", file=sys.stderr)
+        return [], False
+
+
+# ─── Strategy 8: CNBank (Community Bank NA) ──────────────────────────────────
+
+_CNBANK_GUARD_RE = re.compile(r'cnbank\.com|CNBusiness|CN\s*Bank\b', re.I)
+# Transaction line: MM/DD/YYYY  description  [-]$amount  $balance
+_CNBANK_TXN_RE   = re.compile(
+    r'^(\d{2}/\d{2}/\d{4})\s+(.+?)\s+(-?\$[\d,]+\.\d{2})\s+\$[\d,]+\.\d{2}\s*$'
+)
+# Stop before the compact Checks Paid summary — checks are already in the main list
+_CNBANK_STOP_RE  = re.compile(r'^\s*Checks?\s+Paid\s*$', re.I)
+# Lines to skip entirely
+_CNBANK_SKIP_RE  = re.compile(
+    r'^\s*(Date\s+Description|Beginning\s+Balance|Page:\s*\d|Statement\s+Date:|'
+    r'Primary\s+Account:|Account\s+Details|Account\s+Beginning|Routing\s+Number|'
+    r'Summary\s+of\s+Account|Customer\s+Call\s+Center|\(\d{3}\)|CNBank\.com)',
+    re.I,
+)
+
+
+def _det_parse_cnbank_date(date_str: str) -> Optional[str]:
+    """Parse MM/DD/YYYY (CNBank full-year format) to YYYY-MM-DD."""
+    try:
+        return datetime.strptime(date_str.strip(), '%m/%d/%Y').strftime('%Y-%m-%d')
+    except ValueError:
+        return None
+
+
+def _extract_cnbank(pdf_path: str) -> Tuple[List[Dict], bool]:
+    """
+    Strategy 8: CNBank / Community Bank NA statement parser.
+
+    Format (single chronological list, no separate debit/credit sections):
+      Date       Description                           Withdrawal    Deposit    Balance
+      MM/DD/YYYY Withdrawal Internet Transfer to ...   -$10,000.00             $202,364.95
+                 Continuation line                                              ← append to desc
+      MM/DD/YYYY Electronic Deposit TOPCO ASSOCIATES   -            $162,638.64 $365,003.59
+
+    Amount sign: -$xxx = debit, $xxx (positive) = credit.
+    Stop at "Checks Paid" — that section is a summary of checks already listed inline.
+    """
+    transactions: List[Dict] = []
+    try:
+        with pdfplumber.open(pdf_path) as pdf:
+            if not pdf.pages:
+                return [], False
+
+            first_text = pdf.pages[0].extract_text() or ''
+            if not _CNBANK_GUARD_RE.search(first_text):
+                return [], False
+
+            current_txn: Optional[Dict] = None
+
+            def _flush():
+                if current_txn:
+                    transactions.append(dict(current_txn))
+
+            stop = False
+            for page in pdf.pages:
+                if stop:
+                    break
+                text = page.extract_text()
+                if not text:
+                    continue
+
+                for line in text.split('\n'):
+                    stripped = line.strip()
+                    if not stripped:
+                        continue
+
+                    # Stop at Checks Paid summary (already captured inline)
+                    if _CNBANK_STOP_RE.match(stripped):
+                        _flush()
+                        current_txn = None
+                        stop = True
+                        break
+
+                    # Skip header / boilerplate lines
+                    if _CNBANK_SKIP_RE.match(stripped):
+                        continue
+
+                    # Try to match a full transaction line
+                    m = _CNBANK_TXN_RE.match(stripped)
+                    if m:
+                        _flush()
+                        date_str, description, amount_str = m.groups()
+                        parsed_date = _det_parse_cnbank_date(date_str)
+                        if not parsed_date:
+                            current_txn = None
+                            continue
+                        # Amount sign determines debit vs credit
+                        is_debit = amount_str.startswith('-')
+                        clean_amount = amount_str.lstrip('-').lstrip('$').replace(',', '')
+                        try:
+                            amount = round(float(clean_amount), 2)
+                        except ValueError:
+                            current_txn = None
+                            continue
+                        current_txn = {
+                            'date': parsed_date,
+                            'description': description.strip(),
+                            'amount': amount,
+                            'type': 'debit' if is_debit else 'credit',
+                        }
+                    else:
+                        # Continuation line — append to description
+                        if current_txn:
+                            current_txn['description'] += ' ' + stripped
+
+            _flush()
+
+        # ── Net out rejected check pairs ─────────────────────────────────────
+        # CNBank lists a returned check twice:
+        #   debit:  Check-Inclearings 25374  -$9,828.00   (check initially cleared)
+        #   credit: Check-Inclearings 25374 (Rejected)    (check returned / bounced)
+        # The bank's own summary nets both to zero and excludes them from
+        # Deposits and Withdrawals totals.  Remove both so our totals match the PDF.
+        _CNBANK_REJECTED_RE = re.compile(
+            r'Check-Inclearings\s+(\S+)\s+\(Rejected\)', re.I
+        )
+        rejected_indices = []
+        original_indices = []
+        for idx, txn in enumerate(transactions):
+            m = _CNBANK_REJECTED_RE.search(txn['description'])
+            if m:
+                check_num = m.group(1)
+                rejected_indices.append((idx, check_num, txn['amount']))
+
+        for rej_idx, check_num, amount in rejected_indices:
+            # Find the matching original debit — same check number, same amount
+            for orig_idx, txn in enumerate(transactions):
+                if (orig_idx != rej_idx
+                        and txn['type'] == 'debit'
+                        and txn['amount'] == amount
+                        and f'Check-Inclearings {check_num}' in txn['description']
+                        and '(Rejected)' not in txn['description']
+                        and orig_idx not in original_indices):
+                    original_indices.append(orig_idx)
+                    break
+
+        # Remove both rejected credit and its matching original debit
+        remove = set([r[0] for r in rejected_indices] + original_indices)
+        if remove:
+            print(
+                f"  CNBank: netted out {len(remove)} rejected-check transactions "
+                f"({len(rejected_indices)} pair(s))",
+                file=sys.stderr,
+            )
+            transactions = [t for i, t in enumerate(transactions) if i not in remove]
+
+        return transactions, len(transactions) >= 2
+
+    except Exception as e:
+        print(f"Strategy 8 (CNBank) failed: {e}", file=sys.stderr)
+        return [], False
+
+
+# ─── Strategy 9: BOKF / Bank of Texas ────────────────────────────────────────
+
+_BOKF_GUARD_RE   = re.compile(r'bankoftexas\.com|BOKF,?\s*NA|Bank\s+of\s+Texas', re.I)
+_BOKF_TXN_RE     = re.compile(r'^(\d{1,2}-\d{1,2})\s+(.+?)\s+([\d,]+\.\d{2})\s*$')
+_BOKF_STOP_RE    = re.compile(r'^\s*DAILY\s+ACCOUNT\s+BALANCE\s*$', re.I)
+_BOKF_SKIP_RE    = re.compile(
+    r'^\s*(Date\s+Amount|CHECKS?\s+\(|\*+\s*No\s+Checks\s*\*+|No\s+Checks|SERVICE\s+FEE)\s*',
+    re.I,
+)
+# Barcode artifact lines at the BOKF page footer: all uppercase letters, no spaces, 15+ chars
+_BOKF_BARCODE_RE  = re.compile(r'^[A-Z]{15,}$')
+# The long account/routing summary line that ends the transaction area on each page
+# e.g. "014 000008098135377 000000004955427 11302025 ..."
+_BOKF_PAGE_END_RE = re.compile(r'^\d{3}\s+\d{12}')
+# Legal/boilerplate footer text that follows the barcodes — treat as page-end signal
+_BOKF_LEGAL_RE    = re.compile(
+    r'FOR\s+ACCOUNT\s+BALANCING|IMPORTANT\s+INFORMATION|ADDRESS\s+CHANGES|'
+    r'ELECTRONIC\s+TRANSFER\s+RIGHTS|CHANGE\s+OF\s+ADDRESS|'
+    r'BALANCING\s+YOUR\s+ACCOUNT',
+    re.I,
+)
+_BOKF_SECTION_MAP = [
+    (re.compile(r'^\s*DEPOSITS?\s*$',    re.I), 'credit'),
+    (re.compile(r'^\s*WITHDRAWALS?\s*$', re.I), 'debit'),
+    (re.compile(r'^\s*CHECKS?\s*$',      re.I), 'debit'),
+]
+
+
+def _det_parse_bokf_date(date_str: str, year: int) -> Optional[str]:
+    """Parse MM-DD (BOKF dash-separated format) to YYYY-MM-DD."""
+    try:
+        dt = datetime.strptime(date_str.strip(), '%m-%d').replace(year=year)
+        return dt.strftime('%Y-%m-%d')
+    except ValueError:
+        return None
+
+
+def _extract_bokf(pdf_path: str) -> Tuple[List[Dict], bool]:
+    """
+    Strategy 8: BOKF / Bank of Texas statement parser.
+
+    Format (all sections use MM-DD date, not MM/DD):
+      DEPOSITS              ← section header
+      Date Amount           ← column header (skip)
+      11-21 INCOMING FED WIRE CR     300,000.00
+            001095                              ← continuation: append to description
+            HENRY DAVID BECKHAM JR
+      WITHDRAWALS
+      11-21 TRANSFER TO CHECKING 8097132939  300,000.00
+      11-21 WIRE TRSFR IN FEE                    15.00
+      DAILY ACCOUNT BALANCE                   ← stop
+    """
+    transactions: List[Dict] = []
+    try:
+        with pdfplumber.open(pdf_path) as pdf:
+            if not pdf.pages:
+                return [], False
+
+            first_text = pdf.pages[0].extract_text() or ''
+
+            # Guard: only activate for BOKF / Bank of Texas statements
+            if not _BOKF_GUARD_RE.search(first_text):
+                return [], False
+
+            # Detect year: _detect_year looks for MM/DD/YYYY but BOKF uses MM-DD-YY,
+            # so also try the statement period line "11-01-25 to 11-30-25"
+            statement_year = _detect_year(first_text)
+            if not statement_year:
+                m = re.search(r'\d{1,2}-\d{1,2}-(\d{2,4})', first_text)
+                if m:
+                    y = int(m.group(1))
+                    statement_year = 2000 + y if y < 100 else y
+
+            current_type: Optional[str] = None
+            current_txn: Optional[Dict] = None   # buffered pending transaction
+
+            def _flush():
+                if current_txn:
+                    transactions.append(dict(current_txn))
+
+            stop = False
+            for page in pdf.pages:
+                if stop:
+                    break
+                text = page.extract_text()
+                if not text:
+                    continue
+
+                page_in_txn_area = False  # flips True once first section header seen on page
+                for line in text.split('\n'):
+                    stripped = line.strip()
+                    if not stripped:
+                        continue
+
+                    # Stop at the daily balance table — no more transactions below
+                    if _BOKF_STOP_RE.match(stripped):
+                        _flush()
+                        current_txn = None
+                        stop = True
+                        break
+
+                    # Page-footer signals: flush pending transaction and leave transaction
+                    # area; everything after these lines is boilerplate or a new page
+                    if _BOKF_PAGE_END_RE.match(stripped) or _BOKF_LEGAL_RE.search(stripped):
+                        _flush()
+                        current_txn = None
+                        page_in_txn_area = False
+                        continue
+
+                    # Barcode artifact lines — always skip
+                    if _BOKF_BARCODE_RE.match(stripped):
+                        continue
+
+                    # Section header detection
+                    section_matched = False
+                    for pat, stype in _BOKF_SECTION_MAP:
+                        if pat.match(stripped):
+                            _flush()
+                            current_txn = None
+                            current_type = stype
+                            page_in_txn_area = True
+                            section_matched = True
+                            break
+                    if section_matched:
+                        continue
+
+                    # Skip column headers and noise
+                    if _BOKF_SKIP_RE.match(stripped):
+                        continue
+
+                    # Only process lines while inside a transaction area on this page
+                    if not page_in_txn_area or current_type is None:
+                        continue
+
+                    # Try to match a full transaction line: MM-DD DESCRIPTION AMOUNT
+                    m = _BOKF_TXN_RE.match(stripped)
+                    if m:
+                        _flush()
+                        date_str, description, amount_str = m.groups()
+                        parsed_date = _det_parse_bokf_date(date_str, statement_year)
+                        if not parsed_date:
+                            current_txn = None
+                            continue
+                        try:
+                            amount = round(_det_parse_amount(amount_str), 2)
+                        except ValueError:
+                            current_txn = None
+                            continue
+                        current_txn = {
+                            'date': parsed_date,
+                            'description': description.strip(),
+                            'amount': amount,
+                            'type': current_type,
+                        }
+                    else:
+                        # Continuation line — append extra description detail
+                        if current_txn:
+                            current_txn['description'] += ' ' + stripped
+
+            _flush()
+
+        return transactions, len(transactions) >= 1
+
+    except Exception as e:
+        print(f"Strategy 8 (BOKF) failed: {e}", file=sys.stderr)
+        return [], False
+
+
 # ─── Orchestrator ─────────────────────────────────────────────────────────────
 
 def extract_transactions_deterministic(pdf_path: str) -> Tuple[List[Dict], bool]:
     """
     Extract transactions deterministically using cascading strategies:
-      1. *start*/*end* section markers  (Chase / JPMorgan)
-      2. Section header keywords         (generic section-based banks)
-      3. Column-position based           (Wells Fargo and similar)
-      4. PDF table structure             (rarely succeeds, original fallback)
-      5. U.S. Bank format               (Other Deposits / Card Withdrawals sections)
-      6. FirstLight FCU                  (MemberAccountStatement / FLFCU format)
+      Bank-specific (guarded, run first to avoid false positives from generic strategies):
+      1. CNBank / Community Bank NA      (MM/DD/YYYY, single chronological list)
+      2. BOKF / Bank of Texas            (MM-DD date format, DEPOSITS/WITHDRAWALS sections)
+      3. Huntington National Bank        (Deposits/Checks two-col + Other Credits/Debits)
+      4. U.S. Bank format               (Other Deposits / Card Withdrawals sections)
+      5. FirstLight FCU                  (MemberAccountStatement / FLFCU format)
+      Generic (no guard, try in order):
+      6. *start*/*end* section markers  (Chase / JPMorgan)
+      7. Section header keywords         (generic section-based banks)
+      8. Column-position based           (Wells Fargo and similar)
+      9. PDF table structure             (rarely succeeds, original fallback)
 
     Returns (transactions_list, success_flag, strategy_label).
     """
     for strategy_fn, label in [
-        (_extract_by_section_markers, "section markers"),
-        (_extract_by_section_headers, "section headers"),
-        (_extract_by_column_position, "column position"),
-        (_extract_by_table_structure, "table structure"),
-        (_extract_usbank, "U.S. Bank"),
-        (_extract_flfcu, "FirstLight FCU"),
+        (_extract_cnbank,              "CNBank"),
+        (_extract_bokf,                "BOKF"),
+        (_extract_huntington,          "Huntington"),
+        (_extract_usbank,              "U.S. Bank"),
+        (_extract_flfcu,               "FirstLight FCU"),
+        (_extract_by_section_markers,  "section markers"),
+        (_extract_by_section_headers,  "section headers"),
+        (_extract_by_column_position,  "column position"),
+        (_extract_by_table_structure,  "table structure"),
     ]:
         txns, ok = strategy_fn(pdf_path)
         if ok:
@@ -1915,7 +2457,7 @@ OUTPUT FORMAT - Return ONLY valid JSON:
 """
 
     # Debug: log input text length
-    debug_log = "/var/www/html/crmfinity-ai/storage/logs/extraction_debug.log"
+    debug_log = "/var/www/html/crmfinity_underwriting/crmfinity-ai/storage/logs/extraction_debug.log"
 
     # Estimate tokens and check if we need to chunk
     estimated_tokens = estimate_tokens(text)
@@ -2068,7 +2610,7 @@ OUTPUT FORMAT - Return ONLY valid JSON:
         validated.append(transaction_dict)
 
     # Debug log to see what was extracted
-    debug_log = "/var/www/html/crmfinity-ai/storage/logs/extraction_debug.log"
+    debug_log = "/var/www/html/crmfinity_underwriting/crmfinity-ai/storage/logs/extraction_debug.log"
     with open(debug_log, 'a') as f:
         f.write("=== OpenAI Extraction Results ===\n")
         credits = [t for t in validated if t['type'] == 'credit']
@@ -2332,6 +2874,8 @@ def main():
             "section markers":  "JPMorgan Chase",   # *start*/*end* markers are Chase/JPMorgan-specific
             "U.S. Bank":        "U.S. Bank",
             "FirstLight FCU":   "FirstLight FCU",
+            "BOKF":             "Bank of Texas",
+            "CNBank":           "Community Bank NA",
         }
         det_bank_name = _DET_BANK_NAMES.get(det_label) if det_label else None
 

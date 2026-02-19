@@ -9,7 +9,6 @@ use App\Models\AnalysisSession;
 use App\Models\AnalyzedTransaction;
 use App\Models\RevenueClassification;
 use App\Models\McaPattern;
-use App\Models\McaLenderGuideline;
 use App\Models\TransactionCategory;
 use App\Services\NsfAndNegativeDaysCalculator;
 use App\Jobs\ProcessBankStatement;
@@ -1148,8 +1147,8 @@ class BankStatementController extends Controller
      */
     public function lenders()
     {
-        // Pattern stats per lender (detections, pattern count, last used)
-        $patternStats = McaPattern::select('lender_id', 'lender_name')
+        // Get detected entries from database
+        $detectedEntries = McaPattern::select('lender_id', 'lender_name')
             ->selectRaw('COUNT(*) as pattern_count')
             ->selectRaw('SUM(usage_count) as total_usage')
             ->selectRaw('MAX(updated_at) as last_used')
@@ -1158,70 +1157,59 @@ class BankStatementController extends Controller
             ->get()
             ->keyBy('lender_id');
 
-        // All guidelines (source of truth for the full lender list)
-        $guidelines = McaLenderGuideline::all()->keyBy('lender_id');
-
+        // Get all known lenders and debt collectors
+        $knownLenders = McaPattern::getKnownLenders();
         $knownDebtCollectors = McaPattern::getKnownDebtCollectors();
 
-        // Build lenders list: every guideline record is a lender (unless it's a known debt collector)
+        // Build complete lenders list (all known + any detected that aren't in known list)
         $lenders = collect();
-        foreach ($guidelines as $id => $guideline) {
-            if (isset($knownDebtCollectors[$id])) {
-                continue; // skip debt collectors
-            }
-            $stats = $patternStats->get($id);
-            $lenders->push((object) [
-                'lender_id'     => $id,
-                'lender_name'   => $guideline->lender_name,
-                'pattern_count' => $stats->pattern_count ?? 0,
-                'total_usage'   => $stats->total_usage ?? 0,
-                'last_used'     => $stats->last_used ?? null,
-            ]);
-        }
-
-        // Also include any detected lenders not in guidelines (edge case)
-        foreach ($patternStats as $id => $entry) {
-            if (!$guidelines->has($id) && !isset($knownDebtCollectors[$id])) {
+        foreach ($knownLenders as $id => $name) {
+            if ($detectedEntries->has($id)) {
+                $lenders->push($detectedEntries->get($id));
+            } else {
                 $lenders->push((object) [
-                    'lender_id'     => $id,
-                    'lender_name'   => $entry->lender_name,
-                    'pattern_count' => $entry->pattern_count,
-                    'total_usage'   => $entry->total_usage,
-                    'last_used'     => $entry->last_used,
+                    'lender_id' => $id,
+                    'lender_name' => $name,
+                    'pattern_count' => 0,
+                    'total_usage' => 0,
+                    'last_used' => null,
                 ]);
             }
         }
-
+        // Add any detected lenders not in the known list
+        foreach ($detectedEntries as $id => $entry) {
+            if (!isset($knownLenders[$id]) && !isset($knownDebtCollectors[$id])) {
+                $lenders->push($entry);
+            }
+        }
         $lenders = $lenders->sortBy('lender_name')->values();
 
-        // Debt collectors list
+        // Build complete debt collectors list
         $debtCollectors = collect();
         foreach ($knownDebtCollectors as $id => $name) {
-            $stats = $patternStats->get($id);
-            $debtCollectors->push((object) [
-                'lender_id'     => $id,
-                'lender_name'   => $name,
-                'pattern_count' => $stats->pattern_count ?? 0,
-                'total_usage'   => $stats->total_usage ?? 0,
-                'last_used'     => $stats->last_used ?? null,
-            ]);
+            if ($detectedEntries->has($id)) {
+                $debtCollectors->push($detectedEntries->get($id));
+            } else {
+                $debtCollectors->push((object) [
+                    'lender_id' => $id,
+                    'lender_name' => $name,
+                    'pattern_count' => 0,
+                    'total_usage' => 0,
+                    'last_used' => null,
+                ]);
+            }
         }
         $debtCollectors = $debtCollectors->sortBy('lender_name')->values();
 
-        $pageStats = [
-            'total_lenders'          => $lenders->count(),
-            'total_debt_collectors'  => $debtCollectors->count(),
-            'total_patterns'         => McaPattern::where('is_mca', true)->count(),
-            'total_usage'            => McaPattern::where('is_mca', true)->sum('usage_count'),
-            'total_with_guidelines'  => $guidelines->count(),
+        $stats = [
+            'total_lenders' => $lenders->count(),
+            'total_debt_collectors' => $debtCollectors->count(),
+            'total_patterns' => McaPattern::where('is_mca', true)->count(),
+            'total_usage' => McaPattern::where('is_mca', true)->sum('usage_count'),
+            'total_with_guidelines' => $lenders->where('pattern_count', '>', 0)->count(),
         ];
 
-        return view('bankstatement.lenders', [
-            'lenders'        => $lenders,
-            'debtCollectors' => $debtCollectors,
-            'stats'          => $pageStats,
-            'guidelines'     => $guidelines,
-        ]);
+        return view('bankstatement.lenders', compact('lenders', 'debtCollectors', 'stats'));
     }
 
     /**
@@ -1235,23 +1223,21 @@ class BankStatementController extends Controller
             ->orderBy('usage_count', 'desc')
             ->get();
 
-        $guideline = McaLenderGuideline::where('lender_id', $lenderId)->first();
-
-        if ($patterns->isEmpty() && !$guideline) {
+        if ($patterns->isEmpty()) {
             abort(404, 'Lender not found');
         }
 
-        // Build lender info from patterns if available, else fall back to guideline
+        // Get lender info from first pattern
         $lender = [
             'id' => $lenderId,
-            'name' => $patterns->isNotEmpty() ? $patterns->first()->lender_name : $guideline->lender_name,
+            'name' => $patterns->first()->lender_name,
             'total_patterns' => $patterns->count(),
             'total_usage' => $patterns->sum('usage_count'),
-            'first_seen' => $patterns->isNotEmpty() ? $patterns->sortBy('created_at')->first()->created_at : $guideline->created_at,
-            'last_used' => $patterns->isNotEmpty() ? $patterns->sortByDesc('updated_at')->first()->updated_at : $guideline->updated_at,
+            'first_seen' => $patterns->sortBy('created_at')->first()->created_at,
+            'last_used' => $patterns->sortByDesc('updated_at')->first()->updated_at,
         ];
 
-        return view('bankstatement.lender-detail', compact('lender', 'patterns', 'guideline'));
+        return view('bankstatement.lender-detail', compact('lender', 'patterns'));
     }
 
     /**
@@ -1265,156 +1251,28 @@ class BankStatementController extends Controller
     }
 
     /**
-     * Show form to edit an existing lender's guidelines.
-     */
-    public function editLender($lenderId)
-    {
-        $guideline = McaLenderGuideline::where('lender_id', $lenderId)->firstOrFail();
-        $knownLenders = McaPattern::getKnownLenders();
-        $knownDebtCollectors = McaPattern::getKnownDebtCollectors();
-
-        // Decode JSON arrays into comma-separated strings for the form fields
-        $restrictedStatesStr  = !empty($guideline->restricted_states)
-            ? implode(', ', $guideline->restricted_states) : '';
-        $excludedIndustriesStr = !empty($guideline->excluded_industries)
-            ? implode(', ', $guideline->excluded_industries) : '';
-
-        return view('bankstatement.lenders-create', compact(
-            'knownLenders', 'knownDebtCollectors', 'guideline',
-            'restrictedStatesStr', 'excludedIndustriesStr'
-        ));
-    }
-
-    /**
-     * Update an existing lender's guidelines (PUT — delegates to the same upsert logic as storeLender).
-     */
-    public function updateLender(Request $request, $lenderId)
-    {
-        // Merge lender_id into request so storeLender validation passes
-        $request->merge(['lender_id' => $lenderId]);
-        return $this->storeLender($request);
-    }
-
-    /**
-     * Store a new lender pattern and guideline (updateOrCreate so it overwrites existing).
+     * Store a new lender pattern.
      */
     public function storeLender(Request $request)
     {
         $request->validate([
-            'lender_id'          => 'required|string|max:100',
-            'lender_name'        => 'required|string|max:255',
-            'description_pattern'=> 'nullable|string|max:500',
-            // financial
-            'min_credit_score'       => 'nullable|integer|min:0|max:900',
-            'min_time_in_business'   => 'nullable|integer|min:0',
-            'min_loan_amount'        => 'nullable|numeric|min:0',
-            'max_loan_amount'        => 'nullable|numeric|min:0',
-            'max_negative_days'      => 'nullable|integer|min:0',
-            'max_nsfs'               => 'nullable|integer|min:0',
-            'min_monthly_deposits'   => 'nullable|numeric|min:0',
-            'max_positions'          => 'nullable|integer|min:0',
-            'min_avg_daily_balance'  => 'nullable|numeric|min:0',
-            // business type
-            'sole_proprietors'       => 'nullable|in:YES,NO,MAYBE',
-            'home_based_business'    => 'nullable|in:YES,NO,MAYBE',
-            'consolidation_deals'    => 'nullable|in:YES,NO,MAYBE',
-            'non_profits'            => 'nullable|in:YES,NO,MAYBE',
-            // geographic
-            'restricted_states'      => 'nullable|string',
-            'excluded_industries'    => 'nullable|string',
-            // funding terms
-            'funding_speed'          => 'nullable|string|max:100',
-            'factor_rate'            => 'nullable|string|max:50',
-            'max_term'               => 'nullable|string|max:50',
-            'payment_frequency'      => 'nullable|in:DAILY,WEEKLY,DAILY/WEEKLY',
-            'product_type'           => 'nullable|string|max:100',
-            'bonus_available'        => 'nullable|boolean',
-            'bonus_details'          => 'nullable|string|max:255',
-            // special circumstances
-            'bankruptcy'             => 'nullable|string|max:50',
-            'tax_lien'               => 'nullable|string|max:50',
-            'prior_default'          => 'nullable|string|max:50',
-            'criminal_history'       => 'nullable|string|max:50',
-            // status
-            'status'                 => 'nullable|in:ACTIVE,INACTIVE',
-            'white_label'            => 'nullable|boolean',
-            'notes'                  => 'nullable|string',
+            'lender_id' => 'required|string|max:100',
+            'lender_name' => 'required|string|max:255',
+            'description_pattern' => 'required|string|max:500',
         ]);
 
-        $lenderId   = $request->lender_id;
-        $lenderName = $request->lender_name;
-
-        // If a pattern was provided, create/update a pattern record
-        if ($request->filled('description_pattern')) {
-            McaPattern::updateOrCreate(
-                [
-                    'lender_id'          => $lenderId,
-                    'description_pattern'=> $request->description_pattern,
-                ],
-                [
-                    'lender_name' => $lenderName,
-                    'is_mca'      => true,
-                    'user_id'     => auth()->id(),
-                ]
-            );
-        }
-
-        // Parse restricted_states and excluded_industries (comma-separated → JSON array)
-        $restrictedStates = null;
-        if ($request->filled('restricted_states')) {
-            $restrictedStates = array_values(array_filter(array_map(
-                'trim', explode(',', $request->restricted_states)
-            )));
-        }
-
-        $excludedIndustries = null;
-        if ($request->filled('excluded_industries')) {
-            $excludedIndustries = array_values(array_filter(array_map(
-                'trim', explode(',', $request->excluded_industries)
-            )));
-        }
-
-        // Upsert the guideline record (overwrites if lender_id already exists)
-        McaLenderGuideline::updateOrCreate(
-            ['lender_id' => $lenderId],
-            [
-                'lender_name'           => $lenderName,
-                'min_credit_score'      => $request->min_credit_score,
-                'min_time_in_business'  => $request->min_time_in_business,
-                'min_loan_amount'       => $request->min_loan_amount,
-                'max_loan_amount'       => $request->max_loan_amount,
-                'max_negative_days'     => $request->max_negative_days,
-                'max_nsfs'              => $request->max_nsfs,
-                'min_monthly_deposits'  => $request->min_monthly_deposits,
-                'max_positions'         => $request->max_positions,
-                'min_avg_daily_balance' => $request->min_avg_daily_balance,
-                'sole_proprietors'      => $request->sole_proprietors,
-                'home_based_business'   => $request->home_based_business,
-                'consolidation_deals'   => $request->consolidation_deals,
-                'non_profits'           => $request->non_profits,
-                'restricted_states'     => $restrictedStates,
-                'excluded_industries'   => $excludedIndustries,
-                'funding_speed'         => $request->funding_speed,
-                'factor_rate'           => $request->factor_rate,
-                'max_term'              => $request->max_term,
-                'payment_frequency'     => $request->payment_frequency,
-                'product_type'          => $request->product_type,
-                'bonus_available'       => $request->boolean('bonus_available'),
-                'bonus_details'         => $request->bonus_details,
-                'bankruptcy'            => $request->bankruptcy,
-                'tax_lien'              => $request->tax_lien,
-                'prior_default'         => $request->prior_default,
-                'criminal_history'      => $request->criminal_history,
-                'status'                => $request->input('status', 'ACTIVE'),
-                'white_label'           => $request->boolean('white_label'),
-                'notes'                 => $request->notes,
-                'user_id'               => auth()->id(),
-            ]
-        );
+        $pattern = McaPattern::create([
+            'lender_id' => $request->lender_id,
+            'lender_name' => $request->lender_name,
+            'description_pattern' => $request->description_pattern,
+            'is_mca' => true,
+            'usage_count' => 0,
+            'user_id' => auth()->id(),
+        ]);
 
         return redirect()
-            ->route('bankstatement.lenders')
-            ->with('success', "Lender \"{$lenderName}\" saved successfully!");
+            ->route('bankstatement.lender-detail', $request->lender_id)
+            ->with('success', 'Lender pattern created successfully!');
     }
 
     /**
