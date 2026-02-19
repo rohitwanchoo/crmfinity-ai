@@ -38,6 +38,7 @@ class AnalysisSession extends Model
         'beginning_balance',
         'ending_balance',
         'average_daily_balance',
+        'processing_time',
         'notified_at',
     ];
 

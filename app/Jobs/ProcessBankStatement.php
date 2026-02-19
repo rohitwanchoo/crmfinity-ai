@@ -56,6 +56,8 @@ class ProcessBankStatement implements ShouldQueue
     public function handle(): void
     {
         try {
+            $jobStartTime = now();
+
             Log::info("Job started: Processing bank statement", [
                 'session_id' => $this->sessionId,
                 'filename' => $this->filename,
@@ -144,6 +146,7 @@ class ProcessBankStatement implements ShouldQueue
                 'beginning_balance' => $data['statement_summary']['beginning_balance'] ?? null,
                 'ending_balance' => $data['statement_summary']['ending_balance'] ?? null,
                 'average_daily_balance' => $data['statement_summary']['average_daily_balance'] ?? null,
+                'processing_time' => $jobStartTime->diffInSeconds(now()),
             ]);
 
             // Log detailed API usage for tracking

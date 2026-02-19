@@ -1258,6 +1258,251 @@ def _extract_by_table_structure(pdf_path: str) -> Tuple[List[Dict], bool]:
         return [], False
 
 
+# ─── Strategy 5: U.S. Bank ────────────────────────────────────────────────────
+
+# Section header → (transaction_type, section_slug)
+# transaction_type: 'credit' | 'debit' | 'checks' | None (stop parsing)
+_USBANK_SECTION_HEADERS = {
+    'other deposits':                    ('credit',  'deposits'),
+    'other deposits (continued)':        ('credit',  'deposits'),
+    'card withdrawals':                  ('debit',   'card'),
+    'other withdrawals':                 ('debit',   'withdrawals'),
+    'other withdrawals (continued)':     ('debit',   'withdrawals'),
+    'checks presented conventionally':   ('checks',  'checks'),
+    'balance summary':                   (None,      'balance'),
+    'analysis service charge detail':    (None,      'analysis'),
+}
+
+# Transaction line: "Oct 3 Description ... Amount" or "Oct 3 Description ... Amount-"
+# \s* between month and day handles "Nov12" (no space) and "Nov 3" (space) — pdfplumber
+# drops the space for 2-digit days due to column alignment in the PDF.
+# \$?\s* handles both "5,000.00" and "$ 5,000.00" (U.S. Bank puts $ before first entry per section)
+# Captures: month_abbr, day, description, amount_str, minus_sign
+_USBANK_TXN_RE = re.compile(
+    r'^(Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec)\s*(\d{1,2})\s+(.+?)\s+\$?\s*([\d,]+\.\d{2})(-?)\s*$',
+    re.I,
+)
+
+# Multi-column check row: "CheckNo Month Day RefNum Amount [CheckNo Month Day RefNum Amount ...]"
+# e.g. "1236 Oct 3 9213379221 612.50 1262 Oct 22 8613180667 690.00"
+# \s* between month and day for same pdfplumber spacing issue (e.g. "Nov14" vs "Nov 5")
+# Groups: check_num, month_abbr, day, amount_str
+_USBANK_CHECK_COL_RE = re.compile(
+    r'(\d+\*?)\s+(Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec)\s*(\d{1,2})\s+\d+\s+([\d,]+\.\d{2})',
+    re.I,
+)
+
+
+def _det_parse_usbank_date(month_abbr: str, day: str, year: int) -> Optional[str]:
+    """Parse U.S. Bank date tokens ('Oct', '3', 2025) → '2025-10-03'."""
+    try:
+        dt = datetime.strptime(f"{month_abbr} {int(day):02d} {year}", "%b %d %Y")
+        return dt.strftime('%Y-%m-%d')
+    except ValueError:
+        return None
+
+
+def _extract_usbank(pdf_path: str) -> Tuple[List[Dict], bool]:
+    """
+    Strategy 5: U.S. Bank statement format (Business & Consumer Checking).
+
+    Characteristics:
+    - Section headers: 'Other Deposits', 'Card Withdrawals', 'Other Withdrawals',
+      'Checks Presented Conventionally' (each on its own line, mixed case)
+    - Date format: 'Oct 3' / 'Oct 27'  (3-letter month + 1-2 digit day)
+    - Debit amounts end with '-': '1,071.45-'
+    - Check rows are multi-column pairs: CheckNo Month Day RefNum Amount
+    """
+    transactions: List[Dict] = []
+    try:
+        with pdfplumber.open(pdf_path) as pdf:
+            if not pdf.pages:
+                return [], False
+
+            first_text = pdf.pages[0].extract_text() or ''
+
+            # Quick guard: only activate for U.S. Bank PDFs
+            first_lower = first_text.lower()
+            if 'u.s. bank' not in first_lower and 'usbank.com' not in first_lower:
+                return [], False
+
+            statement_year = _detect_year(first_text)
+            current_section_type: Optional[str] = None  # 'credit' | 'debit' | 'checks' | None
+            current_section_name: str = ''
+
+            for page in pdf.pages:
+                text = page.extract_text()
+                if not text:
+                    continue
+
+                for line in text.split('\n'):
+                    line = line.strip()
+                    if not line:
+                        continue
+
+                    # ── Section header detection ──────────────────────────────
+                    line_lower = line.lower()
+                    if line_lower in _USBANK_SECTION_HEADERS:
+                        current_section_type, current_section_name = _USBANK_SECTION_HEADERS[line_lower]
+                        continue
+
+                    if current_section_type is None:
+                        continue  # not in a parseable section yet
+
+                    # ── Check section: multi-column rows ──────────────────────
+                    if current_section_name == 'checks':
+                        matches = _USBANK_CHECK_COL_RE.findall(line)
+                        if matches:
+                            for check_num, month, day, amount_str in matches:
+                                parsed_date = _det_parse_usbank_date(month, day, statement_year)
+                                if parsed_date:
+                                    try:
+                                        transactions.append({
+                                            'date': parsed_date,
+                                            'description': f'Check #{check_num.rstrip("*")}',
+                                            'amount': round(_det_parse_amount(amount_str), 2),
+                                            'type': 'debit',
+                                        })
+                                    except ValueError:
+                                        pass
+                        continue  # skip non-check-row lines in checks section
+
+                    # ── Standard transaction line: Mon D Description Amount[-] ─
+                    m = _USBANK_TXN_RE.match(line)
+                    if not m:
+                        continue
+
+                    month, day, description, amount_str, _minus = m.groups()
+                    parsed_date = _det_parse_usbank_date(month, day, statement_year)
+                    if not parsed_date:
+                        continue
+
+                    try:
+                        amount = _det_parse_amount(amount_str)
+                    except ValueError:
+                        continue
+
+                    transactions.append({
+                        'date': parsed_date,
+                        'description': description.strip(),
+                        'amount': round(amount, 2),
+                        'type': current_section_type,
+                    })
+
+        return transactions, len(transactions) >= 2
+
+    except Exception as e:
+        print(f"Strategy 5 (U.S. Bank) failed: {e}", file=sys.stderr)
+        return [], False
+
+
+# ─── Strategy 6: FirstLight Federal Credit Union (FLFCU) ─────────────────────
+
+# Transaction line: "MM/DD/YYYY Description [-Amount] Balance"
+# Negative amount → debit; positive → credit.
+_FLFCU_TXN_RE = re.compile(
+    r'^(\d{2}/\d{2}/\d{4})\s+(.+?)\s+(-?[\d,]+\.\d{2})\s+([\d,]+\.\d{2})\s*$'
+)
+
+# Section keywords that signal end of transaction data (summary sections)
+_FLFCU_STOP_KEYWORDS = frozenset({
+    'checks cleared at a glance',
+    'atm / checkcard activity at a glance',
+    'summary of check fees',
+})
+
+
+def _extract_flfcu(pdf_path: str) -> Tuple[List[Dict], bool]:
+    """
+    Strategy 6: FirstLight Federal Credit Union (FLFCU) member account statement.
+
+    Characteristics:
+    - Identifier: 'MemberAccountStatement' (no spaces in pdfplumber) + 'flfcu' / 'firstlightfcu'
+    - Sections: SHARE SAVINGS (skipped) and CHECKING (captured)
+      * Only CHECKING transactions are included — Share Savings are internal transfers
+        that inflate totals and don't belong in MCA analysis
+    - Transaction format: MM/DD/YYYY Description Amount Balance
+      * Negative amount → debit; positive → credit
+    - Continuation lines (CO:, ACHTraceNumber:, OnUsDraft, etc.) are automatically
+      skipped because they don't start with MM/DD/YYYY
+    - Summary sections (Checks Cleared, ATM Activity) stop parsing
+    """
+    transactions: List[Dict] = []
+    try:
+        with pdfplumber.open(pdf_path) as pdf:
+            if not pdf.pages:
+                return [], False
+
+            first_lower = (pdf.pages[0].extract_text() or '').lower().replace(' ', '')
+
+            # Guard: only activate for FLFCU statements
+            if 'memberaccountstatement' not in first_lower:
+                return [], False
+            if 'flfcu' not in first_lower and 'firstlightfcu' not in first_lower:
+                return [], False
+
+            stop_parsing = False
+            in_checking = False  # Only collect transactions from CHECKING section
+            for page in pdf.pages:
+                if stop_parsing:
+                    break
+                text = page.extract_text()
+                if not text:
+                    continue
+
+                for line in text.split('\n'):
+                    stripped = line.strip()
+                    if not stripped:
+                        continue
+
+                    # Stop at summary sections
+                    if stripped.lower() in _FLFCU_STOP_KEYWORDS:
+                        stop_parsing = True
+                        break
+
+                    # Track account section — only parse CHECKING, skip SHARE SAVINGS
+                    if stripped == 'CHECKING':
+                        in_checking = True
+                        continue
+                    if stripped == 'SHARE SAVINGS':
+                        in_checking = False
+                        continue
+
+                    if not in_checking:
+                        continue
+
+                    m = _FLFCU_TXN_RE.match(stripped)
+                    if not m:
+                        continue
+
+                    date_str, description, amount_str, balance_str = m.groups()
+
+                    parsed_date = _det_parse_date(date_str, 0)
+                    if not parsed_date:
+                        continue
+
+                    try:
+                        amount = _det_parse_amount(amount_str)
+                        balance = _det_parse_amount(balance_str)
+                    except ValueError:
+                        continue
+
+                    is_debit = amount < 0
+                    transactions.append({
+                        'date': parsed_date,
+                        'description': description.strip(),
+                        'amount': round(abs(amount), 2),
+                        'type': 'debit' if is_debit else 'credit',
+                        'ending_balance': round(balance, 2),
+                    })
+
+        return transactions, len(transactions) >= 2
+
+    except Exception as e:
+        print(f"Strategy 6 (FLFCU) failed: {e}", file=sys.stderr)
+        return [], False
+
+
 # ─── Orchestrator ─────────────────────────────────────────────────────────────
 
 def extract_transactions_deterministic(pdf_path: str) -> Tuple[List[Dict], bool]:
@@ -1267,21 +1512,25 @@ def extract_transactions_deterministic(pdf_path: str) -> Tuple[List[Dict], bool]
       2. Section header keywords         (generic section-based banks)
       3. Column-position based           (Wells Fargo and similar)
       4. PDF table structure             (rarely succeeds, original fallback)
+      5. U.S. Bank format               (Other Deposits / Card Withdrawals sections)
+      6. FirstLight FCU                  (MemberAccountStatement / FLFCU format)
 
-    Returns (transactions_list, success_flag).
+    Returns (transactions_list, success_flag, strategy_label).
     """
     for strategy_fn, label in [
         (_extract_by_section_markers, "section markers"),
         (_extract_by_section_headers, "section headers"),
         (_extract_by_column_position, "column position"),
         (_extract_by_table_structure, "table structure"),
+        (_extract_usbank, "U.S. Bank"),
+        (_extract_flfcu, "FirstLight FCU"),
     ]:
         txns, ok = strategy_fn(pdf_path)
         if ok:
             print(f"✓ Deterministic extraction successful ({label}): {len(txns)} transactions", file=sys.stderr)
-            return txns, True
+            return txns, True, label
 
-    return [], False
+    return [], False, None
 
 
 def _extract_statement_summary(pdf_text: str) -> Dict:
@@ -2076,7 +2325,15 @@ def main():
 
         # TRY DETERMINISTIC EXTRACTION FIRST (Option 1 - programmatic table parsing)
         print("Attempting deterministic table extraction...", file=sys.stderr)
-        transactions_det, det_success = extract_transactions_deterministic(pdf_path)
+        transactions_det, det_success, det_label = extract_transactions_deterministic(pdf_path)
+
+        # Map strategy label → bank name (for strategies that identify a specific bank)
+        _DET_BANK_NAMES = {
+            "section markers":  "JPMorgan Chase",   # *start*/*end* markers are Chase/JPMorgan-specific
+            "U.S. Bank":        "U.S. Bank",
+            "FirstLight FCU":   "FirstLight FCU",
+        }
+        det_bank_name = _DET_BANK_NAMES.get(det_label) if det_label else None
 
         if det_success and len(transactions_det) > 0:
             # Deterministic extraction succeeded - use these results
@@ -2175,6 +2432,7 @@ def main():
                 "extraction_date": datetime.now().isoformat(),
                 "extraction_method": extraction_method,
                 "model_used": model if extraction_method == "ai" else None,
+                "bank_name": det_bank_name if extraction_method == "deterministic" else None,
                 "characters_extracted": len(pdf_text),
                 "corrections_available": len(corrections),
                 "corrections_applied": corrections_applied

@@ -54,12 +54,14 @@
                                             onchange="toggleSelectAll()">
                                     </th>
                                     <th class="px-4 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase">File</th>
+                                    <th class="px-4 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase">Bank Name</th>
                                     <th class="px-4 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase">Model</th>
                                     <th class="px-4 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase">Transactions</th>
                                     <th class="px-4 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase">Credits</th>
                                     <th class="px-4 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase">Debits</th>
                                     <th class="px-4 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase">Net</th>
                                     <th class="px-4 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase">Cost</th>
+                                    <th class="px-4 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase">Processing Time</th>
                                     <th class="px-4 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase">Date</th>
                                     <th class="px-4 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase">Actions</th>
                                 </tr>
@@ -81,6 +83,7 @@
                                     <td class="px-4 py-3 text-sm text-gray-900 dark:text-gray-100" title="{{ $session->filename }}">
                                         {{ Str::limit($session->filename, 25) }}
                                     </td>
+                                    <td class="px-4 py-3 text-sm text-gray-500 dark:text-gray-400">{{ $session->bank_name ?: '—' }}</td>
                                     <td class="px-4 py-3 text-sm text-gray-500 dark:text-gray-400">
                                         <span class="inline-flex items-center px-2 py-0.5 rounded text-xs font-medium bg-gray-100 text-gray-800 dark:bg-gray-700 dark:text-gray-300">
                                             LSC AI
@@ -93,6 +96,13 @@
                                         ${{ number_format($session->net_flow, 2) }}
                                     </td>
                                     <td class="px-4 py-3 text-sm text-gray-500 dark:text-gray-400">${{ number_format($session->api_cost ?? 0, 4) }}</td>
+                                    <td class="px-4 py-3 text-sm text-gray-500 dark:text-gray-400">
+                                        @if($session->processing_time !== null)
+                                            {{ $session->processing_time }}s
+                                        @else
+                                            <span class="text-gray-400">—</span>
+                                        @endif
+                                    </td>
                                     <td class="px-4 py-3 text-sm text-gray-500 dark:text-gray-400">{{ $session->created_at->format('M d, Y H:i') }}</td>
                                     <td class="px-4 py-3 text-sm">
                                         <div class="flex items-center gap-2">

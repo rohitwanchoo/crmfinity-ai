@@ -170,10 +170,12 @@
                             <thead>
                                 <tr>
                                     <th class="px-4 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase">File</th>
+                                    <th class="px-4 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase">Bank Name</th>
                                     <th class="px-4 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase">Transactions</th>
                                     <th class="px-4 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase">Credits</th>
                                     <th class="px-4 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase">Debits</th>
                                     <th class="px-4 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase">API Cost</th>
+                                    <th class="px-4 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase">Processing Time</th>
                                     <th class="px-4 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase">Date</th>
                                     <th class="px-4 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase">Action</th>
                                 </tr>
@@ -182,10 +184,18 @@
                                 @foreach($recentSessions as $session)
                                 <tr>
                                     <td class="px-4 py-3 text-sm text-gray-900 dark:text-gray-100">{{ Str::limit($session->filename, 30) }}</td>
+                                    <td class="px-4 py-3 text-sm text-gray-500 dark:text-gray-400">{{ $session->bank_name ?: '—' }}</td>
                                     <td class="px-4 py-3 text-sm text-gray-900 dark:text-gray-100">{{ $session->total_transactions }}</td>
                                     <td class="px-4 py-3 text-sm text-green-600 dark:text-green-400">${{ number_format($session->total_credits, 2) }}</td>
                                     <td class="px-4 py-3 text-sm text-red-600 dark:text-red-400">${{ number_format($session->total_debits, 2) }}</td>
                                     <td class="px-4 py-3 text-sm text-gray-500 dark:text-gray-400">${{ number_format($session->api_cost ?? 0, 4) }}</td>
+                                    <td class="px-4 py-3 text-sm text-gray-500 dark:text-gray-400">
+                                        @if($session->processing_time !== null)
+                                            {{ $session->processing_time }}s
+                                        @else
+                                            <span class="text-gray-400">—</span>
+                                        @endif
+                                    </td>
                                     <td class="px-4 py-3 text-sm text-gray-500 dark:text-gray-400">{{ $session->created_at->diffForHumans() }}</td>
                                     <td class="px-4 py-3 text-sm">
                                         <a href="{{ route('bankstatement.session', $session->session_id) }}" class="text-green-600 dark:text-green-400 hover:underline">View</a>
