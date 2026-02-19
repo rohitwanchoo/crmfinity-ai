@@ -15,9 +15,10 @@ import sys
 import os
 import re
 import time
-from datetime import datetime
+from datetime import datetime, timedelta
 from anthropic import Anthropic
-from typing import List, Dict, Tuple
+from typing import List, Dict, Tuple, Optional
+from collections import defaultdict
 import pytesseract
 from pdf2image import convert_from_path
 from PIL import Image
@@ -581,107 +582,650 @@ def chunk_text(text: str, max_tokens: int = 100000, overlap_lines: int = 5) -> L
     return chunks
 
 
-def extract_transactions_deterministic(pdf_path: str) -> Tuple[List[Dict], bool]:
-    """
-    Extract transactions deterministically using table structure from PDF.
-    Returns (transactions_list, success_flag).
+# ─────────────────────────────────────────────────────────────────────────────
+# DETERMINISTIC EXTRACTION — SHARED CONSTANTS & HELPERS
+# ─────────────────────────────────────────────────────────────────────────────
 
-    This method uses pdfplumber to extract tables with exact column positions,
-    then classifies transactions based on which column contains the amount.
+# Section marker keywords (Chase/JPMorgan embed *start*name in PDF text)
+_CREDIT_SECTION_MARKERS = {
+    'deposits and additions', 'deposits and credits',
+    'other credits', 'credits',
+}
+_DEBIT_SECTION_MARKERS = {
+    'atm debit withdrawal', 'atm & debit card withdrawal',
+    'atm and debit card withdrawal', 'electronic withdrawal',
+    'checks paid', 'fees section', 'fees', 'service charges',
+    'other withdrawals', 'withdrawals and debits', 'withdrawals', 'debits',
+}
+_NON_TXN_SECTION_MARKERS = {
+    'summary', 'post summary', 'message', 'daily ending balance',
+    'disclosure', 'atm and debit card summary', 'atm & debit card summary',
+}
+
+# Section header patterns for Strategy 2 (full-line section headers, no markers)
+# Each tuple: (compiled regex, section_type, section_name)
+# section_type = 'credit' | 'debit' | None (None = stop parsing, e.g. balance table)
+# section_name is a short slug used internally (e.g. 'checks' triggers check-row parsing)
+_SECTION_HEADER_PATTERNS = [
+    # Credits
+    (re.compile(r'^\s*DEPOSITS?\s+AND\s+ADDITIONS?\s*$', re.I), 'credit', 'deposits'),
+    (re.compile(r'^\s*DEPOSITS?\s+AND\s+CREDITS?\s*$', re.I), 'credit', 'deposits'),
+    (re.compile(r'^\s*DEPOSITS?\s+&\s+CREDITS?\s*$', re.I), 'credit', 'deposits'),
+    (re.compile(r'^\s*OTHER\s+CREDITS?\s*$', re.I), 'credit', 'credits'),
+    (re.compile(r'^\s*CREDITS?\s*$', re.I), 'credit', 'credits'),
+    (re.compile(r'^\s*DEPOSITS?\s*$', re.I), 'credit', 'deposits'),
+    # Debits — ATM/debit card (matches both "Withdrawals" and "Transactions" variants)
+    (re.compile(r'^\s*ATM\s*[&AND]+\s*DEBIT\s+CARD\s+(WITHDRAWALS?|TRANSACTIONS?)\s*$', re.I), 'debit', 'atm'),
+    (re.compile(r'^\s*ELECTRONIC\s+WITHDRAWALS?\s*$', re.I), 'debit', 'electronic'),
+    # Checks — "Checks Paid" header and JPMorgan "Check Date" column-header both trigger check parsing
+    (re.compile(r'^\s*CHECKS?\s+PAID\s*$', re.I), 'debit', 'checks'),
+    (re.compile(r'^\s*CHECK\s+DATE\s*$', re.I), 'debit', 'checks'),
+    # ACH/wire payments (JPMorgan Classic "Payments & Transfers" section)
+    (re.compile(r'^\s*PAYMENTS?\s+[&AND]+\s+TRANSFERS?\s*$', re.I), 'debit', 'payments'),
+    # Fees
+    (re.compile(r'^\s*FEES?,\s*CHARGES?\s*[&AND]+\s*OTHER\s+WITHDRAWALS?\s*$', re.I), 'debit', 'fees'),
+    (re.compile(r'^\s*FEES?\s*$', re.I), 'debit', 'fees'),
+    (re.compile(r'^\s*SERVICE\s+CHARGES?\s*$', re.I), 'debit', 'fees'),
+    # Other debit sections
+    (re.compile(r'^\s*OTHER\s+WITHDRAWALS?\s*$', re.I), 'debit', 'withdrawals'),
+    (re.compile(r'^\s*WITHDRAWALS?\s+AND\s+DEBITS?\s*$', re.I), 'debit', 'withdrawals'),
+    (re.compile(r'^\s*DEBITS?\s*$', re.I), 'debit', 'debits'),
+    (re.compile(r'^\s*WITHDRAWALS?\s*$', re.I), 'debit', 'withdrawals'),
+    # Non-transaction sections — stop parsing until next real section
+    (re.compile(r'^\s*DAILY\s+ENDING\s+BALANCE\s*$', re.I), None, 'balance'),
+    (re.compile(r'^\s*ACCOUNT\s+ACTIVITY\s+SUMMARY\s*$', re.I), None, 'summary'),
+]
+
+# Month name → number mapping (for reconstructing dates from *end* lines)
+_MONTH_NAMES = {
+    'january': 1, 'february': 2, 'march': 3, 'april': 4,
+    'may': 5, 'june': 6, 'july': 7, 'august': 8,
+    'september': 9, 'october': 10, 'november': 11, 'december': 12,
+}
+
+# Skip *start* and *end* marker lines
+_MARKER_LINE_RE = re.compile(r'^\s*\*(start|end)\*', re.I)
+
+# Transaction line: starts with MM/DD or M/D, ends with optional $ and decimal amount
+_TXN_LINE_RE = re.compile(r'^(\d{1,2}/\d{1,2})\s+(.+?)\s+\$?([\d,]+\.\d{2})\s*$')
+
+# Embedded transaction in *end* marker lines — date is partial (/DD, month consumed by marker)
+# e.g. "*end*deposit0s and additio1ns /08 Deposit 1680055706 878.00"
+_END_EMBEDDED_TXN_RE = re.compile(r'\s/(\d{1,2})\s+(.+?)\s+\$?([\d,]+\.\d{2})\s*$')
+
+# Check transaction format used in Chase "Checks Paid" section
+# e.g. "148 ^ 01/20 $125.00"  →  CHECK_NO ^ DATE AMOUNT
+# Also handles MM/DD/YY and MM/DD/YYYY date formats (e.g. "3301 01/02/25 1,000.00")
+_CHECK_TXN_RE = re.compile(r'^(\d+)\s+\^?\s*(\d{1,2}/\d{1,2}(?:/\d{2,4})?)\s+\$?([\d,]+\.\d{2})\s*$')
+
+# Multi-column check table pattern (JPMorgan/Chase compact "Checks Paid" table)
+# e.g. "1068 11/24 450.00 1072 11/17 1,600.00 1077 11/19 2,558.83"
+# Each column: CHECK_NO MM/DD[/YY] AMOUNT
+_MULTI_CHECK_COL_RE = re.compile(r'(\d{3,6})\s+(\d{1,2}/\d{1,2}(?:/\d{2,4})?)\s+([\d,]+\.\d{2})')
+
+# Date word pattern (M/D or MM/DD without year)
+_DATE_WORD_RE = re.compile(r'^\d{1,2}/\d{1,2}$')
+
+# Amount word pattern
+_AMOUNT_WORD_RE = re.compile(r'^[\d,]+\.\d{2}$')
+
+
+def _det_parse_amount(s: str) -> float:
+    """Parse amount string to float, stripping commas and dollar signs."""
+    return float(s.replace(',', '').replace('$', '').strip())
+
+
+def _det_parse_date(date_str: str, year: int) -> Optional[str]:
+    """Parse MM/DD, MM/DD/YY, or MM/DD/YYYY to YYYY-MM-DD string."""
+    for fmt in ['%m/%d/%Y', '%m/%d/%y', '%m/%d']:
+        try:
+            dt = datetime.strptime(date_str.strip(), fmt)
+            if fmt == '%m/%d':
+                dt = dt.replace(year=year)
+            return dt.strftime('%Y-%m-%d')
+        except ValueError:
+            continue
+    return None
+
+
+def _detect_year(text: str) -> int:
+    """
+    Extract the statement year from PDF text.
+    Prioritises years embedded in slash-separated dates (M/D/YYYY or M/D/YY) because
+    bank PDFs often contain distracting 4-digit numbers such as ZIP+4 codes (e.g.
+    '43218-2051') that would otherwise be mistaken for a year.
+    """
+    counts: Dict[str, int] = {}
+
+    # 1st priority: 4-digit years inside slash dates (01/30/2026, 1/1/2026)
+    for y in re.findall(r'\b\d{1,2}/\d{1,2}/(20\d{2})\b', text):
+        counts[y] = counts.get(y, 0) + 1
+    if counts:
+        return int(max(counts, key=counts.get))
+
+    # 2nd priority: 2-digit years inside slash dates (1/30/26) → prefix with 20
+    for y in re.findall(r'\b\d{1,2}/\d{1,2}/(\d{2})\b', text):
+        full = str(2000 + int(y))
+        counts[full] = counts.get(full, 0) + 1
+    if counts:
+        return int(max(counts, key=counts.get))
+
+    # 3rd priority: standalone 4-digit years not preceded or followed by another digit
+    # (avoids matching ZIP+4 extensions like '-2051' → the lookbehind excludes '-')
+    for y in re.findall(r'(?<![/\-\d])\b(20\d{2})\b(?![/\-\d])', text):
+        counts[y] = counts.get(y, 0) + 1
+    if counts:
+        return int(max(counts, key=counts.get))
+
+    return datetime.now().year
+
+
+# ─── Strategy 1: *start*/*end* section markers (Chase / JPMorgan) ────────────
+
+def _extract_by_section_markers(pdf_path: str) -> Tuple[List[Dict], bool]:
+    """
+    Strategy 1: Chase/JPMorgan PDFs embed *start*section-name and *end*section-name
+    tags directly in the extracted text. These reliably identify credit vs debit sections.
+
+    Also handles:
+    - Transactions embedded in *end* marker lines (date's month is consumed by the marker
+      text, leaving only /DD — reconstructed using the statement's primary month).
+    - Chase "Checks Paid" section format: "CHECK_NO ^ DATE AMOUNT"
+    """
+    transactions: List[Dict] = []
+    try:
+        with pdfplumber.open(pdf_path) as pdf:
+            if not pdf.pages:
+                return [], False
+
+            # Quick check — only proceed if *start* markers are present
+            has_markers = any(
+                '*start*' in (page.extract_text() or '').lower()
+                for page in pdf.pages[:3]
+            )
+            if not has_markers:
+                return [], False
+
+            first_text = pdf.pages[0].extract_text() or ''
+            statement_year = _detect_year(first_text)
+
+            # Detect the statement's primary month for reconstructing partial dates
+            month_match = re.search(
+                r'\b(January|February|March|April|May|June|July|August|'
+                r'September|October|November|December)\b', first_text, re.I
+            )
+            statement_month = (
+                _MONTH_NAMES[month_match.group(1).lower()] if month_match
+                else datetime.now().month
+            )
+
+            current_section_type: Optional[str] = None
+            current_section_name: str = ''
+
+            for page in pdf.pages:
+                text = page.extract_text()
+                if not text:
+                    continue
+
+                for line in text.split('\n'):
+                    line = line.strip()
+                    if not line:
+                        continue
+
+                    # Handle *start*/*end* marker lines
+                    if _MARKER_LINE_RE.match(line):
+                        if line.lower().startswith('*start*'):
+                            marker = line[7:].lower().strip()
+                            if any(kw in marker for kw in _CREDIT_SECTION_MARKERS):
+                                current_section_type = 'credit'
+                                current_section_name = marker
+                            elif any(kw in marker for kw in _DEBIT_SECTION_MARKERS):
+                                current_section_type = 'debit'
+                                current_section_name = marker
+                            elif any(kw in marker for kw in _NON_TXN_SECTION_MARKERS):
+                                current_section_type = None
+                                current_section_name = ''
+
+                        elif line.lower().startswith('*end*') and current_section_type is not None:
+                            # Some *end* lines have a transaction embedded whose month
+                            # was consumed by the marker text, leaving only /DD.
+                            # e.g. "*end*deposit0s and additio1ns /08 Deposit 1680055706 878.00"
+                            m = _END_EMBEDDED_TXN_RE.search(line)
+                            if m:
+                                day_str, description, amount_str = m.groups()
+                                date_str = f"{statement_month:02d}/{day_str}"
+                                parsed_date = _det_parse_date(date_str, statement_year)
+                                if parsed_date:
+                                    try:
+                                        transactions.append({
+                                            'date': parsed_date,
+                                            'description': description.strip(),
+                                            'amount': round(_det_parse_amount(amount_str), 2),
+                                            'type': current_section_type,
+                                        })
+                                    except ValueError:
+                                        pass
+                        continue  # skip marker lines (already handled above)
+
+                    if current_section_type is None:
+                        continue
+
+                    # Chase Checks Paid section uses a different row format:
+                    # "CHECK_NO ^ DATE AMOUNT"  (no leading date)
+                    if 'checks' in current_section_name:
+                        m = _CHECK_TXN_RE.match(line)
+                        if m:
+                            check_num, date_str, amount_str = m.groups()
+                            parsed_date = _det_parse_date(date_str, statement_year)
+                            if parsed_date:
+                                try:
+                                    transactions.append({
+                                        'date': parsed_date,
+                                        'description': f'Check #{check_num}',
+                                        'amount': round(_det_parse_amount(amount_str), 2),
+                                        'type': 'debit',
+                                    })
+                                except ValueError:
+                                    pass
+                            continue
+
+                    # Standard transaction line: MM/DD Description... AMOUNT
+                    m = _TXN_LINE_RE.match(line)
+                    if not m:
+                        continue
+
+                    date_str, description, amount_str = m.groups()
+                    parsed_date = _det_parse_date(date_str, statement_year)
+                    if not parsed_date:
+                        continue
+                    try:
+                        amount = _det_parse_amount(amount_str)
+                    except ValueError:
+                        continue
+
+                    transactions.append({
+                        'date': parsed_date,
+                        'description': description.strip(),
+                        'amount': round(amount, 2),
+                        'type': current_section_type,
+                    })
+
+        return transactions, len(transactions) >= 2
+
+    except Exception as e:
+        print(f"Strategy 1 (section markers) failed: {e}", file=sys.stderr)
+        return [], False
+
+
+# ─── Strategy 2: Section header keywords (generic) ───────────────────────────
+
+def _extract_by_section_headers(pdf_path: str) -> Tuple[List[Dict], bool]:
+    """
+    Strategy 2: For banks that use plain section headers (no *start* markers).
+    Handles JPMorgan Classic Business Checking which:
+    - Shows multiple section names at the top of continuation pages (TOC-style),
+      e.g. both "Deposits & Credits" AND "Checks Paid" appear before the credit
+      transactions continue — only the FIRST header seen before any transaction
+      on a page is treated as the active section.
+    - Uses "Check Date" as a column header to signal the start of the checks table.
+    - Uses check-row format: CHECK_NO DATE AMOUNT (no leading date, no ^ symbol).
+    - Has a "Daily Ending Balance" section whose rows must not be parsed as transactions.
+    Also filters out daily balance rows where the description itself contains a date.
+    """
+    transactions: List[Dict] = []
+    try:
+        with pdfplumber.open(pdf_path) as pdf:
+            if not pdf.pages:
+                return [], False
+
+            first_text = pdf.pages[0].extract_text() or ''
+            statement_year = _detect_year(first_text)
+            current_section_type: Optional[str] = None
+            current_section_name: str = ''
+
+            for page in pdf.pages:
+                text = page.extract_text()
+                if not text:
+                    continue
+
+                # Per-page pending buffer: section headers seen before the first
+                # transaction on this page are buffered. On continuation pages,
+                # multiple section names appear as a table of contents at the top;
+                # only the FIRST (= the section that continues from the prior page)
+                # is applied when the first transaction line is encountered.
+                pending_sections: List[Tuple[Optional[str], str]] = []
+                page_has_transactions: bool = False
+
+                for line in text.split('\n'):
+                    line = line.strip()
+                    if not line:
+                        continue
+
+                    if _MARKER_LINE_RE.match(line):
+                        continue
+
+                    # ── Section header detection ──────────────────────────────
+                    section_matched = False
+                    for pattern, section_type, section_name in _SECTION_HEADER_PATTERNS:
+                        if pattern.match(line):
+                            if not page_has_transactions:
+                                # Pre-transaction phase: buffer (only first will be used)
+                                pending_sections.append((section_type, section_name))
+                            else:
+                                # Post-transaction phase: real section transition
+                                current_section_type = section_type
+                                current_section_name = section_name
+                            section_matched = True
+                            break
+                    if section_matched:
+                        continue
+
+                    # Nothing to do if no section context yet
+                    if current_section_type is None and not pending_sections:
+                        continue
+
+                    # Determine the effective section for pre-transaction rows
+                    if not page_has_transactions and pending_sections:
+                        eff_type, eff_name = pending_sections[0]
+                    else:
+                        eff_type, eff_name = current_section_type, current_section_name
+
+                    if eff_type is None:
+                        continue  # in a non-transaction section (e.g. balance table)
+
+                    # ── Multi-column check table (JPMorgan compact "Checks Paid") ──
+                    # Handles rows like: "1068 11/24 450.00 1072 11/17 1,600.00 1077 11/19 2,558.83"
+                    # These appear at the bottom of a deposits page with no section transition,
+                    # so we detect them by pattern (2+ CHECK_NO MM/DD AMOUNT groups per line).
+                    multi_check_cols = _MULTI_CHECK_COL_RE.findall(line)
+                    if len(multi_check_cols) >= 2:
+                        for check_num, date_str, amount_str in multi_check_cols:
+                            parsed_date = _det_parse_date(date_str, statement_year)
+                            if parsed_date:
+                                try:
+                                    transactions.append({
+                                        'date': parsed_date,
+                                        'description': f'Check #{check_num}',
+                                        'amount': round(_det_parse_amount(amount_str), 2),
+                                        'type': 'debit',
+                                    })
+                                except ValueError:
+                                    pass
+                        page_has_transactions = True
+                        continue
+
+                    # ── Check-row format: CHECK_NO [^] DATE AMOUNT ────────────
+                    # Used when the effective section is checks (before or after
+                    # first transaction, e.g. after "Check Date" column header).
+                    if 'checks' in eff_name:
+                        m = _CHECK_TXN_RE.match(line)
+                        if m:
+                            check_num, date_str, amount_str = m.groups()
+                            parsed_date = _det_parse_date(date_str, statement_year)
+                            if parsed_date:
+                                try:
+                                    # Apply pending section on first transaction of page
+                                    if not page_has_transactions and pending_sections:
+                                        current_section_type, current_section_name = pending_sections[0]
+                                        page_has_transactions = True
+                                    transactions.append({
+                                        'date': parsed_date,
+                                        'description': f'Check #{check_num}',
+                                        'amount': round(_det_parse_amount(amount_str), 2),
+                                        'type': 'debit',
+                                    })
+                                except ValueError:
+                                    pass
+                            continue
+
+                    # ── Standard transaction line: MM/DD Description AMOUNT ───
+                    m = _TXN_LINE_RE.match(line)
+                    if not m:
+                        continue
+
+                    date_str, description, amount_str = m.groups()
+                    parsed_date = _det_parse_date(date_str, statement_year)
+                    if not parsed_date:
+                        continue
+
+                    # Skip daily-ending-balance rows: their "description" field
+                    # is actually more date+amount pairs, e.g.:
+                    #   "3,067.85 01/05 8,372.05 01/06"      (positive balances)
+                    #   "(1,951.14) 01/08 427.80 01/14"      (parenthesized negatives)
+                    # Real transaction descriptions start with text ("Card Purchase ...",
+                    # "ACH Transfer ..."), not with a bare or parenthesized amount.
+                    if re.match(r'^\s*(\([\d,]+\.\d{2}\)|[\d,]+\.\d{2})(?=\s|$)', description):
+                        continue
+
+                    # Apply pending section on first real transaction of this page
+                    if not page_has_transactions and pending_sections:
+                        current_section_type, current_section_name = pending_sections[0]
+                        eff_type = current_section_type
+                    page_has_transactions = True
+
+                    if eff_type is None:
+                        continue
+
+                    try:
+                        amount = _det_parse_amount(amount_str)
+                    except ValueError:
+                        continue
+
+                    transactions.append({
+                        'date': parsed_date,
+                        'description': description.strip(),
+                        'amount': round(amount, 2),
+                        'type': eff_type,
+                    })
+
+        return transactions, len(transactions) >= 2
+
+    except Exception as e:
+        print(f"Strategy 2 (section headers) failed: {e}", file=sys.stderr)
+        return [], False
+
+
+# ─── Strategy 3: Column-position based (Wells Fargo / column-table style) ────
+
+def _extract_by_column_position(pdf_path: str) -> Tuple[List[Dict], bool]:
+    """
+    Strategy 3: For statements with separate Credits and Debits columns (Wells Fargo
+    style). Uses pdfplumber word-level x-coordinates to identify which column each
+    transaction amount falls in.
+    """
+    CREDIT_COL_WORDS = {'credits', 'deposits', 'deposits/'}
+    DEBIT_COL_WORDS = {'debits', 'withdrawals', 'withdrawals/'}
+    BALANCE_COL_WORDS = {'balance'}
+    COL_TOLERANCE = 45  # ±45 points tolerance for column matching
+
+    transactions: List[Dict] = []
+    credits_x: Optional[float] = None
+    debits_x: Optional[float] = None
+    balance_x: Optional[float] = None
+    statement_year = datetime.now().year
+
+    try:
+        with pdfplumber.open(pdf_path) as pdf:
+            if not pdf.pages:
+                return [], False
+
+            first_text = pdf.pages[0].extract_text() or ''
+            statement_year = _detect_year(first_text)
+
+            for page in pdf.pages:
+                words = page.extract_words()
+                if not words:
+                    continue
+
+                # Group words into rows by approximate y-position (within 3pt)
+                rows_by_y: Dict[int, List[Dict]] = defaultdict(list)
+                for w in words:
+                    rows_by_y[round(w['top'] / 3) * 3].append(w)
+
+                # Look for header row containing BOTH a credit and a debit column label
+                for row_key in sorted(rows_by_y):
+                    row_words = rows_by_y[row_key]
+                    row_texts = {w['text'].lower() for w in row_words}
+                    if (row_texts & CREDIT_COL_WORDS) and (row_texts & DEBIT_COL_WORDS):
+                        # Found the column header row — record x-centers
+                        for w in row_words:
+                            t = w['text'].lower()
+                            cx = (w['x0'] + w['x1']) / 2
+                            if t in CREDIT_COL_WORDS:
+                                credits_x = cx
+                            elif t in DEBIT_COL_WORDS:
+                                debits_x = cx
+                            elif t in BALANCE_COL_WORDS:
+                                balance_x = cx
+                        break  # use first matching row per page
+
+                if credits_x is None or debits_x is None:
+                    continue  # no usable column info on this page yet
+
+                # Parse transaction rows
+                for row_key in sorted(rows_by_y):
+                    row_words = rows_by_y[row_key]
+                    if not row_words:
+                        continue
+
+                    # Row must start with a date word (M/D or MM/DD)
+                    first_word = min(row_words, key=lambda w: w['x0'])
+                    if not _DATE_WORD_RE.match(first_word['text']):
+                        continue
+
+                    # Split words into amounts vs description words
+                    amount_words = [w for w in row_words if _AMOUNT_WORD_RE.match(w['text'])]
+                    desc_words = [
+                        w for w in row_words
+                        if not _AMOUNT_WORD_RE.match(w['text']) and w != first_word
+                    ]
+
+                    # Classify each amount by column x-position
+                    credit_amounts = []
+                    debit_amounts = []
+                    for w in amount_words:
+                        cx = (w['x0'] + w['x1']) / 2
+                        if abs(cx - credits_x) <= COL_TOLERANCE:
+                            credit_amounts.append(w['text'])
+                        elif abs(cx - debits_x) <= COL_TOLERANCE:
+                            debit_amounts.append(w['text'])
+                        # balance column amounts are intentionally ignored
+
+                    if credit_amounts and not debit_amounts:
+                        txn_type = 'credit'
+                        amount_str = credit_amounts[0]
+                    elif debit_amounts and not credit_amounts:
+                        txn_type = 'debit'
+                        amount_str = debit_amounts[0]
+                    else:
+                        continue  # ambiguous or no classifiable amount
+
+                    parsed_date = _det_parse_date(first_word['text'], statement_year)
+                    if not parsed_date:
+                        continue
+                    try:
+                        amount = _det_parse_amount(amount_str)
+                    except ValueError:
+                        continue
+                    if amount <= 0:
+                        continue
+
+                    description = ' '.join(
+                        w['text'] for w in sorted(desc_words, key=lambda w: w['x0'])
+                    ).strip()
+                    if not description:
+                        continue
+
+                    transactions.append({
+                        'date': parsed_date,
+                        'description': description,
+                        'amount': round(amount, 2),
+                        'type': txn_type,
+                    })
+
+        return transactions, len(transactions) >= 2
+
+    except Exception as e:
+        print(f"Strategy 3 (column position) failed: {e}", file=sys.stderr)
+        return [], False
+
+
+# ─── Strategy 4: PDF table structure (original fallback) ─────────────────────
+
+def _extract_by_table_structure(pdf_path: str) -> Tuple[List[Dict], bool]:
+    """
+    Strategy 4: Original table-based extraction using pdfplumber.extract_tables().
+    Rarely succeeds for real bank statements but kept as final fallback.
     """
     try:
-        transactions = []
+        transactions: List[Dict] = []
 
         with pdfplumber.open(pdf_path) as pdf:
-            for page_num, page in enumerate(pdf.pages, 1):
-                # Extract tables from the page
+            for page in pdf.pages:
                 tables = page.extract_tables()
-
                 if not tables:
                     continue
 
                 for table in tables:
-                    if not table or len(table) < 2:  # Need at least header + 1 row
+                    if not table or len(table) < 2:
                         continue
 
-                    # First row is likely headers
                     headers = [str(h).lower() if h else '' for h in table[0]]
-
-                    # Identify column indices
-                    date_col = None
-                    desc_col = None
-                    debit_col = None
-                    credit_col = None
-                    balance_col = None
+                    date_col = desc_col = debit_col = credit_col = balance_col = None
 
                     for i, header in enumerate(headers):
                         if 'date' in header:
                             date_col = i
                         elif 'description' in header or 'transaction' in header:
                             desc_col = i
-                        elif 'debit' in header or 'withdrawal' in header or 'payment' in header and 'out' in header:
+                        elif 'debit' in header or 'withdrawal' in header or ('payment' in header and 'out' in header):
                             debit_col = i
-                        elif 'credit' in header or 'deposit' in header or 'payment' in header and 'in' in header:
+                        elif 'credit' in header or 'deposit' in header or ('payment' in header and 'in' in header):
                             credit_col = i
                         elif 'balance' in header:
                             balance_col = i
 
-                    # Skip if we can't identify debit and credit columns
                     if debit_col is None or credit_col is None:
                         continue
 
-                    # Process each row (skip header)
                     for row in table[1:]:
                         if not row or len(row) <= max(debit_col, credit_col):
                             continue
 
-                        # Extract values
                         date_val = row[date_col] if date_col is not None and date_col < len(row) else None
                         desc_val = row[desc_col] if desc_col is not None and desc_col < len(row) else ''
                         debit_val = row[debit_col] if debit_col < len(row) else None
                         credit_val = row[credit_col] if credit_col < len(row) else None
                         balance_val = row[balance_col] if balance_col is not None and balance_col < len(row) else None
 
-                        # Skip if no date or description
                         if not date_val or not desc_val:
                             continue
 
-                        # Parse amount and determine type based on column
                         amount = None
                         txn_type = None
 
-                        # Check debit column first
-                        if debit_val and str(debit_val).strip() and str(debit_val).strip() not in ['-', '', 'None']:
-                            amount_str = str(debit_val).replace('$', '').replace(',', '').replace('(', '').replace(')', '').strip()
+                        if debit_val and str(debit_val).strip() not in ['-', '', 'None']:
                             try:
-                                amount = abs(float(amount_str))
+                                amount = abs(float(str(debit_val).replace('$', '').replace(',', '').replace('(', '').replace(')', '').strip()))
                                 txn_type = 'debit'
                             except ValueError:
                                 pass
 
-                        # Check credit column if no debit
-                        if amount is None and credit_val and str(credit_val).strip() and str(credit_val).strip() not in ['-', '', 'None']:
-                            amount_str = str(credit_val).replace('$', '').replace(',', '').replace('(', '').replace(')', '').strip()
+                        if amount is None and credit_val and str(credit_val).strip() not in ['-', '', 'None']:
                             try:
-                                amount = abs(float(amount_str))
+                                amount = abs(float(str(credit_val).replace('$', '').replace(',', '').replace('(', '').replace(')', '').strip()))
                                 txn_type = 'credit'
                             except ValueError:
                                 pass
 
-                        # Skip if we couldn't extract amount
                         if amount is None or txn_type is None:
                             continue
 
-                        # Parse date
-                        date_str = str(date_val).strip()
                         parsed_date = None
-
-                        # Try common date formats
-                        for date_format in ['%m/%d/%Y', '%m/%d/%y', '%Y-%m-%d', '%m-%d-%Y', '%m-%d-%y', '%m/%d', '%d/%m/%Y']:
+                        for fmt in ['%m/%d/%Y', '%m/%d/%y', '%Y-%m-%d', '%m-%d-%Y', '%m-%d-%y', '%m/%d', '%d/%m/%Y']:
                             try:
-                                parsed_date = datetime.strptime(date_str, date_format)
-                                # If year is missing, assume current year
-                                if date_format in ['%m/%d']:
+                                parsed_date = datetime.strptime(str(date_val).strip(), fmt)
+                                if fmt == '%m/%d':
                                     parsed_date = parsed_date.replace(year=datetime.now().year)
                                 break
                             except ValueError:
@@ -690,34 +1234,147 @@ def extract_transactions_deterministic(pdf_path: str) -> Tuple[List[Dict], bool]
                         if not parsed_date:
                             continue
 
-                        # Parse balance if available
-                        ending_balance = None
-                        if balance_val and str(balance_val).strip() not in ['-', '', 'None']:
-                            balance_str = str(balance_val).replace('$', '').replace(',', '').replace('(', '').replace(')', '').strip()
-                            try:
-                                ending_balance = float(balance_str)
-                            except ValueError:
-                                pass
-
-                        # Create transaction dict
-                        transaction = {
+                        transaction: Dict = {
                             'date': parsed_date.strftime('%Y-%m-%d'),
                             'description': str(desc_val).strip(),
                             'amount': round(amount, 2),
-                            'type': txn_type
+                            'type': txn_type,
                         }
 
-                        if ending_balance is not None:
-                            transaction['ending_balance'] = ending_balance
+                        if balance_val and str(balance_val).strip() not in ['-', '', 'None']:
+                            try:
+                                transaction['ending_balance'] = float(
+                                    str(balance_val).replace('$', '').replace(',', '').replace('(', '').replace(')', '').strip()
+                                )
+                            except ValueError:
+                                pass
 
                         transactions.append(transaction)
 
-        # Return success if we extracted at least some transactions
-        return (transactions, len(transactions) > 0)
+        return transactions, len(transactions) > 0
 
     except Exception as e:
-        print(f"Deterministic extraction failed: {str(e)}", file=sys.stderr)
-        return ([], False)
+        print(f"Strategy 4 (table structure) failed: {e}", file=sys.stderr)
+        return [], False
+
+
+# ─── Orchestrator ─────────────────────────────────────────────────────────────
+
+def extract_transactions_deterministic(pdf_path: str) -> Tuple[List[Dict], bool]:
+    """
+    Extract transactions deterministically using cascading strategies:
+      1. *start*/*end* section markers  (Chase / JPMorgan)
+      2. Section header keywords         (generic section-based banks)
+      3. Column-position based           (Wells Fargo and similar)
+      4. PDF table structure             (rarely succeeds, original fallback)
+
+    Returns (transactions_list, success_flag).
+    """
+    for strategy_fn, label in [
+        (_extract_by_section_markers, "section markers"),
+        (_extract_by_section_headers, "section headers"),
+        (_extract_by_column_position, "column position"),
+        (_extract_by_table_structure, "table structure"),
+    ]:
+        txns, ok = strategy_fn(pdf_path)
+        if ok:
+            print(f"✓ Deterministic extraction successful ({label}): {len(txns)} transactions", file=sys.stderr)
+            return txns, True
+
+    return [], False
+
+
+def _extract_statement_summary(pdf_text: str) -> Dict:
+    """
+    Parse beginning balance, ending balance, and (if stated) average daily balance
+    directly from the raw PDF text using labeled-line patterns.
+
+    Handles both positive amounts and parenthesized negatives, e.g.:
+        Beginning Balance   3,587.23
+        Ending Balance      2,472.00
+        Average Daily Bal   (1,234.56)   ← negative, shown in parens
+    """
+    result: Dict[str, float] = {}
+
+    # Label → field mapping (checked in order; first match per field wins)
+    label_patterns = [
+        (re.compile(r'(?:beginning|previous|prior|opening)\s+balance', re.I), 'beginning_balance'),
+        (re.compile(r'(?:ending|closing|new)\s+balance', re.I), 'ending_balance'),
+        (re.compile(r'average\s+(?:daily\s+)?balance', re.I), 'average_daily_balance'),
+    ]
+
+    # Amount: optional sign/paren, optional $, digits/commas, decimal places
+    amount_re = re.compile(r'(-?\$?|\$?-?)(\()?\s*([\d,]+\.\d{2})\s*(\))?')
+
+    for line in pdf_text.split('\n'):
+        line = line.strip()
+        for label_re, field in label_patterns:
+            if field in result:
+                continue  # already found this field
+            lm = label_re.search(line)
+            if not lm:
+                continue
+            # Search for an amount *after* the label text
+            am = amount_re.search(line, lm.end())
+            if not am:
+                continue
+            sign_prefix, open_paren, amount_str, close_paren = am.groups()
+            try:
+                amount = float(amount_str.replace(',', ''))
+                if '-' in (sign_prefix or '') or (open_paren == '(' and close_paren == ')'):
+                    amount = -amount
+                result[field] = amount
+            except ValueError:
+                pass
+
+    return result
+
+
+def _compute_adb_from_transactions(transactions: List[Dict], beginning_balance: float) -> Optional[float]:
+    """
+    Reconstruct end-of-day balances for every calendar day in the statement period,
+    then return the simple average (average daily balance).
+
+    Starts from beginning_balance, applies credits (+) and debits (-) in date order.
+    Carries the previous day's balance forward on days with no transactions.
+    """
+    if not transactions:
+        return None
+
+    by_date: Dict[str, List[Dict]] = defaultdict(list)
+    for t in transactions:
+        d = t.get('date')
+        if d:
+            by_date[d].append(t)
+
+    if not by_date:
+        return None
+
+    dates = sorted(by_date.keys())
+    try:
+        start = datetime.strptime(dates[0], '%Y-%m-%d')
+        end = datetime.strptime(dates[-1], '%Y-%m-%d')
+    except ValueError:
+        return None
+
+    daily_balances: List[float] = []
+    balance = beginning_balance
+    current = start
+
+    while current <= end:
+        date_str = current.strftime('%Y-%m-%d')
+        for t in by_date.get(date_str, []):
+            if t.get('type') == 'credit':
+                balance += float(t.get('amount', 0))
+            elif t.get('type') == 'debit':
+                balance -= float(t.get('amount', 0))
+        daily_balances.append(balance)
+        current += timedelta(days=1)
+
+    if not daily_balances:
+        return None
+
+    return round(sum(daily_balances) / len(daily_balances), 2)
 
 
 def validate_statement_summary(statement_summary: Dict, transactions: List[Dict], debug_log: str) -> Dict:
@@ -1009,7 +1666,7 @@ OUTPUT FORMAT - Return ONLY valid JSON:
 """
 
     # Debug: log input text length
-    debug_log = "/var/www/html/crmfinity_laravel/storage/logs/openai_debug.log"
+    debug_log = "/var/www/html/crmfinity-ai/storage/logs/extraction_debug.log"
 
     # Estimate tokens and check if we need to chunk
     estimated_tokens = estimate_tokens(text)
@@ -1162,7 +1819,7 @@ OUTPUT FORMAT - Return ONLY valid JSON:
         validated.append(transaction_dict)
 
     # Debug log to see what was extracted
-    debug_log = "/var/www/html/crmfinity_laravel/storage/logs/openai_debug.log"
+    debug_log = "/var/www/html/crmfinity-ai/storage/logs/extraction_debug.log"
     with open(debug_log, 'a') as f:
         f.write("=== OpenAI Extraction Results ===\n")
         credits = [t for t in validated if t['type'] == 'credit']
@@ -1425,9 +2082,25 @@ def main():
             # Deterministic extraction succeeded - use these results
             print(f"✓ Deterministic extraction successful: {len(transactions_det)} transactions", file=sys.stderr)
             transactions = transactions_det
-            usage = {"input_tokens": 0, "output_tokens": 0}  # No AI usage
+            usage = {"prompt_tokens": 0, "completion_tokens": 0, "total_tokens": 0, "model": "none"}  # No AI usage
             extraction_method = "deterministic"
-            statement_summary = None  # Deterministic extraction doesn't extract summary
+
+            # Extract statement summary (beginning/ending/average balance) from PDF text.
+            # _extract_statement_summary uses labeled-line patterns (no AI cost).
+            det_summary = _extract_statement_summary(pdf_text)
+
+            # If we found a beginning balance but no explicit ADB, compute it from
+            # the transaction list so downstream analytics have a useful number.
+            if det_summary.get('beginning_balance') is not None:
+                if det_summary.get('average_daily_balance') is None:
+                    computed_adb = _compute_adb_from_transactions(
+                        transactions_det, det_summary['beginning_balance']
+                    )
+                    if computed_adb is not None:
+                        det_summary['average_daily_balance'] = computed_adb
+                        print(f"  Computed ADB: ${computed_adb:,.2f}", file=sys.stderr)
+
+            statement_summary = det_summary if det_summary else None
         else:
             # Fallback to AI extraction
             print("Deterministic extraction failed or returned no transactions. Falling back to AI extraction...", file=sys.stderr)
