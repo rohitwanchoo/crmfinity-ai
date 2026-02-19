@@ -2037,6 +2037,146 @@ def _extract_bokf(pdf_path: str) -> Tuple[List[Dict], bool]:
         return [], False
 
 
+# ─── Strategy 10: Michigan First Credit Union ─────────────────────────────────
+
+_MFCU_GUARD_RE = re.compile(r'MichiganFirst\.com', re.I)
+_MFCU_TXN_RE   = re.compile(
+    r'^(Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec)\s+(\d{1,2})\s+'
+    r'(.+?)\s+(-?[\d,]+\.\d{2})\s+([\d,]+\.\d{2})\s*$',
+    re.I,
+)
+_MFCU_STOP_RE  = re.compile(r'^\s*ATM\s+WITHDRAWALS\s+AND\s+OTHER\s+CHARGES', re.I)
+_MFCU_SKIP_RE  = re.compile(
+    r'^\s*(Balance\s+Forward|Ending\s+Balance|---\s*Continued|'
+    r'Date\s+Activity|CHECKING\s+ACCOUNTS|SAVINGS\s+ACCOUNTS|'
+    r'MichiganFirst\.com|Member\s+(?:No\.?|Number)|Account\s+(?:No\.?|Number)|'
+    r'Statement\s+Period|Page\s+\d+\s+of\s+\d+|'
+    r'Additions?\s+Subtractions?\s+Balance)',
+    re.I,
+)
+_MFCU_MONTHS = {
+    'jan': 1, 'feb': 2, 'mar': 3, 'apr': 4, 'may': 5, 'jun': 6,
+    'jul': 7, 'aug': 8, 'sep': 9, 'oct': 10, 'nov': 11, 'dec': 12,
+}
+
+
+def _det_parse_mfcu_date(month_str: str, day_str: str, year: int) -> Optional[str]:
+    """Parse (3-letter month abbr, DD, YYYY) → YYYY-MM-DD."""
+    try:
+        month = _MFCU_MONTHS.get(month_str.lower()[:3])
+        if not month:
+            return None
+        return datetime(year, month, int(day_str)).strftime('%Y-%m-%d')
+    except (ValueError, TypeError):
+        return None
+
+
+def _extract_michiganfirst(pdf_path: str) -> Tuple[List[Dict], bool]:
+    """
+    Strategy 10: Michigan First Credit Union statement parser.
+
+    Format (single chronological list spanning CHECKING + SAVINGS sections):
+      Date  Activity                         Additions  Subtractions  Balance
+      Nov 01 Balance Forward                                            469.06
+      Nov 01 Withdrawal Bill payment                       20.00       449.06
+      Nov 04 Deposit Payroll Direct Deposit    750.00                1,199.06
+      ...
+      Nov 30 Ending Balance                                           1,000.00
+      ATM WITHDRAWALS AND OTHER CHARGES   ← stop here (summary section, page 10+)
+
+    pdfplumber merges columns; sign on amount indicates direction:
+      debit  (Subtraction) → negative: "-20.00"
+      credit (Addition)    → positive: "750.00"
+    The last token is always the running balance.
+    """
+    transactions: List[Dict] = []
+    try:
+        with pdfplumber.open(pdf_path) as pdf:
+            if not pdf.pages:
+                return [], False
+
+            first_text = pdf.pages[0].extract_text() or ''
+            if not _MFCU_GUARD_RE.search(first_text):
+                return [], False
+
+            # Detect statement year: "Nov 01, 2025 thru Nov 30, 2025"
+            statement_year = _detect_year(first_text)
+            if not statement_year:
+                ym = re.search(
+                    r'(?:Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec)\s+\d{1,2},\s+(\d{4})',
+                    first_text, re.I,
+                )
+                if ym:
+                    statement_year = int(ym.group(1))
+            if not statement_year:
+                statement_year = datetime.now().year
+
+            current_txn: Optional[Dict] = None
+
+            def _flush():
+                if current_txn:
+                    transactions.append(dict(current_txn))
+
+            stop = False
+            for page in pdf.pages:
+                if stop:
+                    break
+                text = page.extract_text()
+                if not text:
+                    continue
+
+                for line in text.split('\n'):
+                    stripped = line.strip()
+                    if not stripped:
+                        continue
+
+                    # Stop at ATM summary section (page 10+)
+                    if _MFCU_STOP_RE.match(stripped):
+                        _flush()
+                        current_txn = None
+                        stop = True
+                        break
+
+                    # Skip headers, markers, Balance Forward / Ending Balance lines
+                    if _MFCU_SKIP_RE.match(stripped):
+                        continue
+
+                    # Try to match: Month DD Description amount balance
+                    m = _MFCU_TXN_RE.match(stripped)
+                    if m:
+                        _flush()
+                        month_str, day_str, description, amount_str, _balance = m.groups()
+                        parsed_date = _det_parse_mfcu_date(month_str, day_str, statement_year)
+                        if not parsed_date:
+                            current_txn = None
+                            continue
+                        is_debit = amount_str.startswith('-')
+                        clean_amount = amount_str.lstrip('-').replace(',', '')
+                        try:
+                            amount = round(float(clean_amount), 2)
+                        except ValueError:
+                            current_txn = None
+                            continue
+                        current_txn = {
+                            'date': parsed_date,
+                            'description': description.strip(),
+                            'amount': amount,
+                            'type': 'debit' if is_debit else 'credit',
+                        }
+                    else:
+                        # Continuation line — append to current transaction description
+                        if current_txn:
+                            current_txn['description'] += ' ' + stripped
+
+            _flush()
+
+        return transactions, len(transactions) >= 2
+
+    except Exception as e:
+        print(f"Strategy 10 (MichiganFirst) failed: {e}", file=sys.stderr)
+        return [], False
+
+
 # ─── Orchestrator ─────────────────────────────────────────────────────────────
 
 def extract_transactions_deterministic(pdf_path: str) -> Tuple[List[Dict], bool]:
@@ -2045,20 +2185,22 @@ def extract_transactions_deterministic(pdf_path: str) -> Tuple[List[Dict], bool]
       Bank-specific (guarded, run first to avoid false positives from generic strategies):
       1. CNBank / Community Bank NA      (MM/DD/YYYY, single chronological list)
       2. BOKF / Bank of Texas            (MM-DD date format, DEPOSITS/WITHDRAWALS sections)
-      3. Huntington National Bank        (Deposits/Checks two-col + Other Credits/Debits)
-      4. U.S. Bank format               (Other Deposits / Card Withdrawals sections)
-      5. FirstLight FCU                  (MemberAccountStatement / FLFCU format)
+      3. Michigan First Credit Union     (Mon DD date, signed amount + balance columns)
+      4. Huntington National Bank        (Deposits/Checks two-col + Other Credits/Debits)
+      5. U.S. Bank format               (Other Deposits / Card Withdrawals sections)
+      6. FirstLight FCU                  (MemberAccountStatement / FLFCU format)
       Generic (no guard, try in order):
-      6. *start*/*end* section markers  (Chase / JPMorgan)
-      7. Section header keywords         (generic section-based banks)
-      8. Column-position based           (Wells Fargo and similar)
-      9. PDF table structure             (rarely succeeds, original fallback)
+      7. *start*/*end* section markers  (Chase / JPMorgan)
+      8. Section header keywords         (generic section-based banks)
+      9. Column-position based           (Wells Fargo and similar)
+     10. PDF table structure             (rarely succeeds, original fallback)
 
     Returns (transactions_list, success_flag, strategy_label).
     """
     for strategy_fn, label in [
         (_extract_cnbank,              "CNBank"),
         (_extract_bokf,                "BOKF"),
+        (_extract_michiganfirst,       "MichiganFirst"),
         (_extract_huntington,          "Huntington"),
         (_extract_usbank,              "U.S. Bank"),
         (_extract_flfcu,               "FirstLight FCU"),
@@ -2897,6 +3039,7 @@ def main():
             "FirstLight FCU":   "FirstLight FCU",
             "BOKF":             "Bank of Texas",
             "CNBank":           "Community Bank NA",
+            "MichiganFirst":    "Michigan First Credit Union",
         }
         det_bank_name = _DET_BANK_NAMES.get(det_label) if det_label else None
 
