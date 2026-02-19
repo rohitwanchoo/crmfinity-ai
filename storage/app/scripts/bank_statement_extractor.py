@@ -2177,6 +2177,207 @@ def _extract_michiganfirst(pdf_path: str) -> Tuple[List[Dict], bool]:
         return [], False
 
 
+# ─── Strategy 11: M&T Bank ────────────────────────────────────────────────────
+
+_MTB_GUARD_RE     = re.compile(r'M&T\s+TAILORED|M&T\s+BUSINESS\s+CHECKING', re.I)
+_MTB_DATE_RE      = re.compile(r'^\d{2}/\d{2}/\d{4}$')
+_MTB_AMT_RE       = re.compile(r'^\$?[\d,]+\.\d{2}$')
+_MTB_STOP_RE      = re.compile(
+    r'NUMBER\s+OF\s+CHECKS\s+PAID|NUMBER\s+OF\s+DEPOSITS|'
+    r'AMOUNT\s+OF\s+CHECKS|EFFECTIVE\s+JANUARY',
+    re.I,
+)
+_MTB_SKIP_RE      = re.compile(
+    r'FOR\s+INQUIRIES|PAGE\s+\d+\s+OF|COMMERCIAL\s+PA|'
+    r'POSTING\s+DATE|TRANSACTION\s+DESC|DEPOSITS\s+&\s+OTHER|'
+    r'WITHDRAWALS\s+&|DAILY\s+BALANCE|ACCOUNT\s+ACTIVITY|'
+    r'ACCOUNT\s+TYPE|ACCOUNT\s+NUMBER|STATEMENT\s+PERIOD|'
+    r'BEGINNING\s+BALANCE|ENDING\s+BALANCE|'
+    r'60\s+PUBLIC\s+SQUARE|WILKES-BARRE|'
+    r'LESS\s+CHECKS|LESS\s+SERVICE',
+    re.I,
+)
+# Diagonal "Capybara Capital" watermark words that appear on every page at
+# fixed y-positions between transaction lines.
+_MTB_WATERMARK_RE = re.compile(r'^(Capybara|Capital|bara)$', re.I)
+
+# Column x1 (right-edge) boundaries — consistent across all pages
+_MTB_DATE_X0_MAX = 75    # date words:   x0 < 75  (dates at x0=28)
+_MTB_CREDIT_X1   = (340, 410)   # credit amounts: x1 ≈ 399
+_MTB_DEBIT_X1    = (430, 500)   # debit amounts:  x1 ≈ 485
+_MTB_BAL_X1_MIN  = 510          # balance:        x1 ≈ 572  (skip for txns)
+
+
+def _det_parse_mtb_date(text: str) -> Optional[str]:
+    """Parse MM/DD/YYYY → YYYY-MM-DD."""
+    try:
+        return datetime.strptime(text.strip(), '%m/%d/%Y').strftime('%Y-%m-%d')
+    except ValueError:
+        return None
+
+
+def _extract_mtbank(pdf_path: str) -> Tuple[List[Dict], bool]:
+    """
+    Strategy 11: M&T Bank / M&T Tailored Business Checking parser.
+
+    Format (single chronological list, one row per transaction):
+      DATE       DESCRIPTION                       CREDIT(+)  DEBIT(-)   BALANCE
+      10/01/2025 DEPOSIT                            3,240.00
+      10/01/2025 FEDEX501764217  800-4633339                   19.30
+      10/01/2025 CHECK NUMBER 1881                            705.00  49,008.94
+                 AUTOZONE 1001128 N COURTLAND ST...           ← continuation line
+
+    Uses PyMuPDF (fitz) for clean word extraction with x/y coordinates.
+    The PDF carries a diagonal "Capybara Capital" watermark that pdfplumber
+    embeds into amounts ($19.3a0) and descriptions; fitz separates it to
+    fixed inter-line y-positions — detected as lines containing only
+    Capybara/Capital/bara words with no date and no amount.
+    """
+    transactions: List[Dict] = []
+    try:
+        doc = fitz.open(pdf_path)
+        if not doc.page_count:
+            doc.close()
+            return [], False
+
+        # Guard check from first page text
+        first_text = doc[0].get_text("text")
+        if not _MTB_GUARD_RE.search(first_text):
+            doc.close()
+            return [], False
+
+        current_txn: Optional[Dict] = None
+
+        def _flush():
+            if current_txn and current_txn.get('amount') is not None and current_txn.get('type'):
+                transactions.append(dict(current_txn))
+
+        stop = False
+        for pg_num in range(doc.page_count):
+            if stop:
+                break
+
+            page = doc[pg_num]
+            # Returns (x0, y0, x1, y1, text, block_no, line_no, word_no)
+            raw_words = page.get_text("words")
+            if not raw_words:
+                continue
+
+            # Drop watermark artifacts at negative / out-of-page coordinates
+            words = [w for w in raw_words if w[0] >= 0 and w[1] >= 0 and w[2] <= 600]
+
+            # Group words into visual lines by y0-coordinate (tolerance 1.5 pt)
+            lines: Dict[float, List] = {}
+            for w in words:
+                y0 = w[1]
+                matched = False
+                for k in list(lines.keys()):
+                    if abs(k - y0) <= 1.5:
+                        lines[k].append(w)
+                        matched = True
+                        break
+                if not matched:
+                    lines[y0] = [w]
+
+            for y_key in sorted(lines.keys()):
+                line_words = sorted(lines[y_key], key=lambda w: w[0])
+                line_text  = ' '.join(w[4] for w in line_words)
+
+                # Stop at checks-paid or pricing-notice section
+                if _MTB_STOP_RE.search(line_text):
+                    _flush()
+                    current_txn = None
+                    stop = True
+                    break
+
+                # Skip header / footer / summary boilerplate
+                if _MTB_SKIP_RE.search(line_text):
+                    continue
+
+                # Skip watermark-only lines (Capybara/Capital isolated between txns)
+                if all(_MTB_WATERMARK_RE.match(w[4]) for w in line_words):
+                    continue
+
+                # ── Classify words by column position ────────────────────────
+                date_words   = [w for w in line_words
+                                if w[0] < _MTB_DATE_X0_MAX and _MTB_DATE_RE.match(w[4])]
+                credit_words = [w for w in line_words
+                                if _MTB_CREDIT_X1[0] <= w[2] <= _MTB_CREDIT_X1[1]
+                                and _MTB_AMT_RE.match(w[4])]
+                debit_words  = [w for w in line_words
+                                if _MTB_DEBIT_X1[0] <= w[2] <= _MTB_DEBIT_X1[1]
+                                and _MTB_AMT_RE.match(w[4])]
+                bal_words    = [w for w in line_words if w[2] >= _MTB_BAL_X1_MIN]
+
+                # Description = words after date column, before debit column,
+                # excluding classified amount/balance words and watermark fragments
+                classified = set(id(w) for w in date_words + credit_words + debit_words + bal_words)
+                desc_words  = [w for w in line_words
+                               if id(w) not in classified
+                               and w[0] > 68       # after date column right edge
+                               and w[0] < 430      # before debit column left edge
+                               and not _MTB_WATERMARK_RE.match(w[4])]
+                desc = ' '.join(w[4] for w in desc_words).strip()
+
+                if date_words:
+                    _flush()
+                    parsed_date = _det_parse_mtb_date(date_words[0][4])
+                    if not parsed_date:
+                        current_txn = None
+                        continue
+
+                    amount   = None
+                    txn_type = None
+                    if credit_words:
+                        try:
+                            amount   = round(float(credit_words[0][4].lstrip('$').replace(',', '')), 2)
+                            txn_type = 'credit'
+                        except ValueError:
+                            pass
+                    elif debit_words:
+                        try:
+                            amount   = round(float(debit_words[0][4].lstrip('$').replace(',', '')), 2)
+                            txn_type = 'debit'
+                        except ValueError:
+                            pass
+
+                    current_txn = {
+                        'date':        parsed_date,
+                        'description': desc,
+                        'amount':      amount,
+                        'type':        txn_type,
+                    }
+
+                elif current_txn is not None:
+                    # Continuation or amount-only line for the current transaction
+                    if current_txn.get('amount') is None:
+                        # Transaction is still waiting for its amount
+                        if credit_words:
+                            try:
+                                current_txn['amount'] = round(float(credit_words[0][4].lstrip('$').replace(',', '')), 2)
+                                current_txn['type']   = 'credit'
+                            except ValueError:
+                                pass
+                        elif debit_words:
+                            try:
+                                current_txn['amount'] = round(float(debit_words[0][4].lstrip('$').replace(',', '')), 2)
+                                current_txn['type']   = 'debit'
+                            except ValueError:
+                                pass
+                    # Append extra description text from this continuation line
+                    if desc:
+                        current_txn['description'] = (current_txn.get('description', '') + ' ' + desc).strip()
+
+        _flush()
+        doc.close()
+
+        return transactions, len(transactions) >= 2
+
+    except Exception as e:
+        print(f"Strategy 11 (M&T Bank) failed: {e}", file=sys.stderr)
+        return [], False
+
+
 # ─── Orchestrator ─────────────────────────────────────────────────────────────
 
 def extract_transactions_deterministic(pdf_path: str) -> Tuple[List[Dict], bool]:
@@ -2186,9 +2387,10 @@ def extract_transactions_deterministic(pdf_path: str) -> Tuple[List[Dict], bool]
       1. CNBank / Community Bank NA      (MM/DD/YYYY, single chronological list)
       2. BOKF / Bank of Texas            (MM-DD date format, DEPOSITS/WITHDRAWALS sections)
       3. Michigan First Credit Union     (Mon DD date, signed amount + balance columns)
-      4. Huntington National Bank        (Deposits/Checks two-col + Other Credits/Debits)
-      5. U.S. Bank format               (Other Deposits / Card Withdrawals sections)
-      6. FirstLight FCU                  (MemberAccountStatement / FLFCU format)
+      4. M&T Bank                        (MM/DD/YYYY, fitz coordinate-based, 3-column)
+      5. Huntington National Bank        (Deposits/Checks two-col + Other Credits/Debits)
+      6. U.S. Bank format               (Other Deposits / Card Withdrawals sections)
+      7. FirstLight FCU                  (MemberAccountStatement / FLFCU format)
       Generic (no guard, try in order):
       7. *start*/*end* section markers  (Chase / JPMorgan)
       8. Section header keywords         (generic section-based banks)
@@ -2201,6 +2403,7 @@ def extract_transactions_deterministic(pdf_path: str) -> Tuple[List[Dict], bool]
         (_extract_cnbank,              "CNBank"),
         (_extract_bokf,                "BOKF"),
         (_extract_michiganfirst,       "MichiganFirst"),
+        (_extract_mtbank,              "M&T Bank"),
         (_extract_huntington,          "Huntington"),
         (_extract_usbank,              "U.S. Bank"),
         (_extract_flfcu,               "FirstLight FCU"),
@@ -3040,6 +3243,7 @@ def main():
             "BOKF":             "Bank of Texas",
             "CNBank":           "Community Bank NA",
             "MichiganFirst":    "Michigan First Credit Union",
+            "M&T Bank":         "M&T Bank",
         }
         det_bank_name = _DET_BANK_NAMES.get(det_label) if det_label else None
 
