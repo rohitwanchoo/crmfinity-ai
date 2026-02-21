@@ -2878,6 +2878,136 @@ def _extract_firstrust(pdf_path: str) -> Tuple[List[Dict], bool]:
         return [], False
 
 
+# ── Citizens Bank ──────────────────────────────────────────────────────────────
+def _extract_citizens_bank(pdf_path: str) -> Tuple[List[Dict], bool]:
+    """
+    Strategy 14: Citizens Bank Analysis Business Checking.
+
+    Guard: 'citizensbank.com' must appear in the document.
+
+    Three transaction sections (in order):
+      Checks           – debit; "CheckNum Amount MM/DD" pairs, up to 2 per line
+      Debits**         – debit; "MM/DD Amount Description" with multi-line descs
+        ATM/Purchases  – sub-section label (still debits, just skip)
+        OtherDebits    – sub-section label (still debits, just skip)
+      Deposits&Credits – credit; "MM/DD Amount Description" with multi-line descs
+      DailyBalance     – balance table; stop parsing here
+    """
+
+    GUARD         = 'citizensbank.com'
+    TXN_RE        = re.compile(r'^\s*(\d{2}/\d{2})\s+([\d,]*\.\d{2})\s+(.*)')   # [\d,]* allows .02
+    CHECK_RE      = re.compile(r'(\d+)\s+([\d,]+\.\d{2})\s+(\d{2}/\d{2})')
+    SUMMARY_AMT   = re.compile(r'^[\+\-=]\s*[\d,]*\.\d{2}')   # +/- total lines
+
+    SKIP_RE = re.compile(
+        r'^('
+        r'Date\s+Amount\s+Description'
+        r'|Check#\s+Amount\s+Date'
+        r'|ATM/Purchases'
+        r'|OtherDebits'
+        r'|\*{2}May\s*include'
+        r'|PleaseSee'
+        r'|Page\s+\d+\s+of'
+        r'|Analysis\s+Business\s+Checking\s+for'
+        r'|Images\s*for\s*Account'
+        r'|Total(?:Checks|Debits|Deposits|Credits)'
+        r'|PreviousBalance|CurrentBalance|BalanceCalculation'
+        r'|YournextstatementperiodwillendOn'
+        r'|Yournextstatementperiodwillend'
+        r')',
+        re.IGNORECASE,
+    )
+
+    try:
+        with pdfplumber.open(pdf_path) as pdf:
+            full_text = '\n'.join(page.extract_text() or '' for page in pdf.pages)
+
+        if GUARD not in full_text:
+            return [], False
+
+        # Extract statement year from header
+        yr_m = re.search(r'(?:Beginning|through)\s+\w+\s+\d+,\s+(\d{4})', full_text)
+        year = yr_m.group(1) if yr_m else str(datetime.today().year)
+
+        def parse_date(mmdd: str) -> str:
+            try:
+                return datetime.strptime(f"{mmdd}/{year}", "%m/%d/%Y").strftime("%Y-%m-%d")
+            except Exception:
+                return f"{year}-{mmdd[:2]}-{mmdd[3:]}"
+
+        transactions: List[Dict] = []
+        section = None   # 'checks' | 'debits' | 'credits' | None
+        pending = None
+
+        def flush():
+            nonlocal pending
+            if pending:
+                transactions.append(pending)
+                pending = None
+
+        for line in full_text.splitlines():
+            s = line.strip()
+
+            # ── Section transitions ───────────────────────────────────────────
+            if s.startswith('DailyBalance') or re.match(r'Daily\s+Balance', s):
+                flush()
+                break
+
+            if s.startswith('Deposits') and ('&Credit' in s or 'Continued' in s):
+                flush()
+                section = 'credits'
+                continue
+
+            if s.startswith('Debits'):
+                flush()
+                section = 'debits'
+                continue
+
+            if s.startswith('Checks') and not TXN_RE.match(line):
+                flush()
+                section = 'checks'
+                continue
+
+            if section is None:
+                continue
+
+            # ── Skip noise ────────────────────────────────────────────────────
+            if not s or SUMMARY_AMT.match(s) or SKIP_RE.match(s):
+                continue
+
+            # ── Parse transactions ────────────────────────────────────────────
+            if section == 'checks':
+                for check_num, amt_str, date_str in CHECK_RE.findall(s):
+                    transactions.append({
+                        'date':        parse_date(date_str),
+                        'description': f'Check #{check_num}',
+                        'amount':      float(amt_str.replace(',', '')),
+                        'type':        'debit',
+                    })
+                continue
+
+            txn_type = 'debit' if section == 'debits' else 'credit'
+            m = TXN_RE.match(line)
+            if m:
+                flush()
+                pending = {
+                    'date':        parse_date(m.group(1)),
+                    'description': m.group(3).strip(),
+                    'amount':      float(m.group(2).replace(',', '')),
+                    'type':        txn_type,
+                }
+            elif pending and s:
+                # Continuation of previous transaction's description
+                pending['description'] += ' ' + s
+
+        flush()
+        return transactions, len(transactions) >= 2
+
+    except Exception as e:
+        print(f'Strategy 14 (Citizens Bank) failed: {e}', file=sys.stderr)
+        return [], False
+
+
 # ─── Orchestrator ─────────────────────────────────────────────────────────────
 
 def extract_transactions_deterministic(pdf_path: str) -> Tuple[List[Dict], bool]:
@@ -2891,11 +3021,12 @@ def extract_transactions_deterministic(pdf_path: str) -> Tuple[List[Dict], bool]
       5. Huntington National Bank        (Deposits/Checks two-col + Other Credits/Debits)
       6. U.S. Bank format               (Other Deposits / Card Withdrawals sections)
       7. FirstLight FCU                  (MemberAccountStatement / FLFCU format)
+      8. Citizens Bank                   (Analysis Business Checking, citizensbank.com)
       Generic (no guard, try in order):
-      7. *start*/*end* section markers  (Chase / JPMorgan)
-      8. Section header keywords         (generic section-based banks)
-      9. Column-position based           (Wells Fargo and similar)
-     10. PDF table structure             (rarely succeeds, original fallback)
+      9.  *start*/*end* section markers  (Chase / JPMorgan)
+     10. Section header keywords         (generic section-based banks)
+     11. Column-position based           (Wells Fargo and similar)
+     12. PDF table structure             (rarely succeeds, original fallback)
 
     Returns (transactions_list, success_flag, strategy_label).
     """
@@ -2910,6 +3041,7 @@ def extract_transactions_deterministic(pdf_path: str) -> Tuple[List[Dict], bool]
         (_extract_truist_business,     "Truist Business"),
         (_extract_bofa_business,       "BofA Business"),
         (_extract_firstrust,           "Firstrust"),
+        (_extract_citizens_bank,       "Citizens Bank"),
         (_extract_by_section_markers,  "section markers"),
         (_extract_by_section_headers,  "section headers"),
         (_extract_by_column_position,  "column position"),
@@ -3886,6 +4018,7 @@ def main():
             "BofA Business":    "Bank of America",
             "Truist Business":  "Truist Bank",
             "Firstrust":        "Firstrust Bank",
+            "Citizens Bank":    "Citizens Bank, N.A.",
         }
         det_bank_name = _DET_BANK_NAMES.get(det_label) if det_label else None
 

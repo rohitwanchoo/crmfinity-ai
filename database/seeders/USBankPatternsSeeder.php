@@ -430,6 +430,44 @@ class USBankPatternsSeeder extends Seeder
                 ],
             ],
 
+            // 9c. Citizens Bank
+            [
+                'bank_name' => 'Citizens Bank, N.A.',
+                'layout_version' => 'default',
+                'date_format' => 'MM/DD',
+                'header_patterns' => [
+                    'citizensbank.com',
+                    'Citizens Bank, N.A.',
+                    'Citizens Bank',
+                    'CITIZENS BANK',
+                    'Analysis Business Checking',
+                ],
+                'footer_patterns' => [
+                    'Citizens Bank, N.A.',
+                    'Thank you for banking with Citizens',
+                ],
+                'transaction_markers' => [
+                    'Debits**',
+                    'Deposits&Credits',
+                    'ATM/Purchases',
+                    'OtherDebits',
+                    'Check#',
+                    'DailyBalance',
+                ],
+                'column_structure' => [
+                    'date'               => 'left',
+                    'description'        => 'center',
+                    'amount'             => 'right',
+                    'separate_debit_credit' => true,
+                ],
+                'extraction_rules' => [
+                    'debit_indicators'  => ['Debits**', 'ATM/Purchases', 'OtherDebits', 'Checks'],
+                    'credit_indicators' => ['Deposits&Credits'],
+                    'check_format'      => 'Check# Amount MM/DD pairs (up to 2 per line)',
+                    'notes'             => 'Citizens Bank Analysis Business Checking. Sections: Checks (debit), Debits** (ATM/Purchases + OtherDebits), Deposits&Credits. Stop at DailyBalance. Multi-line descriptions. Providence RI based.',
+                ],
+            ],
+
             // 10. Fifth Third Bank
             [
                 'bank_name' => 'Fifth Third Bank',
