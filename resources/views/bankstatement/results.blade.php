@@ -566,43 +566,43 @@
                     <!-- Combined Summary Stats -->
                     <div class="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-8 gap-4 mb-6">
                         <div class="metric-card bg-gray-50 dark:bg-gray-700 p-4 rounded-lg transition-all duration-300" data-metric-type="neutral">
-                            <p class="text-sm text-gray-500 dark:text-gray-400">Total Transactions</p>
-                            <p class="text-2xl font-bold text-gray-900 dark:text-gray-100">{{ number_format($combinedTotals['transactions']) }}</p>
+                            <p class="text-xs text-gray-500 dark:text-gray-400">Total Transactions</p>
+                            <p class="text-sm font-bold text-gray-900 dark:text-gray-100 break-words">{{ number_format($combinedTotals['transactions']) }}</p>
                         </div>
                         <div class="metric-card bg-gray-50 dark:bg-gray-700 p-4 rounded-lg transition-all duration-300" data-metric-type="credit">
-                            <p class="text-sm text-gray-500 dark:text-gray-400">Total Deposits</p>
-                            <p class="metric-value combined-metric-deposits text-2xl font-bold text-green-600 dark:text-green-400">${{ number_format($combinedTotals['deposits'], 2) }}</p>
+                            <p class="text-xs text-gray-500 dark:text-gray-400">Total Deposits</p>
+                            <p class="metric-value combined-metric-deposits text-sm font-bold text-green-600 dark:text-green-400 break-words">${{ number_format($combinedTotals['deposits'], 2) }}</p>
                             <p class="metric-subtext text-xs text-gray-500">{{ $combinedTotals['deposit_count'] }} transactions</p>
                         </div>
                         <div class="metric-card bg-gray-50 dark:bg-gray-700 p-4 rounded-lg transition-all duration-300" data-metric-type="neutral">
-                            <p class="text-sm text-gray-500 dark:text-gray-400">Adjustments</p>
-                            <p class="text-2xl font-bold text-orange-600 dark:text-orange-400 combined-metric-adj">${{ number_format($combinedTotals['adjustments'], 2) }}</p>
+                            <p class="text-xs text-gray-500 dark:text-gray-400">Adjustments</p>
+                            <p class="text-sm font-bold text-orange-600 dark:text-orange-400 combined-metric-adj break-words">${{ number_format($combinedTotals['adjustments'], 2) }}</p>
                         </div>
                         <div class="metric-card bg-green-50 dark:bg-green-900/30 p-4 rounded-lg border-2 border-green-300 dark:border-green-700 transition-all duration-300" data-metric-type="credit">
-                            <p class="text-sm text-green-700 dark:text-green-300 font-medium">True Revenue</p>
-                            <p class="metric-value combined-metric-rev text-2xl font-bold text-green-600 dark:text-green-400">${{ number_format($combinedTotals['true_revenue'], 2) }}</p>
+                            <p class="text-xs text-green-700 dark:text-green-300 font-medium">True Revenue</p>
+                            <p class="metric-value combined-metric-rev text-sm font-bold text-green-600 dark:text-green-400 break-words">${{ number_format($combinedTotals['true_revenue'], 2) }}</p>
                             <p class="metric-subtext text-xs text-green-600">Avg: ${{ number_format($combinedAverages['true_revenue'], 2) }}/mo</p>
                         </div>
                         <div class="metric-card bg-gray-50 dark:bg-gray-700 p-4 rounded-lg transition-all duration-300" data-metric-type="debit">
-                            <p class="text-sm text-gray-500 dark:text-gray-400">Total Debits</p>
-                            <p class="metric-value combined-metric-debits text-2xl font-bold text-red-600 dark:text-red-400">${{ number_format($combinedTotals['debits'], 2) }}</p>
+                            <p class="text-xs text-gray-500 dark:text-gray-400">Total Debits</p>
+                            <p class="metric-value combined-metric-debits text-sm font-bold text-red-600 dark:text-red-400 break-words">${{ number_format($combinedTotals['debits'], 2) }}</p>
                             <p class="metric-subtext text-xs text-gray-500">{{ $combinedTotals['debit_count'] }} transactions</p>
                         </div>
                         <div class="metric-card bg-gray-50 dark:bg-gray-700 p-4 rounded-lg transition-all duration-300" data-metric-type="debit">
-                            <p class="text-sm text-gray-500 dark:text-gray-400">NSF/OD Fees</p>
-                            <p class="metric-value text-2xl font-bold {{ $combinedTotals['nsf_count'] > 0 ? 'text-red-600 dark:text-red-400' : 'text-gray-900 dark:text-gray-100' }}">{{ $combinedTotals['nsf_count'] }}</p>
+                            <p class="text-xs text-gray-500 dark:text-gray-400">NSF/OD Fees</p>
+                            <p class="metric-value text-sm font-bold {{ $combinedTotals['nsf_count'] > 0 ? 'text-red-600 dark:text-red-400' : 'text-gray-900 dark:text-gray-100' }}">{{ $combinedTotals['nsf_count'] }}</p>
                         </div>
                         @if($combinedAverages['average_daily_balance'] !== null)
                         <div class="metric-card bg-blue-50 dark:bg-blue-900/30 p-4 rounded-lg border-2 border-blue-300 dark:border-blue-700 transition-all duration-300" data-metric-type="neutral">
-                            <p class="text-sm text-blue-700 dark:text-blue-300 font-medium">Avg Daily Balance</p>
-                            <p class="text-2xl font-bold text-blue-600 dark:text-blue-400">${{ number_format($combinedAverages['average_daily_balance'], 2) }}</p>
+                            <p class="text-xs text-blue-700 dark:text-blue-300 font-medium">Avg Daily Balance</p>
+                            <p class="text-sm font-bold text-blue-600 dark:text-blue-400 break-words">${{ number_format($combinedAverages['average_daily_balance'], 2) }}</p>
                             <p class="text-xs text-gray-500">From statements</p>
                         </div>
                         @endif
                         @if($combinedAverages['average_ledger_balance'] !== null)
                         <div class="metric-card bg-indigo-50 dark:bg-indigo-900/30 p-4 rounded-lg border-2 border-indigo-300 dark:border-indigo-700 transition-all duration-300" data-metric-type="neutral">
-                            <p class="text-sm text-indigo-700 dark:text-indigo-300 font-medium">Avg Ledger Balance</p>
-                            <p class="text-2xl font-bold text-indigo-600 dark:text-indigo-400">${{ number_format($combinedAverages['average_ledger_balance'], 2) }}</p>
+                            <p class="text-xs text-indigo-700 dark:text-indigo-300 font-medium">Avg Ledger Balance</p>
+                            <p class="text-sm font-bold text-indigo-600 dark:text-indigo-400 break-words">${{ number_format($combinedAverages['average_ledger_balance'], 2) }}</p>
                             <p class="text-xs text-gray-500">Calculated</p>
                         </div>
                         @endif
@@ -1151,6 +1151,194 @@
                     </div>
                 </div>
             </div>
+
+            <!-- Lender Qualification Section -->
+            @if(isset($lenderMatches) && $lenderMatches['counts']['total'] > 0)
+            <div class="mb-8 bg-white dark:bg-gray-800 overflow-hidden shadow-sm sm:rounded-lg border-2 border-green-500" id="combined-lender-matching">
+                <div class="p-2">
+                    <!-- Header -->
+                    <div class="flex items-center justify-between mb-4">
+                        <div class="flex items-center">
+                            <div class="p-2 bg-green-100 dark:bg-green-900 rounded-lg mr-3">
+                                <svg class="w-6 h-6 text-green-600 dark:text-green-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z"/>
+                                </svg>
+                            </div>
+                            <div>
+                                <h3 class="text-xl font-bold text-gray-900 dark:text-gray-100">Lender Qualification</h3>
+                                <p class="text-sm text-gray-500 dark:text-gray-400">Lenders this merchant qualifies for based on their financial profile</p>
+                            </div>
+                        </div>
+                        <div class="flex items-center gap-3">
+                            <span class="inline-flex items-center px-3 py-1 rounded-full text-sm font-semibold bg-green-100 dark:bg-green-900 text-green-800 dark:text-green-200">
+                                {{ $lenderMatches['counts']['qualified'] }} of {{ $lenderMatches['counts']['total'] }} qualify
+                            </span>
+                        </div>
+                    </div>
+
+                    <!-- Criteria chips -->
+                    <div class="flex flex-wrap gap-2 mb-4 px-2">
+                        @php $cu = $lenderMatches['criteria_used']; @endphp
+                        <span class="px-2 py-1 rounded text-xs bg-gray-100 dark:bg-gray-700 text-gray-600 dark:text-gray-300">Avg Monthly Deposits: <strong>${{ number_format($cu['avg_monthly_deposits'], 0) }}</strong></span>
+                        <span class="px-2 py-1 rounded text-xs bg-gray-100 dark:bg-gray-700 text-gray-600 dark:text-gray-300">True Revenue/mo: <strong>${{ number_format($cu['avg_monthly_true_revenue'], 0) }}</strong></span>
+                        <span class="px-2 py-1 rounded text-xs bg-gray-100 dark:bg-gray-700 text-gray-600 dark:text-gray-300">Neg Days/mo: <strong>{{ round($cu['avg_negative_days'], 1) }}</strong></span>
+                        <span class="px-2 py-1 rounded text-xs bg-gray-100 dark:bg-gray-700 text-gray-600 dark:text-gray-300">NSF/mo: <strong>{{ round($cu['avg_nsf_per_month'], 1) }}</strong></span>
+                        <span class="px-2 py-1 rounded text-xs bg-gray-100 dark:bg-gray-700 text-gray-600 dark:text-gray-300">MCA Positions: <strong>{{ $cu['active_mca_positions'] }}</strong></span>
+                        @if($cu['avg_daily_balance'] !== null)
+                        <span class="px-2 py-1 rounded text-xs bg-gray-100 dark:bg-gray-700 text-gray-600 dark:text-gray-300">Avg Daily Bal: <strong>${{ number_format($cu['avg_daily_balance'], 0) }}</strong></span>
+                        @endif
+                    </div>
+
+                    <!-- Toggle -->
+                    <div class="flex gap-2 mb-4 px-2">
+                        <button onclick="lmToggleView('combined', 'qualified')" id="combined-lm-btn-qualified"
+                            class="px-4 py-2 rounded-lg text-sm font-medium bg-green-600 text-white transition-colors">
+                            Qualified ({{ $lenderMatches['counts']['qualified'] }})
+                        </button>
+                        <button onclick="lmToggleView('combined', 'all')" id="combined-lm-btn-all"
+                            class="px-4 py-2 rounded-lg text-sm font-medium bg-gray-200 dark:bg-gray-700 text-gray-700 dark:text-gray-300 hover:bg-gray-300 transition-colors">
+                            All Lenders ({{ $lenderMatches['counts']['total'] }})
+                        </button>
+                    </div>
+
+                    <!-- Table -->
+                    <div class="overflow-x-auto">
+                        <table class="min-w-full divide-y divide-gray-200 dark:divide-gray-700 text-sm">
+                            <thead class="bg-gray-50 dark:bg-gray-700">
+                                <tr>
+                                    <th class="px-4 py-3 text-left text-xs font-semibold text-gray-500 dark:text-gray-400 uppercase">Lender</th>
+                                    <th class="px-4 py-3 text-left text-xs font-semibold text-gray-500 dark:text-gray-400 uppercase">Product</th>
+                                    <th class="px-4 py-3 text-center text-xs font-semibold text-gray-500 dark:text-gray-400 uppercase">Funding Speed</th>
+                                    <th class="px-4 py-3 text-center text-xs font-semibold text-gray-500 dark:text-gray-400 uppercase">Factor Rate</th>
+                                    <th class="px-4 py-3 text-right text-xs font-semibold text-gray-500 dark:text-gray-400 uppercase">Max Amount</th>
+                                    <th class="px-4 py-3 text-center text-xs font-semibold text-gray-500 dark:text-gray-400 uppercase">Max Positions</th>
+                                    <th class="px-4 py-3 text-center text-xs font-semibold text-gray-500 dark:text-gray-400 uppercase" id="combined-lm-status-col">Status</th>
+                                    <th class="px-4 py-3 text-center text-xs font-semibold text-gray-500 dark:text-gray-400 uppercase"></th>
+                                </tr>
+                            </thead>
+                            <tbody class="bg-white dark:bg-gray-800 divide-y divide-gray-200 dark:divide-gray-700" id="combined-lm-tbody">
+                                @foreach($lenderMatches['all'] as $match)
+                                <tr class="lm-row hover:bg-gray-50 dark:hover:bg-gray-700 {{ $match['qualified'] ? 'lm-qualified bg-green-50/30 dark:bg-green-900/10' : 'lm-disqualified' }}"
+                                    data-qualified="{{ $match['qualified'] ? '1' : '0' }}">
+                                    <td class="px-4 py-3 font-medium text-gray-900 dark:text-gray-100">
+                                        {{ $match['lender']->lender_name }}
+                                    </td>
+                                    <td class="px-4 py-3 text-gray-600 dark:text-gray-400">
+                                        {{ $match['lender']->product_type ?? '—' }}
+                                    </td>
+                                    <td class="px-4 py-3 text-center text-gray-600 dark:text-gray-400">
+                                        {{ $match['lender']->funding_speed ?? '—' }}
+                                    </td>
+                                    <td class="px-4 py-3 text-center text-gray-600 dark:text-gray-400">
+                                        {{ $match['lender']->factor_rate ?? '—' }}
+                                    </td>
+                                    <td class="px-4 py-3 text-right text-gray-900 dark:text-gray-100 font-medium">
+                                        @if($match['lender']->max_loan_amount)
+                                            ${{ number_format($match['lender']->max_loan_amount, 0) }}
+                                        @else
+                                            —
+                                        @endif
+                                    </td>
+                                    <td class="px-4 py-3 text-center text-gray-600 dark:text-gray-400">
+                                        {{ $match['lender']->max_positions ?? '—' }}
+                                    </td>
+                                    <td class="px-4 py-3 text-center lm-status-cell">
+                                        @if($match['qualified'])
+                                            <span class="inline-flex items-center px-2 py-1 rounded-full text-xs font-medium bg-green-100 dark:bg-green-900 text-green-800 dark:text-green-300">
+                                                ✓ Qualifies
+                                            </span>
+                                        @else
+                                            <span class="inline-flex items-center px-2 py-1 rounded-full text-xs font-medium bg-red-100 dark:bg-red-900 text-red-800 dark:text-red-300">
+                                                ✗ Does Not Qualify
+                                            </span>
+                                        @endif
+                                    </td>
+                                    <td class="px-4 py-3 text-center">
+                                        <button onclick="lmToggleCriteria(this)" class="text-xs text-blue-600 dark:text-blue-400 hover:underline">Details ▾</button>
+                                    </td>
+                                </tr>
+                                <!-- Criteria detail row -->
+                                <tr class="lm-criteria-row hidden lm-row {{ $match['qualified'] ? 'lm-qualified' : 'lm-disqualified' }}"
+                                    data-qualified="{{ $match['qualified'] ? '1' : '0' }}">
+                                    <td colspan="8" class="px-6 py-3 bg-gray-50 dark:bg-gray-700/50">
+                                        @if(empty($match['criteria']))
+                                            <p class="text-xs text-gray-500 dark:text-gray-400">No specific criteria defined for this lender.</p>
+                                        @else
+                                        <ul class="flex flex-wrap gap-x-6 gap-y-1">
+                                            @foreach($match['criteria'] as $check)
+                                            <li class="flex items-center gap-1 text-xs {{ $check['skipped'] ? 'text-gray-400 dark:text-gray-500' : ($check['passed'] ? 'text-green-700 dark:text-green-400' : 'text-red-700 dark:text-red-400') }}">
+                                                @if($check['skipped'])
+                                                    <span>—</span>
+                                                @elseif($check['passed'])
+                                                    <span>✓</span>
+                                                @else
+                                                    <span>✗</span>
+                                                @endif
+                                                <span class="font-medium">{{ $check['name'] }}:</span>
+                                                <span>{{ $check['actual'] }}</span>
+                                                <span class="text-gray-400">(req: {{ $check['required'] }})</span>
+                                            </li>
+                                            @endforeach
+                                        </ul>
+                                        @if(!empty($match['fail_reasons']))
+                                        <ul class="mt-1 flex flex-wrap gap-x-4 gap-y-1">
+                                            @foreach($match['fail_reasons'] as $reason)
+                                            <li class="text-xs text-red-600 dark:text-red-400">• {{ $reason }}</li>
+                                            @endforeach
+                                        </ul>
+                                        @endif
+                                        @endif
+                                    </td>
+                                </tr>
+                                @endforeach
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+            </div>
+            @endif
+
+            <script>
+            function lmToggleView(prefix, view) {
+                var rows = document.querySelectorAll('#' + prefix + '-lm-tbody .lm-row');
+                var statusCol = document.getElementById(prefix + '-lm-status-col');
+                var statusCells = document.querySelectorAll('#' + prefix + '-lm-tbody .lm-status-cell');
+                var btnQ = document.getElementById(prefix + '-lm-btn-qualified');
+                var btnA = document.getElementById(prefix + '-lm-btn-all');
+
+                if (view === 'qualified') {
+                    rows.forEach(function(r) {
+                        r.classList.toggle('hidden', r.dataset.qualified !== '1');
+                    });
+                    if (statusCol) statusCol.classList.add('hidden');
+                    statusCells.forEach(function(c) { c.classList.add('hidden'); });
+                    btnQ.className = 'px-4 py-2 rounded-lg text-sm font-medium bg-green-600 text-white transition-colors';
+                    btnA.className = 'px-4 py-2 rounded-lg text-sm font-medium bg-gray-200 dark:bg-gray-700 text-gray-700 dark:text-gray-300 hover:bg-gray-300 transition-colors';
+                } else {
+                    rows.forEach(function(r) { r.classList.remove('hidden'); });
+                    // Re-hide any open criteria rows that belong to disqualified lenders if needed
+                    document.querySelectorAll('#' + prefix + '-lm-tbody .lm-criteria-row').forEach(function(r) {
+                        if (!r.classList.contains('lm-open')) r.classList.add('hidden');
+                    });
+                    if (statusCol) statusCol.classList.remove('hidden');
+                    statusCells.forEach(function(c) { c.classList.remove('hidden'); });
+                    btnA.className = 'px-4 py-2 rounded-lg text-sm font-medium bg-green-600 text-white transition-colors';
+                    btnQ.className = 'px-4 py-2 rounded-lg text-sm font-medium bg-gray-200 dark:bg-gray-700 text-gray-700 dark:text-gray-300 hover:bg-gray-300 transition-colors';
+                }
+            }
+            function lmToggleCriteria(btn) {
+                var criteriaRow = btn.closest('tr').nextElementSibling;
+                if (!criteriaRow) return;
+                var isOpen = !criteriaRow.classList.contains('hidden');
+                criteriaRow.classList.toggle('hidden', isOpen);
+                criteriaRow.classList.toggle('lm-open', !isOpen);
+                btn.textContent = isOpen ? 'Details ▾' : 'Details ▴';
+            }
+            // Default: hide status column (qualified view)
+            document.addEventListener('DOMContentLoaded', function() {
+                lmToggleView('combined', 'qualified');
+            });
+            </script>
 
             <!-- MCA Offer Calculator Section -->
             <div class="mb-8 bg-white dark:bg-gray-800 overflow-hidden shadow-sm sm:rounded-lg border-2 border-blue-500">
@@ -1837,6 +2025,176 @@
                     </div>
                     @endif
 
+                    <!-- Debt Collector Payments -->
+                    @if(isset($result['debt_collector_analysis']) && $result['debt_collector_analysis']['total_collector_count'] > 0)
+                    <div class="mb-6 border dark:border-gray-700 rounded-lg overflow-hidden">
+                        <div class="bg-orange-600 px-4 py-3">
+                            <h4 class="font-semibold text-white flex items-center">
+                                <svg class="w-5 h-5 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3 6l3 1m0 0l-3 9a5.002 5.002 0 006.001 0M6 7l3 9M6 7l6-2m6 2l3-1m-3 1l-3 9a5.002 5.002 0 006.001 0M18 7l3 9m-3-9l-6-2m0-2v2m0 16V5m0 16H9m3 0h3"></path>
+                                </svg>
+                                Debt Collector Payments Detected
+                                <span class="ml-2 px-2 py-0.5 bg-white/20 rounded text-sm">{{ $result['debt_collector_analysis']['total_collector_count'] }} {{ Str::plural('Collector', $result['debt_collector_analysis']['total_collector_count']) }}</span>
+                            </h4>
+                        </div>
+
+                        <!-- Debt Collector Summary Cards -->
+                        <div class="p-4 bg-orange-50 dark:bg-orange-900/20 border-b dark:border-gray-700">
+                            <div class="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-4">
+                                <div class="bg-white dark:bg-gray-800 p-3 rounded-lg border border-orange-200 dark:border-orange-800">
+                                    <p class="text-xs text-gray-500 dark:text-gray-400">Collectors Found</p>
+                                    <p class="text-2xl font-bold text-orange-600 dark:text-orange-400">{{ $result['debt_collector_analysis']['total_collector_count'] }}</p>
+                                </div>
+                                <div class="bg-white dark:bg-gray-800 p-3 rounded-lg border border-orange-200 dark:border-orange-800">
+                                    <p class="text-xs text-gray-500 dark:text-gray-400">Total Payments</p>
+                                    <p class="text-2xl font-bold text-orange-600 dark:text-orange-400">{{ $result['debt_collector_analysis']['total_payments'] }}</p>
+                                </div>
+                                <div class="bg-white dark:bg-gray-800 p-3 rounded-lg border border-orange-200 dark:border-orange-800">
+                                    <p class="text-xs text-gray-500 dark:text-gray-400">Total Amount Paid</p>
+                                    <p class="text-2xl font-bold text-orange-600 dark:text-orange-400">${{ number_format($result['debt_collector_analysis']['total_amount'], 2) }}</p>
+                                </div>
+                            </div>
+                        </div>
+
+                        <!-- Debt Collectors Table -->
+                        <div class="overflow-x-auto">
+                            <table class="min-w-full divide-y divide-gray-200 dark:divide-gray-700">
+                                <thead class="bg-gray-100 dark:bg-gray-700">
+                                    <tr>
+                                        <th class="px-4 py-3 text-left text-xs font-semibold text-gray-600 dark:text-gray-300 uppercase">Collector</th>
+                                        <th class="px-4 py-3 text-center text-xs font-semibold text-gray-600 dark:text-gray-300 uppercase">Frequency</th>
+                                        <th class="px-4 py-3 text-center text-xs font-semibold text-gray-600 dark:text-gray-300 uppercase"># Payments</th>
+                                        <th class="px-4 py-3 text-right text-xs font-semibold text-gray-600 dark:text-gray-300 uppercase">Avg Payment</th>
+                                        <th class="px-4 py-3 text-right text-xs font-semibold text-gray-600 dark:text-gray-300 uppercase">Total Paid</th>
+                                        <th class="px-4 py-3 text-center text-xs font-semibold text-gray-600 dark:text-gray-300 uppercase">Date Range</th>
+                                        <th class="px-4 py-3 text-center text-xs font-semibold text-gray-600 dark:text-gray-300 uppercase">View</th>
+                                    </tr>
+                                </thead>
+                                <tbody class="bg-white dark:bg-gray-800 divide-y divide-gray-200 dark:divide-gray-700">
+                                    @foreach($result['debt_collector_analysis']['collectors'] as $collectorIndex => $collector)
+                                    <tr class="hover:bg-gray-50 dark:hover:bg-gray-700">
+                                        <td class="px-4 py-3">
+                                            <div class="flex items-center">
+                                                <div class="w-8 h-8 bg-orange-100 dark:bg-orange-900 rounded-full flex items-center justify-center mr-3">
+                                                    <svg class="w-4 h-4 text-orange-600 dark:text-orange-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3 6l3 1m0 0l-3 9a5.002 5.002 0 006.001 0M6 7l3 9M6 7l6-2m6 2l3-1m-3 1l-3 9a5.002 5.002 0 006.001 0M18 7l3 9m-3-9l-6-2m0-2v2m0 16V5m0 16H9m3 0h3"></path>
+                                                    </svg>
+                                                </div>
+                                                <div>
+                                                    <p class="font-medium text-gray-900 dark:text-gray-100">{{ $collector['collector_name'] }}</p>
+                                                    @if(count($collector['unique_amounts']) > 1)
+                                                    <p class="text-xs text-gray-500 dark:text-gray-400">Varying amounts: ${{ implode(', $', array_map(fn($a) => number_format($a, 2), array_slice($collector['unique_amounts'], 0, 3))) }}{{ count($collector['unique_amounts']) > 3 ? '...' : '' }}</p>
+                                                    @endif
+                                                </div>
+                                            </div>
+                                        </td>
+                                        <td class="px-4 py-3 text-center">
+                                            @php
+                                                $freqColors = [
+                                                    'daily' => 'bg-red-100 text-red-800 dark:bg-red-900 dark:text-red-200',
+                                                    'every_other_day' => 'bg-red-100 text-red-800 dark:bg-red-900 dark:text-red-200',
+                                                    'twice_weekly' => 'bg-orange-100 text-orange-800 dark:bg-orange-900 dark:text-orange-200',
+                                                    'weekly' => 'bg-yellow-100 text-yellow-800 dark:bg-yellow-900 dark:text-yellow-200',
+                                                    'bi_weekly' => 'bg-blue-100 text-blue-800 dark:bg-blue-900 dark:text-blue-200',
+                                                    'monthly' => 'bg-green-100 text-green-800 dark:bg-green-900 dark:text-green-200',
+                                                    'single_payment' => 'bg-gray-100 text-gray-800 dark:bg-gray-700 dark:text-gray-200',
+                                                    'irregular' => 'bg-purple-100 text-purple-800 dark:bg-purple-900 dark:text-purple-200',
+                                                ];
+                                                $dcFreqColor = $freqColors[$collector['frequency']] ?? 'bg-gray-100 text-gray-800';
+                                            @endphp
+                                            <span class="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium {{ $dcFreqColor }}">
+                                                {{ $collector['frequency_label'] }}
+                                            </span>
+                                        </td>
+                                        <td class="px-4 py-3 text-center text-sm font-medium text-gray-900 dark:text-gray-100">{{ $collector['payment_count'] }}</td>
+                                        <td class="px-4 py-3 text-right text-sm text-gray-700 dark:text-gray-300">${{ number_format($collector['average_payment'], 2) }}</td>
+                                        <td class="px-4 py-3 text-right text-sm font-semibold text-orange-600 dark:text-orange-400">${{ number_format($collector['total_amount'], 2) }}</td>
+                                        <td class="px-4 py-3 text-center text-xs text-gray-500 dark:text-gray-400">
+                                            @if($collector['first_payment'] && $collector['last_payment'])
+                                                @if($collector['first_payment']['date'] === $collector['last_payment']['date'])
+                                                    {{ $collector['first_payment']['date'] }}
+                                                @else
+                                                    {{ $collector['first_payment']['date'] }} to {{ $collector['last_payment']['date'] }}
+                                                @endif
+                                            @else
+                                                -
+                                            @endif
+                                        </td>
+                                        <td class="px-4 py-3 text-center">
+                                            <button onclick="toggleMcaPaymentRow('dc-{{ $result['session_id'] }}-{{ $collectorIndex }}')" class="text-blue-600 hover:text-blue-800 dark:text-blue-400 dark:hover:text-blue-300">
+                                                <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z"></path>
+                                                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z"></path>
+                                                </svg>
+                                            </button>
+                                        </td>
+                                    </tr>
+                                    @if(isset($collector['payments']) && count($collector['payments']) > 0)
+                                    <tr id="dc-{{ $result['session_id'] }}-{{ $collectorIndex }}" class="hidden bg-gray-50 dark:bg-gray-900">
+                                        <td colspan="7" class="px-4 py-3">
+                                            <div class="max-h-96 overflow-y-auto">
+                                                <table class="min-w-full divide-y divide-gray-200 dark:divide-gray-700">
+                                                    <thead class="bg-gray-100 dark:bg-gray-800">
+                                                        <tr>
+                                                            <th class="px-3 py-2 text-left text-xs font-semibold text-gray-600 dark:text-gray-300">Date</th>
+                                                            <th class="px-3 py-2 text-left text-xs font-semibold text-gray-600 dark:text-gray-300">Description</th>
+                                                            <th class="px-3 py-2 text-right text-xs font-semibold text-gray-600 dark:text-gray-300">Amount</th>
+                                                        </tr>
+                                                    </thead>
+                                                    <tbody class="divide-y divide-gray-200 dark:divide-gray-700">
+                                                        @foreach($collector['payments'] as $payment)
+                                                        <tr>
+                                                            <td class="px-3 py-2 text-sm text-gray-700 dark:text-gray-300">{{ $payment['date'] }}</td>
+                                                            <td class="px-3 py-2 text-sm text-gray-700 dark:text-gray-300">{{ $payment['description'] }}</td>
+                                                            <td class="px-3 py-2 text-sm text-right text-orange-600 dark:text-orange-400">${{ number_format($payment['amount'], 2) }}</td>
+                                                        </tr>
+                                                        @endforeach
+                                                    </tbody>
+                                                </table>
+                                            </div>
+                                        </td>
+                                    </tr>
+                                    @endif
+                                    @endforeach
+                                </tbody>
+                                <tfoot class="bg-gray-100 dark:bg-gray-700">
+                                    <tr class="font-semibold">
+                                        <td class="px-4 py-3 text-sm text-gray-900 dark:text-gray-100">Total</td>
+                                        <td class="px-4 py-3"></td>
+                                        <td class="px-4 py-3 text-center text-sm text-gray-900 dark:text-gray-100">{{ $result['debt_collector_analysis']['total_payments'] }}</td>
+                                        <td class="px-4 py-3"></td>
+                                        <td class="px-4 py-3 text-right text-sm text-orange-600 dark:text-orange-400">${{ number_format($result['debt_collector_analysis']['total_amount'], 2) }}</td>
+                                        <td class="px-4 py-3"></td>
+                                        <td class="px-4 py-3"></td>
+                                    </tr>
+                                </tfoot>
+                            </table>
+                        </div>
+
+                        <!-- Debt Collector Warning -->
+                        <div class="p-4 bg-amber-50 dark:bg-amber-900/20 border-t dark:border-gray-700">
+                            <div class="flex items-start">
+                                <svg class="w-5 h-5 text-amber-600 dark:text-amber-400 mr-2 mt-0.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"></path>
+                                </svg>
+                                <div>
+                                    <p class="text-sm font-medium text-amber-800 dark:text-amber-200">Debt Collection Activity Alert</p>
+                                    <p class="text-xs text-amber-700 dark:text-amber-300 mt-1">
+                                        Payments to {{ $result['debt_collector_analysis']['total_collector_count'] }} debt {{ Str::plural('collector', $result['debt_collector_analysis']['total_collector_count']) }} detected totaling ${{ number_format($result['debt_collector_analysis']['total_amount'], 2) }}.
+                                        @if($result['debt_collector_analysis']['total_collector_count'] >= 3)
+                                            <strong>Multiple collectors active.</strong> This indicates significant outstanding debt obligations that may impact repayment capacity.
+                                        @elseif($result['debt_collector_analysis']['total_collector_count'] >= 2)
+                                            <strong>Multiple collectors detected.</strong> Review the debt load relative to cash flow before approving funding.
+                                        @else
+                                            Review this debt obligation alongside other financial commitments to assess repayment capacity.
+                                        @endif
+                                    </p>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                    @endif
+
                     <!-- Validation Warnings -->
                     @if(isset($result['validation']) && $result['validation']['has_warnings'])
                     <div class="mb-6 border border-orange-300 dark:border-orange-700 rounded-lg overflow-hidden">
@@ -1908,7 +2266,7 @@
                         <div class="bg-gray-50 dark:bg-gray-700 p-4 rounded-lg {{ isset($result['validation']['warnings']) && collect($result['validation']['warnings'])->contains('type', 'credit_mismatch') ? 'ring-2 ring-orange-400 dark:ring-orange-600' : '' }}">
                             <p class="text-sm text-gray-500 dark:text-gray-400">Total Deposits</p>
                             <p class="text-2xl font-bold text-green-600 dark:text-green-400" data-total="credits">${{ number_format($result['summary']['credit_total'], 2) }}</p>
-                            <p class="text-xs text-gray-500">{{ $result['summary']['credit_count'] }} transactions</p>
+                            <p class="text-xs text-gray-500" data-count="credits">{{ $result['summary']['credit_count'] }} transactions</p>
                             @if(isset($result['validation']['expected_credits']) && $result['validation']['expected_credits'])
                                 @php
                                     $creditDiff = abs($result['validation']['expected_credits'] - $result['summary']['credit_total']);
@@ -1941,7 +2299,7 @@
                         <div class="bg-gray-50 dark:bg-gray-700 p-4 rounded-lg {{ isset($result['validation']['warnings']) && collect($result['validation']['warnings'])->contains('type', 'debit_mismatch') ? 'ring-2 ring-orange-400 dark:ring-orange-600' : '' }}">
                             <p class="text-sm text-gray-500 dark:text-gray-400">Total Debits</p>
                             <p class="text-2xl font-bold text-red-600 dark:text-red-400" data-total="debits">${{ number_format($result['summary']['debit_total'], 2) }}</p>
-                            <p class="text-xs text-gray-500">{{ $result['summary']['debit_count'] }} transactions</p>
+                            <p class="text-xs text-gray-500" data-count="debits">{{ $result['summary']['debit_count'] }} transactions</p>
                             @if(isset($result['validation']['expected_debits']) && $result['validation']['expected_debits'])
                                 @php
                                     $debitDiff = abs($result['validation']['expected_debits'] - $result['summary']['debit_total']);
@@ -4794,10 +5152,14 @@
             const creditTotal = sessionSection.querySelector('[data-total="credits"]');
             const debitTotal = sessionSection.querySelector('[data-total="debits"]');
             const netFlow = sessionSection.querySelector('[data-total="net_flow"]');
+            const creditCount = sessionSection.querySelector('[data-count="credits"]');
+            const debitCount = sessionSection.querySelector('[data-count="debits"]');
 
             if (creditTotal) creditTotal.textContent = '$' + totals.total_credits;
             if (debitTotal) debitTotal.textContent = '$' + totals.total_debits;
             if (netFlow) netFlow.textContent = '$' + totals.net_flow;
+            if (creditCount && totals.credit_count !== undefined) creditCount.textContent = totals.credit_count + ' transactions';
+            if (debitCount && totals.debit_count !== undefined) debitCount.textContent = totals.debit_count + ' transactions';
         }
 
         function updateAdjustmentsList(sessionId, monthKey, description, amount, oldClass, newClass) {

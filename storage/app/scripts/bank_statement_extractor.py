@@ -620,6 +620,8 @@ _SECTION_HEADER_PATTERNS = [
     # Checks — "Checks Paid" header and JPMorgan "Check Date" column-header both trigger check parsing
     (re.compile(r'^\s*CHECKS?\s+PAID\s*$', re.I), 'debit', 'checks'),
     (re.compile(r'^\s*CHECK\s+DATE\s*$', re.I), 'debit', 'checks'),
+    # Checks In Number Order (DATE CHECK_NO AMOUNT triplets per row — community banks)
+    (re.compile(r'^\s*CHECKS?\s+IN\s+NUMBER\s+ORDER\s*$', re.I), 'debit', 'checks_in_order'),
     # ACH/wire payments (JPMorgan Classic "Payments & Transfers" section)
     (re.compile(r'^\s*PAYMENTS?\s+[&AND]+\s+TRANSFERS?\s*$', re.I), 'debit', 'payments'),
     # Fees
@@ -629,10 +631,12 @@ _SECTION_HEADER_PATTERNS = [
     # Other debit sections
     (re.compile(r'^\s*OTHER\s+WITHDRAWALS?\s*$', re.I), 'debit', 'withdrawals'),
     (re.compile(r'^\s*WITHDRAWALS?\s+AND\s+DEBITS?\s*$', re.I), 'debit', 'withdrawals'),
+    (re.compile(r'^\s*DEBITS?\s+AND\s+WITHDRAWALS?\s*$', re.I), 'debit', 'withdrawals'),
     (re.compile(r'^\s*DEBITS?\s*$', re.I), 'debit', 'debits'),
     (re.compile(r'^\s*WITHDRAWALS?\s*$', re.I), 'debit', 'withdrawals'),
     # Non-transaction sections — stop parsing until next real section
     (re.compile(r'^\s*DAILY\s+ENDING\s+BALANCE\s*$', re.I), None, 'balance'),
+    (re.compile(r'^\s*DAILY\s+BALANCE\s+INFORMATION\s*$', re.I), None, 'balance'),
     (re.compile(r'^\s*ACCOUNT\s+ACTIVITY\s+SUMMARY\s*$', re.I), None, 'summary'),
 ]
 
@@ -646,8 +650,10 @@ _MONTH_NAMES = {
 # Skip *start* and *end* marker lines
 _MARKER_LINE_RE = re.compile(r'^\s*\*(start|end)\*', re.I)
 
-# Transaction line: starts with MM/DD or M/D, ends with optional $ and decimal amount
-_TXN_LINE_RE = re.compile(r'^(\d{1,2}/\d{1,2})\s+(.+?)\s+\$?([\d,]+\.\d{2})\s*$')
+# Transaction line: starts with MM/DD or M/D, ends with optional $ and decimal amount.
+# Accepts trailing '-' on amounts (e.g. "177.03-", ".38-") used by community banks for debits.
+# Uses [\d,]* (zero or more) before decimal to handle sub-$1 amounts like ".38".
+_TXN_LINE_RE = re.compile(r'^(\d{1,2}/\d{1,2})\s+(.+?)\s+\$?([\d,]*\.\d{2})-?\s*$')
 
 # Embedded transaction in *end* marker lines — date is partial (/DD, month consumed by marker)
 # e.g. "*end*deposit0s and additio1ns /08 Deposit 1680055706 878.00"
@@ -662,6 +668,11 @@ _CHECK_TXN_RE = re.compile(r'^(\d+)\s+\^?\s*(\d{1,2}/\d{1,2}(?:/\d{2,4})?)\s+\$?
 # e.g. "1068 11/24 450.00 1072 11/17 1,600.00 1077 11/19 2,558.83"
 # Each column: CHECK_NO MM/DD[/YY] AMOUNT
 _MULTI_CHECK_COL_RE = re.compile(r'(\d{3,6})\s+(\d{1,2}/\d{1,2}(?:/\d{2,4})?)\s+([\d,]+\.\d{2})')
+
+# "Checks In Number Order" table pattern (community banks like Simply Business Checking)
+# e.g. " 1/02    5184        122.91  1/13    5194         35.73  1/21    5202        468.96"
+# Each column: MM/DD CHECK_NO AMOUNT (check number may have trailing *)
+_DATE_CHECK_AMOUNT_RE = re.compile(r'(\d{1,2}/\d{1,2})\s+(\d{4,6}\*?)\s+([\d,]+\.\d{2})')
 
 # Date word pattern (M/D or MM/DD without year)
 _DATE_WORD_RE = re.compile(r'^\d{1,2}/\d{1,2}$')
@@ -953,6 +964,29 @@ def _extract_by_section_headers(pdf_path: str) -> Tuple[List[Dict], bool]:
                                     pass
                         page_has_transactions = True
                         continue
+
+                    # ── Checks In Number Order (DATE CHECK_NO AMOUNT triplets) ──
+                    # Community bank format: each row has 3 columns of DATE CHECK_NO AMOUNT.
+                    # e.g. " 1/02  5184  122.91  1/13  5194  35.73  1/21  5202  468.96"
+                    if 'checks_in_order' in eff_name:
+                        date_check_matches = _DATE_CHECK_AMOUNT_RE.findall(line)
+                        if date_check_matches:
+                            for date_str, check_num, amount_str in date_check_matches:
+                                parsed_date = _det_parse_date(date_str, statement_year)
+                                if parsed_date:
+                                    try:
+                                        if not page_has_transactions and pending_sections:
+                                            current_section_type, current_section_name = pending_sections[0]
+                                        transactions.append({
+                                            'date': parsed_date,
+                                            'description': f'Check #{check_num.rstrip("*")}',
+                                            'amount': round(_det_parse_amount(amount_str), 2),
+                                            'type': 'debit',
+                                        })
+                                    except ValueError:
+                                        pass
+                            page_has_transactions = True
+                        continue  # Skip standard parsing for this section
 
                     # ── Check-row format: CHECK_NO [^] DATE AMOUNT ────────────
                     # Used when the effective section is checks (before or after
@@ -2378,6 +2412,472 @@ def _extract_mtbank(pdf_path: str) -> Tuple[List[Dict], bool]:
         return [], False
 
 
+# ─── Truist Business Checking ─────────────────────────────────────────────────
+
+_TRUIST_GUARD_RE = re.compile(
+    r'TRUIST\s+(?:DYNAMIC|SIMPLE)\s+BUSINESS|Truist\.com',
+    re.I,
+)
+# Transaction line: MM/DD  DESCRIPTION ... AMOUNT
+_TRUIST_TXN_RE = re.compile(
+    r'^(\d{1,2}/\d{1,2})\s+(.+)\s+([\d,]+\.\d{2})\s*$'
+)
+# Check table entries: MM/DD CHECK# AMOUNT (1–3 per row)
+_TRUIST_CHECK_RE = re.compile(
+    r'(\d{1,2}/\d{1,2})\s+(\d+)\s+([\d,]+\.\d{2})'
+)
+_TRUIST_SECTION_CHECK_RE  = re.compile(r'^\s*Checks\s*$', re.I)
+# pdfplumber compresses spaces → "Other withdrawals" → "Otherwithdrawals"
+_TRUIST_SECTION_DEBIT_RE  = re.compile(r'Other\s*withdrawals', re.I)
+_TRUIST_SECTION_CREDIT_RE = re.compile(r'Deposits[,\s].*credits', re.I)
+# Stop on Total… lines and the *indicates footnote that precedes "Total checks"
+_TRUIST_STOP_RE = re.compile(
+    r'^(?:Total\s*(?:checks|other|deposits)|\*indicates)',
+    re.I,
+)
+_TRUIST_SKIP_RE = re.compile(
+    r'^(?:DATE\s+(?:CHECK|DESCRIPTION)|Page\s*\d+\s*of|§\s*PAGE|'
+    r'continued$|\d{6,}$|Your\s+(?:previous|new)\s+balance|'
+    r'Total\s*checking|Account\s*summary|Summary\s+of|'
+    r'ACCOUNT\s*NAME|TRUIST\s+(?:DYNAMIC|SIMPLE))',
+    re.I,
+)
+
+
+def _det_parse_truist_date(date_str: str, year: int) -> Optional[str]:
+    """Parse MM/DD with statement year → YYYY-MM-DD."""
+    try:
+        return datetime.strptime(f'{date_str.strip()}/{year}', '%m/%d/%Y').strftime('%Y-%m-%d')
+    except ValueError:
+        return None
+
+
+def _extract_truist_business(pdf_path: str) -> Tuple[List[Dict], bool]:
+    """
+    Strategy 13: Truist Business Checking (Dynamic & Simple, consolidated).
+
+    Format:
+      Date:    MM/DD (no year — inferred from statement period on page 1)
+      Sections (pdfplumber collapses spaces):
+        'Checks'                                  → debit check table (3 cols per row)
+        'Otherwithdrawals,debitsandservicecharges' → debit section
+        'Deposits,creditsandinterest'              → credit section
+        'Totalchecks / Totalother / Totaldeposits' → stop
+      Checks:  3-column rows: MM/DD CHECK# AMOUNT  (asterisk lines between rows = skip)
+      Credits/Debits: MM/DD  DESCRIPTION  AMOUNT (amount always on first line)
+      Multi-account: all accounts on one statement are captured uniformly.
+
+    Guard: page 1 must contain 'TRUIST DYNAMIC|SIMPLE BUSINESS' or 'Truist.com'.
+    """
+    transactions: List[Dict] = []
+    try:
+        import pdfplumber
+        with pdfplumber.open(pdf_path) as pdf:
+            if not pdf.pages:
+                return [], False
+
+            first_text = pdf.pages[0].extract_text() or ''
+            if not _TRUIST_GUARD_RE.search(first_text):
+                return [], False
+
+            # Extract statement year from "as of MM/DD/YYYY" or "/YYYY"
+            year_m = re.search(r'(?:as\s+of|For)\s+\d{1,2}/\d{1,2}/(\d{4})', first_text, re.I)
+            if not year_m:
+                year_m = re.search(r'/(\d{4})\b', first_text)
+            stmt_year = int(year_m.group(1)) if year_m else datetime.now().year
+
+            section_type: Optional[str] = None   # 'credit' | 'debit' | 'check' | None
+            pending: Optional[Dict] = None
+
+            def _flush() -> None:
+                nonlocal pending
+                if pending and pending.get('amount') is not None:
+                    transactions.append(dict(pending))
+                pending = None
+
+            for page in pdf.pages:
+                text = page.extract_text() or ''
+                for raw_line in text.split('\n'):
+                    line = raw_line.strip()
+                    # Skip blank lines and lone asterisks (check-table sequence markers)
+                    if not line or line == '*':
+                        continue
+
+                    # ── Section stops ────────────────────────────────────────
+                    if _TRUIST_STOP_RE.match(line):
+                        _flush()
+                        section_type = None
+                        continue
+
+                    # ── Section transitions ──────────────────────────────────
+                    if _TRUIST_SECTION_CHECK_RE.match(line):
+                        _flush()
+                        section_type = 'check'
+                        continue
+                    if _TRUIST_SECTION_DEBIT_RE.search(line):
+                        _flush()
+                        section_type = 'debit'
+                        continue
+                    if _TRUIST_SECTION_CREDIT_RE.search(line):
+                        _flush()
+                        section_type = 'credit'
+                        continue
+
+                    if section_type is None:
+                        continue
+
+                    # Skip header/footer/boilerplate
+                    if _TRUIST_SKIP_RE.match(line):
+                        continue
+
+                    # ── Check section (3-column table) ───────────────────────
+                    if section_type == 'check':
+                        for date_str, check_num, amount_str in _TRUIST_CHECK_RE.findall(line):
+                            parsed_date = _det_parse_truist_date(date_str, stmt_year)
+                            if parsed_date:
+                                try:
+                                    transactions.append({
+                                        'date':        parsed_date,
+                                        'description': f'Check #{check_num}',
+                                        'amount':      round(float(amount_str.replace(',', '')), 2),
+                                        'type':        'debit',
+                                    })
+                                except ValueError:
+                                    pass
+                        continue
+
+                    # ── Credit / Debit section ───────────────────────────────
+                    m = _TRUIST_TXN_RE.match(line)
+                    if m:
+                        _flush()
+                        parsed_date = _det_parse_truist_date(m.group(1), stmt_year)
+                        if not parsed_date:
+                            continue
+                        try:
+                            amount = round(float(m.group(3).replace(',', '')), 2)
+                        except ValueError:
+                            continue
+                        pending = {
+                            'date':        parsed_date,
+                            'description': m.group(2).strip(),
+                            'amount':      amount,
+                            'type':        section_type,
+                        }
+                    # Continuation lines (payment IDs, ACH details) silently ignored
+
+            _flush()
+
+        return transactions, len(transactions) >= 2
+
+    except Exception as e:
+        print(f"Strategy 13 (Truist Business) failed: {e}", file=sys.stderr)
+        return [], False
+
+
+# ─── Bank of America Business Advantage ───────────────────────────────────────
+
+_BOFA_GUARD_RE = re.compile(
+    r'bankofamerica\.com',
+    re.I,
+)
+# Full transaction line: MM/DD/YY  DESCRIPTION  [-]AMOUNT
+# Greedy description group backtracks to find the last decimal amount on the line.
+_BOFA_TXN_RE = re.compile(
+    r'^(\d{2}/\d{2}/\d{2})\s+(.+)\s+(-?[\d,]+\.\d{2})\s*$'
+)
+# Check-section two-column rows: DATE CHECK# -AMOUNT (one or two pairs per line)
+_BOFA_CHECK_ROW_RE = re.compile(
+    r'(\d{2}/\d{2}/\d{2})\s+(\d+)\s+(-[\d,]+\.\d{2})'
+)
+_BOFA_SECTION_CREDIT_RE = re.compile(
+    r'^\s*Deposits\s+and\s+other\s+credits\b', re.I
+)
+_BOFA_SECTION_DEBIT_RE = re.compile(
+    r'^\s*Withdrawals\s+and\s+other\s+debits\b', re.I
+)
+_BOFA_SECTION_CHECK_RE = re.compile(r'^\s*Checks\s*$', re.I)
+_BOFA_SECTION_STOP_RE  = re.compile(
+    r'^\s*(Service\s+fees|Daily\s+ledger|Check\s+images)', re.I
+)
+# Lines that are never transactions (headers, totals, page labels, promo text)
+_BOFA_SKIP_RE = re.compile(
+    r'^(Date\s+|Total\s+|Page\s+\d|continued\s+on|Your\s+checking|'
+    r'IMPORTANT\s+INFORMATION|BUSINESS\s+ADVANTAGE|As\s+of\s+\d)',
+    re.I,
+)
+
+
+def _det_parse_bofa_date(date_str: str) -> Optional[str]:
+    """Parse MM/DD/YY (2-digit year) → YYYY-MM-DD."""
+    try:
+        return datetime.strptime(date_str.strip(), '%m/%d/%y').strftime('%Y-%m-%d')
+    except ValueError:
+        return None
+
+
+def _extract_bofa_business(pdf_path: str) -> Tuple[List[Dict], bool]:
+    """
+    Strategy 12: Bank of America Business Advantage checking.
+
+    Format:
+      Date:    MM/DD/YY (2-digit year)
+      Credits: positive amounts in "Deposits and other credits" section
+      Debits:  negative amounts (leading -) in "Withdrawals and other debits" section
+      Checks:  two-column table (DATE CHECK# -AMOUNT pairs per row) in "Checks" section
+      Stop:    "Service fees", "Daily ledger balances", "Check images"
+
+    Multi-line ACH descriptions are intentionally not appended — the first line
+    already contains a clean description and continuation lines may include
+    promotional text injected mid-section by BoA.
+
+    Guard: page 1 must contain 'bankofamerica.com'.
+    """
+    transactions: List[Dict] = []
+    try:
+        import pdfplumber
+        with pdfplumber.open(pdf_path) as pdf:
+            if not pdf.pages:
+                return [], False
+
+            first_text = pdf.pages[0].extract_text() or ''
+            if not _BOFA_GUARD_RE.search(first_text):
+                return [], False
+
+            section_type: Optional[str] = None   # 'credit' | 'debit' | 'check' | None
+            pending: Optional[Dict] = None
+
+            def _flush() -> None:
+                nonlocal pending
+                if pending and pending.get('amount') is not None:
+                    transactions.append(dict(pending))
+                pending = None
+
+            for page in pdf.pages:
+                text = page.extract_text() or ''
+                for raw_line in text.split('\n'):
+                    line = raw_line.strip()
+                    if not line:
+                        continue
+
+                    # ── Section transitions ──────────────────────────────────
+                    if _BOFA_SECTION_STOP_RE.match(line):
+                        _flush()
+                        section_type = None
+                        continue
+                    if _BOFA_SECTION_CREDIT_RE.match(line):
+                        _flush()
+                        section_type = 'credit'
+                        continue
+                    if _BOFA_SECTION_DEBIT_RE.match(line):
+                        _flush()
+                        section_type = 'debit'
+                        continue
+                    if _BOFA_SECTION_CHECK_RE.match(line):
+                        _flush()
+                        section_type = 'check'
+                        continue
+
+                    if section_type is None:
+                        continue
+
+                    # Skip non-transaction lines (headers, totals, page numbers)
+                    if _BOFA_SKIP_RE.match(line):
+                        continue
+
+                    # ── Check section: two-column DATE CHECK# AMOUNT rows ────
+                    if section_type == 'check':
+                        for date_str, check_num, amount_str in _BOFA_CHECK_ROW_RE.findall(line):
+                            parsed_date = _det_parse_bofa_date(date_str)
+                            if parsed_date:
+                                try:
+                                    transactions.append({
+                                        'date':        parsed_date,
+                                        'description': f'Check #{check_num}',
+                                        'amount':      round(abs(float(amount_str.replace(',', ''))), 2),
+                                        'type':        'debit',
+                                    })
+                                except ValueError:
+                                    pass
+                        continue
+
+                    # ── Credit / Debit sections ──────────────────────────────
+                    m = _BOFA_TXN_RE.match(line)
+                    if m:
+                        _flush()
+                        parsed_date = _det_parse_bofa_date(m.group(1))
+                        if not parsed_date:
+                            continue
+                        try:
+                            raw_amount = float(m.group(3).replace(',', ''))
+                        except ValueError:
+                            continue
+                        pending = {
+                            'date':        parsed_date,
+                            'description': m.group(2).strip(),
+                            'amount':      round(abs(raw_amount), 2),
+                            'type':        section_type,
+                        }
+                    # Continuation lines (ACH detail, promo text) are silently
+                    # ignored — the first line already has a clean description.
+
+            _flush()
+
+        return transactions, len(transactions) >= 2
+
+    except Exception as e:
+        print(f"Strategy 12 (BofA Business) failed: {e}", file=sys.stderr)
+        return [], False
+
+
+# ── Firstrust Bank ──────────────────────────────────────────────────────────
+_FIRSTRUST_GUARD_RE = re.compile(r'Transaction\s+Detail', re.I)
+_FIRSTRUST_GUARD2_RE = re.compile(
+    r'Date\s+Description\s+Deposits\s+Withdrawals\s+Balance', re.I
+)
+_FIRSTRUST_TXN_RE = re.compile(
+    r'^(\d{2}/\d{2})\s+(.+?)\s+\$([\d,]+\.\d{2})(-?)\s+\$([\d,]+\.\d{2})\s*$'
+)
+_FIRSTRUST_YEAR_RE = re.compile(
+    r'Statement\s+Period:\s*\d{2}/\d{2}/(\d{4})', re.I
+)
+# 24-char uppercase barcode prefix OR spaced letter barcode (A XX XX ... K pattern)
+_FIRSTRUST_BARCODE_RE = re.compile(
+    r'^(?:[A-Z]{10,}|A(?:\s[A-Z]{2})+\s+K)\s+'
+)
+_FIRSTRUST_SKIP_RE = re.compile(
+    r'^(?:Date\s+Description|Transaction\s+Detail|Statement\s+'
+    r'|Page\s+\d|Beginning\s+Balance|Account\s+Type|Account\s+Number'
+    r'|Balance\s+Summary|Account\s+Summary|\+\s+Deposits|[-]\s+Withdrawals'
+    r'|Ending\s+Balance|Service\s+Charges|Interest\s+for|Interest\s+Paid'
+    r'|Interest\s+Rate|Annual\s+Percentage|Summary\s+of\s+Accounts'
+    r'|RELATIONSHIP\s+BUSINESS)',
+    re.I,
+)
+# Lines that begin with a date but are NOT real transactions (e.g. "10/31 Ending Balance")
+_FIRSTRUST_DATE_SKIP_RE = re.compile(
+    r'^\d{2}/\d{2}\s+(?:Beginning|Ending)\s+Balance', re.I
+)
+# Section headers that mark the end of the transaction listing
+_FIRSTRUST_STOP_RE = re.compile(
+    r'^(?:Checks\s+Posted|CHECK\s+IMAGES|Overdraft[/\s])', re.I
+)
+
+
+def _extract_firstrust(pdf_path: str) -> Tuple[List[Dict], bool]:
+    """
+    Strategy 13: Firstrust Bank business checking.
+
+    Format:
+      Date:        MM/DD (year pulled from "Statement Period: MM/DD/YYYY" header)
+      Withdrawals: $xxx.xx-  (trailing dash in Withdrawals column)
+      Deposits:    $xxx.xx   (no dash in Deposits column)
+      Balance:     $xxx.xx   (rightmost column)
+      Multi-line:  continuation lines follow without a date prefix
+      Barcodes:    some lines have a 24-char uppercase block before the transaction
+
+    Guard: first content page must contain "Transaction Detail" AND
+           "Date Description Deposits Withdrawals Balance" AND
+           at least one $xxx.xx- withdrawal.
+    """
+    transactions: List[Dict] = []
+    try:
+        import pdfplumber
+        with pdfplumber.open(pdf_path) as pdf:
+            if not pdf.pages:
+                return [], False
+
+            # Collect first content page text for guard checks
+            first_text = ''
+            for page in pdf.pages[:3]:
+                t = page.extract_text() or ''
+                if t.strip():
+                    first_text += t
+                    break
+
+            if not _FIRSTRUST_GUARD_RE.search(first_text):
+                return [], False
+            if not _FIRSTRUST_GUARD2_RE.search(first_text):
+                return [], False
+            if not re.search(r'\$[\d,]+\.\d{2}-', first_text):
+                return [], False
+
+            # Extract statement year from header
+            year_m = _FIRSTRUST_YEAR_RE.search(first_text)
+            stmt_year = int(year_m.group(1)) if year_m else datetime.now().year
+
+            pending: Optional[Dict] = None
+
+            def _flush() -> None:
+                nonlocal pending
+                if pending and pending.get('amount') is not None:
+                    transactions.append(dict(pending))
+                pending = None
+
+            for page in pdf.pages:
+                text = page.extract_text() or ''
+                for raw_line in text.split('\n'):
+                    line = raw_line.strip()
+                    if not line:
+                        continue
+
+                    # Strip barcode prefix
+                    line = _FIRSTRUST_BARCODE_RE.sub('', line).strip()
+                    if not line:
+                        continue
+
+                    # Skip page footer numbers e.g. "00005531 0016163 0001-0007 ..."
+                    if re.match(r'^\d{5,}\s+\d{7}', line):
+                        continue
+
+                    # Stop processing at check images / overdraft summary section
+                    if _FIRSTRUST_STOP_RE.match(line):
+                        _flush()
+                        break
+
+                    # Skip header/summary/footer lines
+                    if _FIRSTRUST_SKIP_RE.match(line):
+                        _flush()
+                        continue
+
+                    # Skip date-prefixed non-transaction lines (Beginning/Ending Balance)
+                    if _FIRSTRUST_DATE_SKIP_RE.match(line):
+                        continue
+
+                    # Try matching a transaction line: MM/DD DESC $AMOUNT[-] $BALANCE
+                    m = _FIRSTRUST_TXN_RE.match(line)
+                    if m:
+                        _flush()
+                        month_day, desc, amount_str, minus, _balance = m.groups()
+                        # Skip the "Beginning Balance" pseudo-row
+                        if 'beginning balance' in desc.lower():
+                            continue
+                        try:
+                            parsed_date = datetime.strptime(
+                                f'{month_day}/{stmt_year}', '%m/%d/%Y'
+                            ).strftime('%Y-%m-%d')
+                            amount = round(float(amount_str.replace(',', '')), 2)
+                        except ValueError:
+                            continue
+                        pending = {
+                            'date':        parsed_date,
+                            'description': desc.strip(),
+                            'amount':      amount,
+                            'type':        'debit' if minus == '-' else 'credit',
+                        }
+                    elif pending is not None:
+                        # Continuation line — append to description if it looks useful
+                        if not re.match(r'^[\d\s.]+$', line) and len(line) > 2:
+                            pending['description'] += ' ' + line
+
+            _flush()
+
+        return transactions, len(transactions) >= 2
+
+    except Exception as e:
+        print(f'Strategy 13 (Firstrust Bank) failed: {e}', file=sys.stderr)
+        return [], False
+
+
 # ─── Orchestrator ─────────────────────────────────────────────────────────────
 
 def extract_transactions_deterministic(pdf_path: str) -> Tuple[List[Dict], bool]:
@@ -2407,6 +2907,9 @@ def extract_transactions_deterministic(pdf_path: str) -> Tuple[List[Dict], bool]
         (_extract_huntington,          "Huntington"),
         (_extract_usbank,              "U.S. Bank"),
         (_extract_flfcu,               "FirstLight FCU"),
+        (_extract_truist_business,     "Truist Business"),
+        (_extract_bofa_business,       "BofA Business"),
+        (_extract_firstrust,           "Firstrust"),
         (_extract_by_section_markers,  "section markers"),
         (_extract_by_section_headers,  "section headers"),
         (_extract_by_column_position,  "column position"),
@@ -3076,6 +3579,142 @@ MCA_LENDERS = {
 }
 
 
+DEBT_COLLECTORS = {
+    "portfolio_recovery": {"name": "Portfolio Recovery Associates", "patterns": ["portfolio recovery", "pra group", "pra llc"]},
+    "midland_credit": {"name": "Midland Credit Management", "patterns": ["midland credit", "midland funding", "mcm llc", "encore capital"]},
+    "cavalry_portfolio": {"name": "Cavalry Portfolio Services", "patterns": ["cavalry portfolio", "cavalry spv", "cavalry spe"]},
+    "lvnv_funding": {"name": "LVNV Funding", "patterns": ["lvnv funding", "resurgent capital", "lvnv llc"]},
+    "unifund": {"name": "Unifund CCR", "patterns": ["unifund", "ccr partners"]},
+    "asset_acceptance": {"name": "Asset Acceptance", "patterns": ["asset acceptance"]},
+    "enhanced_recovery": {"name": "Enhanced Recovery Company", "patterns": ["enhanced recovery", "erc llc", " erc collections"]},
+    "convergent": {"name": "Convergent Outsourcing", "patterns": ["convergent outsourcing", "convergent collections"]},
+    "ic_system": {"name": "IC System", "patterns": ["ic system", "i.c. system"]},
+    "transworld": {"name": "Transworld Systems", "patterns": ["transworld systems", "transworld collections"]},
+    "ccs": {"name": "Credit Collection Services", "patterns": ["credit collection services", "ccs collections"]},
+    "jefferson_capital": {"name": "Jefferson Capital Systems", "patterns": ["jefferson capital"]},
+    "cach_llc": {"name": "CACH LLC", "patterns": ["cach llc", "cach collections"]},
+    "diversified": {"name": "Diversified Consultants", "patterns": ["diversified consultants", "dci collections"]},
+    "radius_global": {"name": "Radius Global Solutions", "patterns": ["radius global"]},
+    "national_recovery": {"name": "National Recovery Agency", "patterns": ["national recovery agency", "nra collections"]},
+    "alliance_one": {"name": "Alliance One Receivables", "patterns": ["alliance one receivables"]},
+    "global_credit": {"name": "Global Credit & Collection", "patterns": ["global credit & collection", "global credit and collection"]},
+    "oliphant": {"name": "Oliphant Financial", "patterns": ["oliphant financial"]},
+    "sunrise_credit": {"name": "Sunrise Credit Services", "patterns": ["sunrise credit services"]},
+    "credit_corp": {"name": "Credit Corp Solutions", "patterns": ["credit corp solutions"]},
+    "pinnacle_collections": {"name": "Pinnacle Collections", "patterns": ["pinnacle collections", "pinnacle recovery"]},
+    "nco_group": {"name": "NCO Group", "patterns": ["nco group", "nco financial"]},
+    "acs_inc": {"name": "ACS Recovery Services", "patterns": ["acs recovery"]},
+    "collection_center": {"name": "Collection Center Inc", "patterns": ["collection center inc"]},
+    "commonwealth_financial": {"name": "Commonwealth Financial", "patterns": ["commonwealth financial systems"]},
+    "accounts_receivable": {"name": "Accounts Receivable Management", "patterns": ["acct receivable mgmt", "arm collections"]},
+    "legal_collect": {"name": "Legal Collections", "patterns": ["legal collect", "attorneys collection"]},
+}
+
+
+def detect_debt_collectors(transactions: List[Dict]) -> Dict:
+    """
+    Detect debt collector payments in transactions.
+    Returns summary of detected collectors with payment frequency analysis.
+    """
+    collector_payments = {}
+
+    for txn in transactions:
+        if txn.get("type") != "debit":
+            continue
+
+        description = txn.get("description", "").lower()
+        amount = safe_float_amount(txn.get("amount", 0))
+        date = txn.get("date", "")
+
+        for collector_id, collector_info in DEBT_COLLECTORS.items():
+            for pattern in collector_info["patterns"]:
+                if pattern in description:
+                    if collector_id not in collector_payments:
+                        collector_payments[collector_id] = {
+                            "collector_name": collector_info["name"],
+                            "payments": [],
+                            "total_amount": 0,
+                            "payment_count": 0,
+                            "amounts": set(),
+                        }
+
+                    collector_payments[collector_id]["payments"].append({
+                        "date": date,
+                        "amount": amount,
+                        "description": txn.get("description", "")
+                    })
+                    collector_payments[collector_id]["total_amount"] += amount
+                    collector_payments[collector_id]["payment_count"] += 1
+                    collector_payments[collector_id]["amounts"].add(amount)
+
+                    txn["is_debt_collector"] = True
+                    txn["debt_collector_name"] = collector_info["name"]
+                    break
+
+    debt_summary = {
+        "total_collector_count": len(collector_payments),
+        "total_payments": sum(c["payment_count"] for c in collector_payments.values()),
+        "total_amount": round(sum(c["total_amount"] for c in collector_payments.values()), 2),
+        "collectors": []
+    }
+
+    for collector_id, data in collector_payments.items():
+        payments = sorted(data["payments"], key=lambda x: x["date"])
+        avg_amount = data["total_amount"] / data["payment_count"] if data["payment_count"] > 0 else 0
+
+        frequency = "unknown"
+        if len(payments) >= 2:
+            dates = []
+            for p in payments:
+                try:
+                    dates.append(datetime.strptime(p["date"], "%Y-%m-%d"))
+                except:
+                    pass
+            if len(dates) >= 2:
+                dates.sort()
+                intervals = [(dates[i+1] - dates[i]).days for i in range(len(dates)-1)]
+                avg_interval = sum(intervals) / len(intervals) if intervals else 0
+                if avg_interval <= 1.5:
+                    frequency = "daily"
+                elif avg_interval <= 3:
+                    frequency = "every_other_day"
+                elif avg_interval <= 5.5:
+                    frequency = "twice_weekly"
+                elif avg_interval <= 8:
+                    frequency = "weekly"
+                elif avg_interval <= 16:
+                    frequency = "bi_weekly"
+                elif avg_interval <= 35:
+                    frequency = "monthly"
+                else:
+                    frequency = "irregular"
+        elif len(payments) == 1:
+            frequency = "single_payment"
+
+        debt_summary["collectors"].append({
+            "collector_id": collector_id,
+            "collector_name": data["collector_name"],
+            "payment_count": data["payment_count"],
+            "total_amount": round(data["total_amount"], 2),
+            "average_payment": round(avg_amount, 2),
+            "unique_amounts": sorted([round(a, 2) for a in data["amounts"]]),
+            "frequency": frequency,
+            "frequency_label": {
+                "daily": "Daily", "every_other_day": "Every Other Day",
+                "twice_weekly": "Twice Weekly", "weekly": "Weekly",
+                "bi_weekly": "Bi-Weekly", "monthly": "Monthly",
+                "irregular": "Irregular", "single_payment": "Single Payment",
+                "unknown": "Unknown"
+            }.get(frequency, frequency),
+            "first_payment": payments[0] if payments else None,
+            "last_payment": payments[-1] if payments else None,
+            "payments": payments,
+        })
+
+    debt_summary["collectors"].sort(key=lambda x: x["total_amount"], reverse=True)
+    return debt_summary
+
+
 def detect_mca_payments(transactions: List[Dict]) -> Dict:
     """
     Detect MCA (Merchant Cash Advance) payments in transactions.
@@ -3244,6 +3883,9 @@ def main():
             "CNBank":           "Community Bank NA",
             "MichiganFirst":    "Michigan First Credit Union",
             "M&T Bank":         "M&T Bank",
+            "BofA Business":    "Bank of America",
+            "Truist Business":  "Truist Bank",
+            "Firstrust":        "Firstrust Bank",
         }
         det_bank_name = _DET_BANK_NAMES.get(det_label) if det_label else None
 
@@ -3290,6 +3932,9 @@ def main():
         # Detect MCA payments
         mca_summary = detect_mca_payments(transactions)
 
+        # Detect debt collector payments
+        debt_summary = detect_debt_collectors(transactions)
+
         # Validate extracted totals against statement header
         validation_warnings = []
 
@@ -3331,6 +3976,7 @@ def main():
             "api_cost": api_cost,
             "transactions": transactions,
             "mca_analysis": mca_summary,
+            "debt_collector_analysis": debt_summary,
             "statement_summary": statement_summary,  # Beginning/ending balance from statement
             "validation": {
                 "expected_credits": round(expected_credits, 2) if expected_credits else None,

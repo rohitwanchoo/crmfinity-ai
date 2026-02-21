@@ -389,6 +389,47 @@ class USBankPatternsSeeder extends Seeder
                 ],
             ],
 
+            // 9b. Firstrust Bank
+            [
+                'bank_name' => 'Firstrust Bank',
+                'layout_version' => 'default',
+                'date_format' => 'MM/DD/YY',
+                'header_patterns' => [
+                    'Firstrust Bank',
+                    'FIRSTRUST BANK',
+                    'firstrust.com',
+                    'Firstrust Savings Bank',
+                    'Firstrust',
+                ],
+                'footer_patterns' => [
+                    'Member FDIC',
+                    'Firstrust Bank',
+                ],
+                'transaction_markers' => [
+                    'PMT Debit',
+                    'PMT To 3rdPrty',
+                    'ATM Deposit',
+                    'BUSINESS MOBILE DEPOSIT',
+                    'Check Number',
+                    'Seq#',
+                    'PAYMENT TO LOAN',
+                ],
+                'column_structure' => [
+                    'date' => 'left',
+                    'description' => 'center',
+                    'withdrawals' => 'right',
+                    'deposits' => 'far_right',
+                    'balance' => 'separate_column',
+                    'separate_debit_credit' => true,
+                ],
+                'extraction_rules' => [
+                    'debit_indicators' => ['PMT Debit', 'PMT To 3rdPrty', 'PAYMENT TO LOAN', 'Check Number', 'WITHDRAWAL', 'FEE'],
+                    'credit_indicators' => ['ATM Deposit', 'BUSINESS MOBILE DEPOSIT', 'FDMS-SETTLEMENT DEPOSIT', 'DEPOSIT', 'CREDIT', 'INTEREST'],
+                    'check_format' => 'Check Number followed by check number',
+                    'notes' => 'Firstrust uses PMT Debit/PMT To 3rdPrty for debits with Seq# and Date/Time suffix. ATM Deposit and BUSINESS MOBILE DEPOSIT for credits. Philadelphia-based bank.',
+                ],
+            ],
+
             // 10. Fifth Third Bank
             [
                 'bank_name' => 'Fifth Third Bank',

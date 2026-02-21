@@ -78,33 +78,33 @@
             <!-- Summary Cards -->
             <div class="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-8 gap-4 mb-6">
                 <div class="metric-card bg-white dark:bg-gray-800 p-4 rounded-lg shadow-sm transition-all duration-300" data-metric-type="neutral">
-                    <p class="text-sm text-gray-500 dark:text-gray-400">File</p>
+                    <p class="text-xs text-gray-500 dark:text-gray-400">File</p>
                     <p class="text-sm font-semibold text-gray-900 dark:text-gray-100 truncate" title="{{ $session->filename }}">{{ $session->filename }}</p>
                 </div>
                 <div class="metric-card bg-white dark:bg-gray-800 p-4 rounded-lg shadow-sm transition-all duration-300" data-metric-type="neutral">
-                    <p class="text-sm text-gray-500 dark:text-gray-400">Transactions</p>
-                    <p class="text-2xl font-bold text-gray-900 dark:text-gray-100">{{ $session->total_transactions }}</p>
+                    <p class="text-xs text-gray-500 dark:text-gray-400">Transactions</p>
+                    <p class="text-sm font-bold text-gray-900 dark:text-gray-100 break-words">{{ $session->total_transactions }}</p>
                 </div>
                 <div class="metric-card bg-white dark:bg-gray-800 p-4 rounded-lg shadow-sm transition-all duration-300" data-metric-type="credit">
-                    <p class="text-sm text-gray-500 dark:text-gray-400">Total Credits</p>
-                    <p class="metric-value text-2xl font-bold text-green-600 dark:text-green-400" id="total-credits">${{ number_format($session->total_credits, 2) }}</p>
+                    <p class="text-xs text-gray-500 dark:text-gray-400">Total Credits</p>
+                    <p class="metric-value text-sm font-bold text-green-600 dark:text-green-400 break-words" id="total-credits">${{ number_format($session->total_credits, 2) }}</p>
                     <p class="metric-subtext text-xs text-gray-500"><span id="credit-count">{{ $credits->count() }}</span> transactions</p>
                 </div>
                 <div class="metric-card bg-white dark:bg-gray-800 p-4 rounded-lg shadow-sm transition-all duration-300" data-metric-type="debit">
-                    <p class="text-sm text-gray-500 dark:text-gray-400">Total Debits</p>
-                    <p class="metric-value text-2xl font-bold text-red-600 dark:text-red-400" id="total-debits">${{ number_format($session->total_debits, 2) }}</p>
+                    <p class="text-xs text-gray-500 dark:text-gray-400">Total Debits</p>
+                    <p class="metric-value text-sm font-bold text-red-600 dark:text-red-400 break-words" id="total-debits">${{ number_format($session->total_debits, 2) }}</p>
                     <p class="metric-subtext text-xs text-gray-500"><span id="debit-count">{{ $debits->count() }}</span> transactions</p>
                 </div>
                 <div class="metric-card bg-white dark:bg-gray-800 p-4 rounded-lg shadow-sm transition-all duration-300" data-metric-type="neutral">
-                    <p class="text-sm text-gray-500 dark:text-gray-400">Net Balance</p>
-                    <p class="text-2xl font-bold {{ $session->net_flow >= 0 ? 'text-green-600 dark:text-green-400' : 'text-red-600 dark:text-red-400' }}" id="net-balance">
+                    <p class="text-xs text-gray-500 dark:text-gray-400">Net Balance</p>
+                    <p class="text-sm font-bold break-words {{ $session->net_flow >= 0 ? 'text-green-600 dark:text-green-400' : 'text-red-600 dark:text-red-400' }}" id="net-balance">
                         ${{ number_format($session->net_flow, 2) }}
                     </p>
                 </div>
                 @if($session->average_daily_balance !== null)
                 <div class="metric-card bg-white dark:bg-gray-800 p-4 rounded-lg shadow-sm transition-all duration-300 border-2 border-blue-200 dark:border-blue-800" data-metric-type="neutral">
-                    <p class="text-sm text-blue-600 dark:text-blue-400 font-medium">Avg Daily Balance</p>
-                    <p class="text-2xl font-bold text-blue-600 dark:text-blue-400">${{ number_format($session->average_daily_balance, 2) }}</p>
+                    <p class="text-xs text-blue-600 dark:text-blue-400 font-medium">Avg Daily Balance</p>
+                    <p class="text-sm font-bold text-blue-600 dark:text-blue-400 break-words">${{ number_format($session->average_daily_balance, 2) }}</p>
                     <p class="text-xs text-gray-500">From statement</p>
                 </div>
                 @endif
@@ -113,17 +113,182 @@
                     $avgLedgerBalance = ($session->beginning_balance + $session->ending_balance) / 2;
                 @endphp
                 <div class="metric-card bg-white dark:bg-gray-800 p-4 rounded-lg shadow-sm transition-all duration-300 border-2 border-indigo-200 dark:border-indigo-800" data-metric-type="neutral">
-                    <p class="text-sm text-indigo-600 dark:text-indigo-400 font-medium">Avg Ledger Balance</p>
-                    <p class="text-2xl font-bold text-indigo-600 dark:text-indigo-400">${{ number_format($avgLedgerBalance, 2) }}</p>
+                    <p class="text-xs text-indigo-600 dark:text-indigo-400 font-medium">Avg Ledger Balance</p>
+                    <p class="text-sm font-bold text-indigo-600 dark:text-indigo-400 break-words">${{ number_format($avgLedgerBalance, 2) }}</p>
                     <p class="text-xs text-gray-500">Calculated</p>
                 </div>
                 @endif
                 <div class="metric-card bg-white dark:bg-gray-800 p-4 rounded-lg shadow-sm transition-all duration-300" data-metric-type="neutral">
-                    <p class="text-sm text-gray-500 dark:text-gray-400">API Cost</p>
-                    <p class="text-2xl font-bold text-gray-900 dark:text-gray-100">${{ number_format($session->api_cost ?? 0, 4) }}</p>
+                    <p class="text-xs text-gray-500 dark:text-gray-400">API Cost</p>
+                    <p class="text-sm font-bold text-gray-900 dark:text-gray-100 break-words">${{ number_format($session->api_cost ?? 0, 4) }}</p>
                     <p class="text-xs text-gray-500">LSC AI</p>
                 </div>
             </div>
+
+            <!-- Lender Qualification Section -->
+            @if(isset($lenderMatches) && $lenderMatches['counts']['total'] > 0)
+            <div class="mb-6 bg-white dark:bg-gray-800 overflow-hidden shadow-sm sm:rounded-lg border-2 border-green-500" id="session-lender-matching">
+                <div class="p-4">
+                    <!-- Header -->
+                    <div class="flex items-center justify-between mb-3">
+                        <div class="flex items-center">
+                            <div class="p-2 bg-green-100 dark:bg-green-900 rounded-lg mr-3">
+                                <svg class="w-5 h-5 text-green-600 dark:text-green-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z"/>
+                                </svg>
+                            </div>
+                            <div>
+                                <h4 class="text-lg font-bold text-gray-900 dark:text-gray-100">Lender Qualification</h4>
+                                <p class="text-xs text-gray-500 dark:text-gray-400">Based on this statement's financial profile</p>
+                            </div>
+                        </div>
+                        <span class="inline-flex items-center px-3 py-1 rounded-full text-sm font-semibold bg-green-100 dark:bg-green-900 text-green-800 dark:text-green-200">
+                            {{ $lenderMatches['counts']['qualified'] }} of {{ $lenderMatches['counts']['total'] }} qualify
+                        </span>
+                    </div>
+
+                    <!-- Criteria chips -->
+                    <div class="flex flex-wrap gap-2 mb-3">
+                        @php $cu = $lenderMatches['criteria_used']; @endphp
+                        <span class="px-2 py-1 rounded text-xs bg-gray-100 dark:bg-gray-700 text-gray-600 dark:text-gray-300">Avg Monthly Deposits: <strong>${{ number_format($cu['avg_monthly_deposits'], 0) }}</strong></span>
+                        <span class="px-2 py-1 rounded text-xs bg-gray-100 dark:bg-gray-700 text-gray-600 dark:text-gray-300">True Revenue/mo: <strong>${{ number_format($cu['avg_monthly_true_revenue'], 0) }}</strong></span>
+                        <span class="px-2 py-1 rounded text-xs bg-gray-100 dark:bg-gray-700 text-gray-600 dark:text-gray-300">Neg Days/mo: <strong>{{ round($cu['avg_negative_days'], 1) }}</strong></span>
+                        <span class="px-2 py-1 rounded text-xs bg-gray-100 dark:bg-gray-700 text-gray-600 dark:text-gray-300">NSF/mo: <strong>{{ round($cu['avg_nsf_per_month'], 1) }}</strong></span>
+                        <span class="px-2 py-1 rounded text-xs bg-gray-100 dark:bg-gray-700 text-gray-600 dark:text-gray-300">MCA Positions: <strong>{{ $cu['active_mca_positions'] }}</strong></span>
+                        @if($cu['avg_daily_balance'] !== null)
+                        <span class="px-2 py-1 rounded text-xs bg-gray-100 dark:bg-gray-700 text-gray-600 dark:text-gray-300">Avg Daily Bal: <strong>${{ number_format($cu['avg_daily_balance'], 0) }}</strong></span>
+                        @endif
+                    </div>
+
+                    <!-- Toggle -->
+                    <div class="flex gap-2 mb-3">
+                        <button onclick="lmToggleView('session', 'qualified')" id="session-lm-btn-qualified"
+                            class="px-3 py-1.5 rounded-lg text-xs font-medium bg-green-600 text-white transition-colors">
+                            Qualified ({{ $lenderMatches['counts']['qualified'] }})
+                        </button>
+                        <button onclick="lmToggleView('session', 'all')" id="session-lm-btn-all"
+                            class="px-3 py-1.5 rounded-lg text-xs font-medium bg-gray-200 dark:bg-gray-700 text-gray-700 dark:text-gray-300 hover:bg-gray-300 transition-colors">
+                            All Lenders ({{ $lenderMatches['counts']['total'] }})
+                        </button>
+                    </div>
+
+                    <!-- Table -->
+                    <div class="overflow-x-auto">
+                        <table class="min-w-full divide-y divide-gray-200 dark:divide-gray-700 text-sm">
+                            <thead class="bg-gray-50 dark:bg-gray-700">
+                                <tr>
+                                    <th class="px-3 py-2 text-left text-xs font-semibold text-gray-500 dark:text-gray-400 uppercase">Lender</th>
+                                    <th class="px-3 py-2 text-left text-xs font-semibold text-gray-500 dark:text-gray-400 uppercase">Product</th>
+                                    <th class="px-3 py-2 text-center text-xs font-semibold text-gray-500 dark:text-gray-400 uppercase">Funding Speed</th>
+                                    <th class="px-3 py-2 text-center text-xs font-semibold text-gray-500 dark:text-gray-400 uppercase">Factor Rate</th>
+                                    <th class="px-3 py-2 text-right text-xs font-semibold text-gray-500 dark:text-gray-400 uppercase">Max Amount</th>
+                                    <th class="px-3 py-2 text-center text-xs font-semibold text-gray-500 dark:text-gray-400 uppercase">Max Pos.</th>
+                                    <th class="px-3 py-2 text-center text-xs font-semibold text-gray-500 dark:text-gray-400 uppercase" id="session-lm-status-col">Status</th>
+                                    <th class="px-3 py-2"></th>
+                                </tr>
+                            </thead>
+                            <tbody class="bg-white dark:bg-gray-800 divide-y divide-gray-200 dark:divide-gray-700" id="session-lm-tbody">
+                                @foreach($lenderMatches['all'] as $match)
+                                <tr class="slm-row hover:bg-gray-50 dark:hover:bg-gray-700 {{ $match['qualified'] ? 'lm-qualified bg-green-50/30 dark:bg-green-900/10' : 'lm-disqualified' }}"
+                                    data-qualified="{{ $match['qualified'] ? '1' : '0' }}">
+                                    <td class="px-3 py-2 font-medium text-gray-900 dark:text-gray-100">{{ $match['lender']->lender_name }}</td>
+                                    <td class="px-3 py-2 text-gray-600 dark:text-gray-400">{{ $match['lender']->product_type ?? '—' }}</td>
+                                    <td class="px-3 py-2 text-center text-gray-600 dark:text-gray-400">{{ $match['lender']->funding_speed ?? '—' }}</td>
+                                    <td class="px-3 py-2 text-center text-gray-600 dark:text-gray-400">{{ $match['lender']->factor_rate ?? '—' }}</td>
+                                    <td class="px-3 py-2 text-right font-medium text-gray-900 dark:text-gray-100">
+                                        {{ $match['lender']->max_loan_amount ? '$'.number_format($match['lender']->max_loan_amount, 0) : '—' }}
+                                    </td>
+                                    <td class="px-3 py-2 text-center text-gray-600 dark:text-gray-400">{{ $match['lender']->max_positions ?? '—' }}</td>
+                                    <td class="px-3 py-2 text-center slm-status-cell">
+                                        @if($match['qualified'])
+                                            <span class="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium bg-green-100 dark:bg-green-900 text-green-800 dark:text-green-300">✓ Qualifies</span>
+                                        @else
+                                            <span class="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium bg-red-100 dark:bg-red-900 text-red-800 dark:text-red-300">✗ Does Not Qualify</span>
+                                        @endif
+                                    </td>
+                                    <td class="px-3 py-2 text-center">
+                                        <button onclick="slmToggleCriteria(this)" class="text-xs text-blue-600 dark:text-blue-400 hover:underline">Details ▾</button>
+                                    </td>
+                                </tr>
+                                <!-- Criteria detail row -->
+                                <tr class="slm-criteria-row hidden slm-row {{ $match['qualified'] ? 'lm-qualified' : 'lm-disqualified' }}"
+                                    data-qualified="{{ $match['qualified'] ? '1' : '0' }}">
+                                    <td colspan="8" class="px-5 py-2 bg-gray-50 dark:bg-gray-700/50">
+                                        @if(empty($match['criteria']))
+                                            <p class="text-xs text-gray-500">No specific criteria defined for this lender.</p>
+                                        @else
+                                        <ul class="flex flex-wrap gap-x-6 gap-y-1">
+                                            @foreach($match['criteria'] as $check)
+                                            <li class="flex items-center gap-1 text-xs {{ $check['skipped'] ? 'text-gray-400 dark:text-gray-500' : ($check['passed'] ? 'text-green-700 dark:text-green-400' : 'text-red-700 dark:text-red-400') }}">
+                                                <span>{{ $check['skipped'] ? '—' : ($check['passed'] ? '✓' : '✗') }}</span>
+                                                <span class="font-medium">{{ $check['name'] }}:</span>
+                                                <span>{{ $check['actual'] }}</span>
+                                                <span class="text-gray-400">(req: {{ $check['required'] }})</span>
+                                            </li>
+                                            @endforeach
+                                        </ul>
+                                        @if(!empty($match['fail_reasons']))
+                                        <ul class="mt-1 flex flex-wrap gap-x-4 gap-y-1">
+                                            @foreach($match['fail_reasons'] as $reason)
+                                            <li class="text-xs text-red-600 dark:text-red-400">• {{ $reason }}</li>
+                                            @endforeach
+                                        </ul>
+                                        @endif
+                                        @endif
+                                    </td>
+                                </tr>
+                                @endforeach
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+            </div>
+
+            <script>
+            function lmToggleView(prefix, view) {
+                var tbody = document.getElementById(prefix + '-lm-tbody');
+                if (!tbody) return;
+                var rows = tbody.querySelectorAll('.slm-row, .lm-row');
+                var statusCol = document.getElementById(prefix + '-lm-status-col');
+                var statusCells = tbody.querySelectorAll('.slm-status-cell, .lm-status-cell');
+                var btnQ = document.getElementById(prefix + '-lm-btn-qualified');
+                var btnA = document.getElementById(prefix + '-lm-btn-all');
+                var activeClass = 'px-3 py-1.5 rounded-lg text-xs font-medium bg-green-600 text-white transition-colors';
+                var inactiveClass = 'px-3 py-1.5 rounded-lg text-xs font-medium bg-gray-200 dark:bg-gray-700 text-gray-700 dark:text-gray-300 hover:bg-gray-300 transition-colors';
+                if (!btnQ) {
+                    activeClass = activeClass.replace('py-1.5', 'py-2').replace('text-xs', 'text-sm');
+                    inactiveClass = inactiveClass.replace('py-1.5', 'py-2').replace('text-xs', 'text-sm');
+                }
+                if (view === 'qualified') {
+                    rows.forEach(function(r) { r.classList.toggle('hidden', r.dataset.qualified !== '1'); });
+                    if (statusCol) statusCol.classList.add('hidden');
+                    statusCells.forEach(function(c) { c.classList.add('hidden'); });
+                    if (btnQ) btnQ.className = activeClass;
+                    if (btnA) btnA.className = inactiveClass;
+                } else {
+                    rows.forEach(function(r) { r.classList.remove('hidden'); });
+                    tbody.querySelectorAll('.slm-criteria-row, .lm-criteria-row').forEach(function(r) {
+                        if (!r.classList.contains('lm-open')) r.classList.add('hidden');
+                    });
+                    if (statusCol) statusCol.classList.remove('hidden');
+                    statusCells.forEach(function(c) { c.classList.remove('hidden'); });
+                    if (btnA) btnA.className = activeClass;
+                    if (btnQ) btnQ.className = inactiveClass;
+                }
+            }
+            function slmToggleCriteria(btn) {
+                var criteriaRow = btn.closest('tr').nextElementSibling;
+                if (!criteriaRow) return;
+                var isOpen = !criteriaRow.classList.contains('hidden');
+                criteriaRow.classList.toggle('hidden', isOpen);
+                criteriaRow.classList.toggle('lm-open', !isOpen);
+                btn.textContent = isOpen ? 'Details ▾' : 'Details ▴';
+            }
+            document.addEventListener('DOMContentLoaded', function() {
+                lmToggleView('session', 'qualified');
+            });
+            </script>
+            @endif
 
             <!-- Info Banner -->
             <div class="mb-6 bg-blue-50 dark:bg-blue-900/20 border border-blue-200 dark:border-blue-800 rounded-lg p-4">

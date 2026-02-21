@@ -12,7 +12,9 @@ use App\Models\McaPattern;
 use App\Models\McaLenderGuideline;
 use App\Models\TransactionCategory;
 use App\Services\NsfAndNegativeDaysCalculator;
+use App\Services\LenderMatchingService;
 use App\Jobs\ProcessBankStatement;
+use Carbon\Carbon;
 
 class BankStatementController extends Controller
 {
@@ -175,12 +177,43 @@ class BankStatementController extends Controller
         $transactions = $session->transactions()->orderBy('transaction_date')->get();
 
         $credits = $transactions->where('type', 'credit');
-        $debits = $transactions->where('type', 'debit');
+        $debits  = $transactions->where('type', 'debit');
 
         // Get related sessions for linking back to full analysis
         $relatedSessions = $request->input('related', $sessionId);
 
-        return view('bankstatement.session', compact('session', 'transactions', 'credits', 'debits', 'relatedSessions'));
+        // ── Lender matching ───────────────────────────────────────────────────
+        $txnDates = $transactions->pluck('transaction_date')->filter()->sort()->values();
+        $months   = 1;
+        if ($txnDates->count() >= 2) {
+            $months = max(1, Carbon::parse($txnDates->first())
+                ->diffInMonths(Carbon::parse($txnDates->last())) + 1);
+        }
+
+        $nsfCalc   = app(NsfAndNegativeDaysCalculator::class);
+        $txnArray  = $transactions->toArray();
+        $nsfResult = $nsfCalc->calculateNsfCounts($txnArray);
+        $negResult = $nsfCalc->calculateNegativeDays($txnArray, (float) ($session->beginning_balance ?? 0));
+
+        $activeMcaPositions = $transactions
+            ->where('is_mca_payment', true)
+            ->pluck('mca_lender_id')
+            ->filter()
+            ->unique()
+            ->count();
+
+        $lenderMatches = app(LenderMatchingService::class)->match([
+            'avg_monthly_deposits'     => $months > 0 ? (float) $session->total_credits / $months : 0,
+            'avg_monthly_true_revenue' => $months > 0 ? (float) $session->true_revenue / $months : 0,
+            'avg_negative_days'        => $months > 0 ? $negResult['negative_days_count'] / $months : 0,
+            'avg_nsf_per_month'        => $months > 0 ? $nsfResult['unique_nsf_events'] / $months : 0,
+            'active_mca_positions'     => $activeMcaPositions,
+            'avg_daily_balance'        => $session->average_daily_balance ? (float) $session->average_daily_balance : null,
+        ]);
+
+        return view('bankstatement.session', compact(
+            'session', 'transactions', 'credits', 'debits', 'relatedSessions', 'lenderMatches'
+        ));
     }
 
     /**
@@ -259,6 +292,9 @@ class BankStatementController extends Controller
             // Recalculate MCA analysis from transactions (debits - payments made)
             $mcaAnalysis = $this->detectMcaPayments($processedTransactions);
 
+            // Detect debt collector payments
+            $debtCollectorAnalysis = $this->detectDebtCollectors($processedTransactions);
+
             // Detect MCA funding from credits (funding received) - use processed transactions
             $mcaFunding = $this->detectMcaFunding($processedTransactions);
 
@@ -293,6 +329,7 @@ class BankStatementController extends Controller
                 'transactions' => $transactions,
                 'monthly_data' => $monthlyData,
                 'mca_analysis' => $mcaAnalysis,
+                'debt_collector_analysis' => $debtCollectorAnalysis,
             ];
         }
 
@@ -315,7 +352,48 @@ class BankStatementController extends Controller
             }
         }
 
-        return view('bankstatement.results', compact('results', 'mcaLenders'));
+        // ── Lender matching ───────────────────────────────────────────────────
+        $allMonthKeys       = [];
+        $combinedDeposits   = 0;
+        $combinedTrueRev    = 0;
+        $combinedNegDays    = 0;
+        $combinedNsf        = 0;
+        $mcaLenderIds       = [];
+        $balanceSum         = 0;
+        $balanceCount       = 0;
+
+        foreach ($results as $res) {
+            $totals = $res['monthly_data']['totals'] ?? [];
+            foreach (array_keys($res['monthly_data']['months'] ?? []) as $mk) {
+                $allMonthKeys[$mk] = true;
+            }
+            $combinedDeposits += $totals['deposits']     ?? 0;
+            $combinedTrueRev  += $totals['true_revenue'] ?? 0;
+            $combinedNegDays  += $totals['negative_days'] ?? 0;
+            $combinedNsf      += $totals['nsf_count']    ?? 0;
+
+            foreach (array_keys($res['mca_analysis']['lenders'] ?? []) as $lid) {
+                $mcaLenderIds[$lid] = true;
+            }
+
+            $avg = $res['monthly_data']['averages']['average_daily_balance'] ?? null;
+            if ($avg !== null) {
+                $balanceSum += $avg;
+                $balanceCount++;
+            }
+        }
+
+        $matchMonthCount  = max(1, count($allMonthKeys));
+        $lenderMatches    = app(LenderMatchingService::class)->match([
+            'avg_monthly_deposits'     => $combinedDeposits  / $matchMonthCount,
+            'avg_monthly_true_revenue' => $combinedTrueRev   / $matchMonthCount,
+            'avg_negative_days'        => $combinedNegDays   / $matchMonthCount,
+            'avg_nsf_per_month'        => $combinedNsf       / $matchMonthCount,
+            'active_mca_positions'     => count($mcaLenderIds),
+            'avg_daily_balance'        => $balanceCount > 0 ? $balanceSum / $balanceCount : null,
+        ]);
+
+        return view('bankstatement.results', compact('results', 'mcaLenders', 'lenderMatches'));
     }
 
     /**
@@ -474,6 +552,154 @@ class BankStatementController extends Controller
             'total_mca_payments' => $totalMcaPayments,
             'total_mca_amount' => $totalMcaAmount,
             'lenders' => array_values($mcaPayments),
+        ];
+    }
+
+    /**
+     * Detect debt collector payments from debit transactions.
+     */
+    private function detectDebtCollectors(array $transactions): array
+    {
+        $debtCollectors = [
+            'portfolio_recovery' => ['name' => 'Portfolio Recovery Associates', 'patterns' => ['portfolio recovery', 'pra group', 'pra llc']],
+            'midland_credit' => ['name' => 'Midland Credit Management', 'patterns' => ['midland credit', 'midland funding', 'mcm llc', 'encore capital']],
+            'cavalry_portfolio' => ['name' => 'Cavalry Portfolio Services', 'patterns' => ['cavalry portfolio', 'cavalry spv', 'cavalry spe']],
+            'lvnv_funding' => ['name' => 'LVNV Funding', 'patterns' => ['lvnv funding', 'resurgent capital', 'lvnv llc']],
+            'unifund' => ['name' => 'Unifund CCR', 'patterns' => ['unifund', 'ccr partners']],
+            'asset_acceptance' => ['name' => 'Asset Acceptance', 'patterns' => ['asset acceptance']],
+            'enhanced_recovery' => ['name' => 'Enhanced Recovery Company', 'patterns' => ['enhanced recovery', 'erc llc', 'erc collections']],
+            'convergent' => ['name' => 'Convergent Outsourcing', 'patterns' => ['convergent outsourcing', 'convergent collections']],
+            'ic_system' => ['name' => 'IC System', 'patterns' => ['ic system', 'i.c. system']],
+            'transworld' => ['name' => 'Transworld Systems', 'patterns' => ['transworld systems', 'transworld collections']],
+            'ccs' => ['name' => 'Credit Collection Services', 'patterns' => ['credit collection services', 'ccs collections']],
+            'jefferson_capital' => ['name' => 'Jefferson Capital Systems', 'patterns' => ['jefferson capital']],
+            'cach_llc' => ['name' => 'CACH LLC', 'patterns' => ['cach llc', 'cach collections']],
+            'diversified' => ['name' => 'Diversified Consultants', 'patterns' => ['diversified consultants', 'dci collections']],
+            'radius_global' => ['name' => 'Radius Global Solutions', 'patterns' => ['radius global']],
+            'national_recovery' => ['name' => 'National Recovery Agency', 'patterns' => ['national recovery agency', 'nra collections']],
+            'alliance_one' => ['name' => 'Alliance One Receivables', 'patterns' => ['alliance one receivables']],
+            'global_credit' => ['name' => 'Global Credit & Collection', 'patterns' => ['global credit & collection', 'global credit and collection']],
+            'oliphant' => ['name' => 'Oliphant Financial', 'patterns' => ['oliphant financial']],
+            'sunrise_credit' => ['name' => 'Sunrise Credit Services', 'patterns' => ['sunrise credit services']],
+            'credit_corp' => ['name' => 'Credit Corp Solutions', 'patterns' => ['credit corp solutions']],
+            'pinnacle_collections' => ['name' => 'Pinnacle Collections', 'patterns' => ['pinnacle collections', 'pinnacle recovery']],
+            'nco_group' => ['name' => 'NCO Group', 'patterns' => ['nco group', 'nco financial']],
+            'acs_inc' => ['name' => 'ACS Recovery Services', 'patterns' => ['acs recovery']],
+            'collection_center' => ['name' => 'Collection Center Inc', 'patterns' => ['collection center inc']],
+            'commonwealth_financial' => ['name' => 'Commonwealth Financial', 'patterns' => ['commonwealth financial systems']],
+            'accounts_receivable' => ['name' => 'Accounts Receivable Management', 'patterns' => ['acct receivable mgmt', 'arm collections']],
+            'legal_collect' => ['name' => 'Legal Collections', 'patterns' => ['legal collect', 'attorneys collection']],
+        ];
+
+        $collectorPayments = [];
+
+        foreach ($transactions as $txn) {
+            if (($txn['type'] ?? '') !== 'debit') {
+                continue;
+            }
+
+            $description = $txn['description'] ?? '';
+            $descriptionLower = strtolower($description);
+            $amount = (float) ($txn['amount'] ?? 0);
+            $date = $txn['date'] ?? '';
+
+            foreach ($debtCollectors as $collectorId => $collectorInfo) {
+                foreach ($collectorInfo['patterns'] as $pattern) {
+                    if (stripos($descriptionLower, $pattern) !== false) {
+                        if (!isset($collectorPayments[$collectorId])) {
+                            $collectorPayments[$collectorId] = [
+                                'collector_id' => $collectorId,
+                                'collector_name' => $collectorInfo['name'],
+                                'payment_count' => 0,
+                                'total_amount' => 0,
+                                'average_payment' => 0,
+                                'unique_amounts' => [],
+                                'frequency' => 'unknown',
+                                'frequency_label' => 'Unknown',
+                                'first_payment' => null,
+                                'last_payment' => null,
+                                'payments' => [],
+                            ];
+                        }
+
+                        $collectorPayments[$collectorId]['payment_count']++;
+                        $collectorPayments[$collectorId]['total_amount'] += $amount;
+                        $collectorPayments[$collectorId]['payments'][] = [
+                            'date' => $date,
+                            'amount' => $amount,
+                            'description' => $description,
+                        ];
+
+                        if (!in_array($amount, $collectorPayments[$collectorId]['unique_amounts'])) {
+                            $collectorPayments[$collectorId]['unique_amounts'][] = $amount;
+                        }
+
+                        break;
+                    }
+                }
+            }
+        }
+
+        $totalCount = count($collectorPayments);
+        $totalPayments = 0;
+        $totalAmount = 0;
+
+        foreach ($collectorPayments as &$collector) {
+            $collector['average_payment'] = $collector['payment_count'] > 0
+                ? $collector['total_amount'] / $collector['payment_count']
+                : 0;
+
+            if (!empty($collector['payments'])) {
+                usort($collector['payments'], fn($a, $b) => strcmp($a['date'], $b['date']));
+                $collector['first_payment'] = $collector['payments'][0];
+                $collector['last_payment'] = end($collector['payments']);
+
+                if ($collector['payment_count'] >= 2) {
+                    $firstDate = strtotime($collector['first_payment']['date']);
+                    $lastDate = strtotime($collector['last_payment']['date']);
+                    $daysDiff = ($lastDate - $firstDate) / 86400;
+                    $avgDaysBetween = $daysDiff / ($collector['payment_count'] - 1);
+
+                    if ($avgDaysBetween <= 1.5) {
+                        $collector['frequency'] = 'daily';
+                        $collector['frequency_label'] = 'Daily';
+                    } elseif ($avgDaysBetween <= 3) {
+                        $collector['frequency'] = 'every_other_day';
+                        $collector['frequency_label'] = 'Every Other Day';
+                    } elseif ($avgDaysBetween <= 5) {
+                        $collector['frequency'] = 'twice_weekly';
+                        $collector['frequency_label'] = 'Twice Weekly';
+                    } elseif ($avgDaysBetween <= 9) {
+                        $collector['frequency'] = 'weekly';
+                        $collector['frequency_label'] = 'Weekly';
+                    } elseif ($avgDaysBetween <= 18) {
+                        $collector['frequency'] = 'bi_weekly';
+                        $collector['frequency_label'] = 'Bi-Weekly';
+                    } elseif ($avgDaysBetween <= 35) {
+                        $collector['frequency'] = 'monthly';
+                        $collector['frequency_label'] = 'Monthly';
+                    } else {
+                        $collector['frequency'] = 'irregular';
+                        $collector['frequency_label'] = 'Irregular';
+                    }
+                } else {
+                    $collector['frequency'] = 'single_payment';
+                    $collector['frequency_label'] = 'Single Payment';
+                }
+            }
+
+            $totalPayments += $collector['payment_count'];
+            $totalAmount += $collector['total_amount'];
+        }
+
+        // Sort by total amount descending
+        usort($collectorPayments, fn($a, $b) => $b['total_amount'] <=> $a['total_amount']);
+
+        return [
+            'total_collector_count' => $totalCount,
+            'total_payments' => $totalPayments,
+            'total_amount' => $totalAmount,
+            'collectors' => array_values($collectorPayments),
         ];
     }
 
@@ -695,6 +921,8 @@ class BankStatementController extends Controller
                 'total_credits' => $session ? number_format($session->total_credits, 2) : 0,
                 'total_debits' => $session ? number_format($session->total_debits, 2) : 0,
                 'net_flow' => $session ? number_format($session->net_flow, 2) : 0,
+                'credit_count' => $session ? $session->transactions()->where('type', 'credit')->count() : 0,
+                'debit_count' => $session ? $session->transactions()->where('type', 'debit')->count() : 0,
             ],
         ]);
     }

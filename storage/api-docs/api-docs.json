@@ -1632,7 +1632,7 @@
                 ]
             }
         },
-        "/pricing/calculate": {
+        "/api/v1/pricing/calculate": {
             "post": {
                 "tags": [
                     "MCA Pricing"
@@ -1731,7 +1731,7 @@
                 ]
             }
         },
-        "/pricing/capacity": {
+        "/api/v1/pricing/capacity": {
             "post": {
                 "tags": [
                     "MCA Pricing"
@@ -1794,7 +1794,7 @@
                 ]
             }
         },
-        "/pricing/validate": {
+        "/api/v1/pricing/validate": {
             "post": {
                 "tags": [
                     "MCA Pricing"
@@ -1868,7 +1868,7 @@
                 ]
             }
         },
-        "/pricing/scenarios": {
+        "/api/v1/pricing/scenarios": {
             "post": {
                 "tags": [
                     "MCA Pricing"
@@ -1948,7 +1948,7 @@
                 ]
             }
         },
-        "/pricing/industries": {
+        "/api/v1/pricing/industries": {
             "get": {
                 "tags": [
                     "MCA Pricing"
@@ -1987,7 +1987,7 @@
                 ]
             }
         },
-        "/pricing/config": {
+        "/api/v1/pricing/config": {
             "get": {
                 "tags": [
                     "MCA Pricing"
@@ -2021,220 +2021,6 @@
                         "sanctumAuth": []
                     }
                 ]
-            }
-        },
-        "/api/hubspot/crm-card": {
-            "servers": [
-                {
-                    "url": "/",
-                    "description": "Root server (HubSpot endpoints are outside /api/v1)"
-                }
-            ],
-            "get": {
-                "tags": [
-                    "HubSpot CRM Card"
-                ],
-                "summary": "Fetch CRM card data (GET)",
-                "description": "Called by HubSpot to display MCA offer data in CRM cards. Returns MCA offer details for the given HubSpot portal and object. No authentication required \u2014 HubSpot signature verification is used instead.",
-                "operationId": "hubspot_crm_card_fetch_get",
-                "parameters": [
-                    {
-                        "name": "portalId",
-                        "in": "query",
-                        "description": "HubSpot portal ID",
-                        "required": false,
-                        "schema": {
-                            "type": "string",
-                            "example": "12345678"
-                        }
-                    },
-                    {
-                        "name": "objectType",
-                        "in": "query",
-                        "description": "HubSpot object type",
-                        "required": false,
-                        "schema": {
-                            "type": "string",
-                            "enum": [
-                                "CONTACT",
-                                "COMPANY",
-                                "DEAL"
-                            ],
-                            "example": "DEAL"
-                        }
-                    },
-                    {
-                        "name": "objectId",
-                        "in": "query",
-                        "description": "HubSpot object ID",
-                        "required": false,
-                        "schema": {
-                            "type": "string",
-                            "example": "98765"
-                        }
-                    },
-                    {
-                        "name": "userId",
-                        "in": "query",
-                        "description": "HubSpot user ID",
-                        "required": false,
-                        "schema": {
-                            "type": "string"
-                        }
-                    },
-                    {
-                        "name": "userEmail",
-                        "in": "query",
-                        "description": "HubSpot user email",
-                        "required": false,
-                        "schema": {
-                            "type": "string",
-                            "format": "email"
-                        }
-                    }
-                ],
-                "responses": {
-                    "200": {
-                        "description": "CRM card data returned successfully",
-                        "content": {
-                            "application/json": {
-                                "schema": {
-                                    "$ref": "#/components/schemas/HubSpotCrmCardResponse"
-                                }
-                            }
-                        }
-                    }
-                }
-            },
-            "post": {
-                "tags": [
-                    "HubSpot CRM Card"
-                ],
-                "summary": "Fetch CRM card data (POST)",
-                "description": "Same as GET but accepts parameters in the request body. HubSpot may call either GET or POST depending on configuration.",
-                "operationId": "hubspot_crm_card_fetch_post",
-                "requestBody": {
-                    "required": false,
-                    "content": {
-                        "application/json": {
-                            "schema": {
-                                "properties": {
-                                    "portalId": {
-                                        "type": "string",
-                                        "example": "12345678"
-                                    },
-                                    "objectType": {
-                                        "type": "string",
-                                        "enum": [
-                                            "CONTACT",
-                                            "COMPANY",
-                                            "DEAL"
-                                        ],
-                                        "example": "DEAL"
-                                    },
-                                    "objectId": {
-                                        "type": "string",
-                                        "example": "98765"
-                                    },
-                                    "userId": {
-                                        "type": "string"
-                                    },
-                                    "userEmail": {
-                                        "type": "string",
-                                        "format": "email"
-                                    }
-                                },
-                                "type": "object"
-                            }
-                        }
-                    }
-                },
-                "responses": {
-                    "200": {
-                        "description": "CRM card data returned successfully",
-                        "content": {
-                            "application/json": {
-                                "schema": {
-                                    "$ref": "#/components/schemas/HubSpotCrmCardResponse"
-                                }
-                            }
-                        }
-                    }
-                }
-            }
-        },
-        "/api/hubspot/webhook": {
-            "servers": [
-                {
-                    "url": "/",
-                    "description": "Root server (HubSpot endpoints are outside /api/v1)"
-                }
-            ],
-            "post": {
-                "tags": [
-                    "HubSpot CRM Card"
-                ],
-                "summary": "Handle HubSpot webhook events",
-                "description": "Receives webhook event payloads from HubSpot for deal changes, deletions, and other CRM object updates. Events are logged and processed asynchronously.",
-                "operationId": "hubspot_webhook",
-                "requestBody": {
-                    "required": true,
-                    "content": {
-                        "application/json": {
-                            "schema": {
-                                "type": "array",
-                                "items": {
-                                    "properties": {
-                                        "subscriptionType": {
-                                            "type": "string",
-                                            "example": "deal.propertyChange",
-                                            "description": "Type of HubSpot event (e.g. deal.propertyChange, deal.deletion)"
-                                        },
-                                        "objectType": {
-                                            "type": "string",
-                                            "example": "DEAL"
-                                        },
-                                        "objectId": {
-                                            "type": "integer",
-                                            "example": 12345
-                                        },
-                                        "portalId": {
-                                            "type": "integer",
-                                            "example": 67890
-                                        },
-                                        "propertyName": {
-                                            "type": "string",
-                                            "example": "dealstage"
-                                        },
-                                        "propertyValue": {
-                                            "type": "string",
-                                            "example": "closedwon"
-                                        }
-                                    },
-                                    "type": "object"
-                                }
-                            }
-                        }
-                    }
-                },
-                "responses": {
-                    "200": {
-                        "description": "Webhook processed successfully",
-                        "content": {
-                            "application/json": {
-                                "schema": {
-                                    "properties": {
-                                        "status": {
-                                            "type": "string",
-                                            "example": "ok"
-                                        }
-                                    },
-                                    "type": "object"
-                                }
-                            }
-                        }
-                    }
-                }
             }
         }
     },
@@ -2836,134 +2622,6 @@
                     }
                 },
                 "type": "object"
-            },
-            "HubSpotCrmCardResponse": {
-                "title": "HubSpot CRM Card Response",
-                "description": "Response returned to HubSpot for CRM card display",
-                "properties": {
-                    "results": {
-                        "description": "Array of MCA offer card results",
-                        "type": "array",
-                        "items": {
-                            "$ref": "#/components/schemas/HubSpotCrmCardResult"
-                        }
-                    },
-                    "primaryAction": {
-                        "$ref": "#/components/schemas/HubSpotCardAction"
-                    },
-                    "secondaryActions": {
-                        "type": "array",
-                        "items": {
-                            "$ref": "#/components/schemas/HubSpotCardAction"
-                        }
-                    }
-                },
-                "type": "object"
-            },
-            "HubSpotCrmCardResult": {
-                "title": "HubSpot CRM Card Result",
-                "description": "A single MCA offer displayed in a HubSpot CRM card",
-                "properties": {
-                    "objectId": {
-                        "type": "string",
-                        "example": "abc-123",
-                        "description": "HubSpot deal ID or offer ID"
-                    },
-                    "title": {
-                        "type": "string",
-                        "example": "MCA Offer - abc12345"
-                    },
-                    "link": {
-                        "type": "string",
-                        "format": "uri",
-                        "example": "https://app.crmfinity.com/bankstatement/view-analysis?sessions[]=abc-123"
-                    },
-                    "created": {
-                        "type": "string",
-                        "format": "date-time",
-                        "example": "2025-10-15T12:00:00Z"
-                    },
-                    "priority": {
-                        "type": "string",
-                        "enum": [
-                            "HIGH",
-                            "MEDIUM",
-                            "LOW"
-                        ],
-                        "example": "HIGH"
-                    },
-                    "properties": {
-                        "description": "Key-value properties displayed on the card",
-                        "type": "array",
-                        "items": {
-                            "properties": {
-                                "label": {
-                                    "type": "string",
-                                    "example": "Funded Amount"
-                                },
-                                "dataType": {
-                                    "type": "string",
-                                    "enum": [
-                                        "CURRENCY",
-                                        "NUMERIC",
-                                        "STRING",
-                                        "DATE"
-                                    ],
-                                    "example": "CURRENCY"
-                                },
-                                "value": {
-                                    "type": "string",
-                                    "example": "50000.00"
-                                },
-                                "currencyCode": {
-                                    "type": "string",
-                                    "example": "USD"
-                                }
-                            },
-                            "type": "object"
-                        }
-                    },
-                    "actions": {
-                        "type": "array",
-                        "items": {
-                            "$ref": "#/components/schemas/HubSpotCardAction"
-                        }
-                    }
-                },
-                "type": "object"
-            },
-            "HubSpotCardAction": {
-                "title": "HubSpot Card Action",
-                "description": "An action button shown on a HubSpot CRM card",
-                "properties": {
-                    "type": {
-                        "type": "string",
-                        "enum": [
-                            "IFRAME",
-                            "CONFIRMATION_ACTION_HOOK",
-                            "ACTION_HOOK"
-                        ],
-                        "example": "IFRAME"
-                    },
-                    "width": {
-                        "type": "integer",
-                        "example": 890
-                    },
-                    "height": {
-                        "type": "integer",
-                        "example": 748
-                    },
-                    "uri": {
-                        "type": "string",
-                        "format": "uri",
-                        "example": "https://app.crmfinity.com/hubspot/calculator"
-                    },
-                    "label": {
-                        "type": "string",
-                        "example": "New MCA Calculation"
-                    }
-                },
-                "type": "object"
             }
         },
         "securitySchemes": {
@@ -3003,10 +2661,6 @@
         {
             "name": "MCA Pricing",
             "description": "Endpoints for MCA offer calculation and pricing"
-        },
-        {
-            "name": "HubSpot CRM Card",
-            "description": "Endpoints called by HubSpot for CRM card data display and webhook event processing"
         }
     ]
 }
