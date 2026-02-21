@@ -865,6 +865,27 @@ class BankStatementController extends Controller
     }
 
     /**
+     * Serve the original uploaded PDF for a session.
+     */
+    public function downloadPdf($sessionId)
+    {
+        $session = AnalysisSession::where('session_id', $sessionId)
+            ->whereIn('analysis_type', ['openai', 'claude'])
+            ->firstOrFail();
+
+        $path = storage_path('app/uploads/' . $sessionId . '_' . $session->filename);
+
+        if (!file_exists($path)) {
+            abort(404, 'PDF not found.');
+        }
+
+        return response()->file($path, [
+            'Content-Type'        => 'application/pdf',
+            'Content-Disposition' => 'inline; filename="' . $session->filename . '"',
+        ]);
+    }
+
+    /**
      * Toggle transaction type (debit <-> credit) and save correction for AI learning.
      */
     public function toggleType(Request $request)

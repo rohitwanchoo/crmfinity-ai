@@ -1758,6 +1758,12 @@
                             <a href="{{ route('bankstatement.session', ['sessionId' => $result['session_id'], 'related' => implode(',', $allSessionIds)]) }}" class="inline-flex items-center px-4 py-2 bg-green-600 border border-transparent rounded-md font-semibold text-xs text-white uppercase tracking-widest hover:bg-green-700 transition">
                                 View Details
                             </a>
+                            <a href="{{ route('bankstatement.pdf', $result['session_id']) }}" target="_blank" class="inline-flex items-center px-4 py-2 bg-red-100 dark:bg-red-900 border border-transparent rounded-md font-semibold text-xs text-red-700 dark:text-red-300 uppercase tracking-widest hover:bg-red-200 dark:hover:bg-red-800 transition">
+                                <svg class="w-3.5 h-3.5 mr-1.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M7 21h10a2 2 0 002-2V9.414a1 1 0 00-.293-.707l-5.414-5.414A1 1 0 0012.586 3H7a2 2 0 00-2 2v14a2 2 0 002 2z"></path>
+                                </svg>
+                                View PDF
+                            </a>
                             <a href="{{ route('bankstatement.download', $result['session_id']) }}" class="inline-flex items-center px-4 py-2 bg-gray-200 dark:bg-gray-700 border border-transparent rounded-md font-semibold text-xs text-gray-700 dark:text-gray-300 uppercase tracking-widest hover:bg-gray-300 dark:hover:bg-gray-600 transition">
                                 Download CSV
                             </a>

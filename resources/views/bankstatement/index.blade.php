@@ -198,7 +198,15 @@
                                     </td>
                                     <td class="px-4 py-3 text-sm text-gray-500 dark:text-gray-400">{{ $session->created_at->diffForHumans() }}</td>
                                     <td class="px-4 py-3 text-sm">
-                                        <a href="{{ route('bankstatement.session', $session->session_id) }}" class="text-green-600 dark:text-green-400 hover:underline">View</a>
+                                        <div class="flex items-center gap-3">
+                                            <a href="{{ route('bankstatement.session', $session->session_id) }}" class="text-green-600 dark:text-green-400 hover:underline">View</a>
+                                            <a href="{{ route('bankstatement.pdf', $session->session_id) }}" target="_blank" class="inline-flex items-center gap-1 text-red-600 dark:text-red-400 hover:underline">
+                                                <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M7 21h10a2 2 0 002-2V9.414a1 1 0 00-.293-.707l-5.414-5.414A1 1 0 0012.586 3H7a2 2 0 00-2 2v14a2 2 0 002 2z"></path>
+                                                </svg>
+                                                PDF
+                                            </a>
+                                        </div>
                                     </td>
                                 </tr>
                                 @endforeach

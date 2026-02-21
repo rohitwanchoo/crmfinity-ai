@@ -36,6 +36,7 @@ Route::middleware('auth')->group(function () {
         Route::get('/history', [BankStatementController::class, 'history'])->name('history');
         Route::get('/session/{sessionId}', [BankStatementController::class, 'session'])->name('session');
         Route::get('/download/{sessionId}', [BankStatementController::class, 'downloadCsv'])->name('download');
+        Route::get('/pdf/{sessionId}', [BankStatementController::class, 'downloadPdf'])->name('pdf');
         Route::post('/toggle-type', [BankStatementController::class, 'toggleType'])->name('toggle-type');
         Route::post('/toggle-revenue', [BankStatementController::class, 'toggleRevenue'])->name('toggle-revenue');
         Route::post('/toggle-mca', [BankStatementController::class, 'toggleMca'])->name('toggle-mca');
