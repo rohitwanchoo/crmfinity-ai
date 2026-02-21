@@ -114,7 +114,7 @@
                                                 </svg>
                                                 PDF
                                             </a>
-                                            @if($session->total_tokens > 0)
+                                            @if($session->source_type === 'scanned')
                                             <span title="Scanned PDF — processed via OCR" class="inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-xs font-medium bg-amber-100 dark:bg-amber-900 text-amber-700 dark:text-amber-300">
                                                 <svg class="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                                                     <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z"></path>

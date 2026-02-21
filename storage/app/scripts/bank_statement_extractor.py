@@ -168,7 +168,8 @@ def is_text_garbled(text: str) -> bool:
     return False
 
 
-def extract_text_from_pdf(pdf_path: str) -> Tuple[str, int]:
+def extract_text_from_pdf(pdf_path: str) -> Tuple[str, int, bool]:
+    """Returns (text, page_count, ocr_used). ocr_used=True only for image/scanned PDFs."""
     if not os.path.exists(pdf_path):
         raise FileNotFoundError(f"PDF file not found: {pdf_path}")
 
@@ -199,7 +200,7 @@ def extract_text_from_pdf(pdf_path: str) -> Tuple[str, int]:
             # Check if PyMuPDF text is also garbled
             if not is_text_garbled(pymupdf_text):
                 print("✓ PyMuPDF extraction successful", file=sys.stderr)
-                return pymupdf_text, pymupdf_pages
+                return pymupdf_text, pymupdf_pages, False
             else:
                 print("⚠️  PyMuPDF produced garbled text", file=sys.stderr)
         except Exception as pymupdf_error:
@@ -211,20 +212,21 @@ def extract_text_from_pdf(pdf_path: str) -> Tuple[str, int]:
         if len(extracted_text) > 500:
             print(f"ℹ️  Using pdfplumber text despite minor issues ({len(extracted_text)} chars available)", file=sys.stderr)
             print("   Skipping OCR to save time", file=sys.stderr)
-            return extracted_text, pages
+            return extracted_text, pages, False
 
-        # Last resort: fall back to OCR (SLOW!)
+        # Last resort: fall back to OCR (SLOW!) — this is a scanned/image PDF
         print("⚠️  Falling back to OCR (this may take several minutes)...", file=sys.stderr)
         try:
-            return extract_text_with_ocr(pdf_path)
+            ocr_text, ocr_pages = extract_text_with_ocr(pdf_path)
+            return ocr_text, ocr_pages, True   # ocr_used=True for scanned PDFs
         except Exception as ocr_error:
             # If OCR fails but we had some text from pdfplumber, use that
             if len(extracted_text) > 100:
                 print(f"⚠️  OCR failed, using pdfplumber text as fallback ({len(extracted_text)} chars)", file=sys.stderr)
-                return extracted_text, pages
+                return extracted_text, pages, False
             raise Exception(f"No text could be extracted from PDF. Text extraction (pdfplumber), PyMuPDF, and OCR all failed.")
 
-    return extracted_text, pages
+    return extracted_text, pages, False
 
 
 def preprocess_check_tables(text: str) -> str:
@@ -3993,7 +3995,7 @@ def main():
 
     try:
         # Extract text from PDF
-        pdf_text, pages = extract_text_from_pdf(pdf_path)
+        pdf_text, pages, ocr_used = extract_text_from_pdf(pdf_path)
 
         # Extract expected totals from statement header for validation
         # expected_totals = extract_statement_totals(pdf_text)
@@ -4122,6 +4124,7 @@ def main():
                 "pages": pages,
                 "extraction_date": datetime.now().isoformat(),
                 "extraction_method": extraction_method,
+                "ocr_used": ocr_used,
                 "model_used": model if extraction_method == "ai" else None,
                 "bank_name": det_bank_name if extraction_method == "deterministic" else None,
                 "characters_extracted": len(pdf_text),

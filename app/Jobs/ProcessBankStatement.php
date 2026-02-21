@@ -147,6 +147,7 @@ class ProcessBankStatement implements ShouldQueue
                 'ending_balance' => $data['statement_summary']['ending_balance'] ?? null,
                 'average_daily_balance' => $data['statement_summary']['average_daily_balance'] ?? null,
                 'processing_time' => $jobStartTime->diffInSeconds(now()),
+                'source_type' => ($data['metadata']['ocr_used'] ?? false) ? 'scanned' : 'pdf',
             ]);
 
             // Log detailed API usage for tracking
