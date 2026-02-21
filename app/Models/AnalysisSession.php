@@ -40,6 +40,7 @@ class AnalysisSession extends Model
         'average_daily_balance',
         'processing_time',
         'notified_at',
+        'source_type',
     ];
 
     protected $casts = [
